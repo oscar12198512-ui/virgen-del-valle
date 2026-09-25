@@ -1,0 +1,6 @@
+{
+  "name": "Playa Buche / INV Virgen del Valle",
+  "description": "Sistema integral de gestión costera, comandera de mesoneros, control de excursiones, cocina KDS, administración financiera y menú digital para Playa Buche.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

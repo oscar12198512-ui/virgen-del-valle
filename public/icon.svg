@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#001a33"/>
+      <stop offset="60%" stop-color="#002546"/>
+      <stop offset="100%" stop-color="#004b73"/>
+    </linearGradient>
+    <linearGradient id="aquaGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00a3c4"/>
+      <stop offset="100%" stop-color="#57d1fd"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#fbbf24"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded canvas -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  
+  <!-- Outer Ring with nautical dash border -->
+  <circle cx="256" cy="256" r="220" fill="none" stroke="#57d1fd" stroke-width="3" stroke-opacity="0.25"/>
+  <circle cx="256" cy="256" r="208" fill="none" stroke="#57d1fd" stroke-width="2" stroke-dasharray="6 8" stroke-opacity="0.4"/>
+
+  <!-- Golden Sun Rising -->
+  <circle cx="256" cy="180" r="54" fill="url(#goldGrad)" filter="url(#glow)"/>
+
+  <!-- Sailboat & Waves Motif -->
+  <!-- Main Sail -->
+  <path d="M266 110 L266 260 L360 260 Z" fill="#ffffff" filter="url(#glow)"/>
+  <!-- Front Jib Sail -->
+  <path d="M250 130 L250 260 L166 260 Z" fill="url(#aquaGrad)" filter="url(#glow)"/>
+  <!-- Hull of the Boat -->
+  <path d="M140 274 L372 274 L336 312 L176 312 Z" fill="#ffffff" filter="url(#glow)"/>
+
+  <!-- Tropical Ocean Waves -->
+  <path d="M80 340 Q130 325 180 340 T280 340 T380 340 T440 340" fill="none" stroke="#57d1fd" stroke-width="7" stroke-linecap="round"/>
+  <path d="M70 375 Q120 360 170 375 T270 375 T370 375 T450 375" fill="none" stroke="#00a3c4" stroke-width="6" stroke-linecap="round" opacity="0.8"/>
+  <path d="M90 410 Q140 395 190 410 T290 410 T390 410 T430 410" fill="none" stroke="#57d1fd" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- Subtle Badge Text: BUCHE -->
+  <text x="256" y="465" text-anchor="middle" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="900" letter-spacing="6" opacity="0.95">PLAYA BUCHE</text>
+</svg>
