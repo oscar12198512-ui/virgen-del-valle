@@ -70,6 +70,16 @@ async function ensureSchema() {
   await pool.query('ALTER TABLE app_users ALTER COLUMN password_hash DROP NOT NULL;');
   await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS pin_hash TEXT;');
   await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS external_id TEXT UNIQUE;');
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS zone TEXT;');
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS avatar TEXT;');
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS active_orders_count INTEGER NOT NULL DEFAULT 0;');
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS assigned_toldo_ids JSONB NOT NULL DEFAULT \'[]\'::jsonb;');
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS boat_name TEXT;');
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS approved_by_owner BOOLEAN NOT NULL DEFAULT false;');
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;');
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS notes TEXT;');
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ;');
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();');
 }
 
 async function ensureOwner() {
@@ -157,8 +167,6 @@ app.post('/api/users/sync', async (req,res) => {
         [String(u.id || ''),u.name,u.phone || null,email,u.role,pinHash,u.status || 'active',u.zone || null,u.avatar || null,Number(u.activeOrdersCount || 0),JSON.stringify(u.assignedToldoIds || []),u.boatName || null,Boolean(u.approvedByOwner),u.approvedAt || null,u.createdAt || new Date().toISOString(),u.notes || null]
       );
     }
-    const emails = users.map((u) => normalizeEmail(u.email)).filter(Boolean);
-    if (emails.length) await pool.query("DELETE FROM app_users WHERE email <> ALL($1::text[]) AND email <> $2", [emails, normalizeEmail(process.env.OWNER_EMAIL)]);
     const result = await pool.query('SELECT * FROM app_users ORDER BY created_at ASC');
     return res.json({ ok:true, users: result.rows.map(toClientUser) });
   } catch {
