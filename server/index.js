@@ -98,6 +98,7 @@ function toPublicUser(row) {
   return {
     id: row.external_id || row.id,
     name: row.name,
+    email: row.email,
     role: row.role,
     zone: row.zone,
     avatar: row.avatar,
