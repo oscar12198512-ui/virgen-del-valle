@@ -132,6 +132,21 @@ app.post('/api/users/sync', async (req,res) => {
   }
 });
 
+app.post('/api/auth/pin-login', async (req,res) => {
+  const email=normalizeEmail(req.body?.email);
+  const pin=String(req.body?.pin || '');
+  if (!email || !pin) return res.status(400).json({ message:'Usuario y PIN son obligatorios.' });
+  if (!pool) return res.status(503).json({ message:'Autenticación no disponible.' });
+  const result=await pool.query('SELECT id,name,phone,email,role,status,zone,avatar,active_orders_count,assigned_toldo_ids,boat_name,approved_by_owner,approved_at,created_at,notes,pin_hash FROM app_users WHERE email=$1 LIMIT 1',[email]);
+  const user=result.rows[0];
+  if (!user || user.status !== 'active' || !user.pin_hash || !(await bcrypt.compare(pin,user.pin_hash))) {
+    return res.status(401).json({ message:'Usuario o PIN incorrectos.' });
+  }
+  await pool.query('UPDATE app_users SET last_login=NOW(),updated_at=NOW() WHERE id=$1',[user.id]);
+  delete user.pin_hash;
+  return res.json({ user });
+});
+
 app.post('/api/auth/login', async (req,res) => {
   const email=normalizeEmail(req.body?.email);
   const password=String(req.body?.password || '');
