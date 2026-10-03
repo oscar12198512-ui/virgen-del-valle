@@ -45,6 +45,77 @@ app.use(express.json({ limit: '1mb' }));
 const normalizeEmail = value => String(value || '').trim().toLowerCase();
 const hashToken = value => crypto.createHash('sha256').update(value).digest('hex');
 
+const SESSION_TTL_HOURS = Number(process.env.SESSION_TTL_HOURS || 24);
+const SESSION_COOKIE = 'vdelvalle_session';
+
+function readBearerToken(req) {
+  const header = String(req.headers.authorization || '');
+  return header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+}
+
+async function createSession(userId) {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(rawToken);
+  await pool.query(
+    'INSERT INTO auth_sessions (user_id, token_hash, expires_at) VALUES ($1,$2,NOW()+($3 || \' hours\')::interval)',
+    [userId, tokenHash, SESSION_TTL_HOURS]
+  );
+  return rawToken;
+}
+
+async function getAuthenticatedUser(req) {
+  if (!pool) return null;
+  const rawToken = readBearerToken(req);
+  if (!rawToken) return null;
+  const { rows } = await pool.query(
+    'SELECT u.* FROM auth_sessions s JOIN app_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>NOW() AND u.status=\'active\' LIMIT 1',
+    [hashToken(rawToken)]
+  );
+  return rows[0] || null;
+}
+
+async function requireAuth(req, res, next) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ message: 'Autenticación requerida.' });
+    req.authUser = user;
+    return next();
+  } catch {
+    return res.status(401).json({ message: 'Sesión inválida o vencida.' });
+  }
+}
+
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.authUser || !roles.includes(req.authUser.role)) {
+      return res.status(403).json({ message: 'No tienes permisos para esta operación.' });
+    }
+    return next();
+  };
+}
+
+function toPublicUser(row) {
+  return {
+    id: row.external_id || row.id,
+    name: row.name,
+    role: row.role,
+    zone: row.zone,
+    avatar: row.avatar,
+    activeOrdersCount: row.active_orders_count || 0,
+    assignedToldoIds: row.assigned_toldo_ids || [],
+    boatName: row.boat_name,
+    approvedByOwner: row.approved_by_owner,
+    approvedAt: row.approved_at,
+    createdAt: row.created_at,
+    status: row.status,
+    notes: row.notes,
+  };
+}
+
+function sessionResponse(user, token) {
+  return { token, user: toClientUser(user), expiresInHours: SESSION_TTL_HOURS };
+}
+
 const mailer = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD
   ? nodemailer.createTransport({ host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT || 587), secure: Number(process.env.SMTP_PORT || 587) === 465, auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } })
   : null;
@@ -129,24 +200,33 @@ app.get('/health', async (_req, res) => {
   catch { return res.status(503).json({ ok:false, database:false }); }
 });
 
-app.get('/api/state', async (_req,res) => {
+app.get('/api/state', async (req,res) => {
   if (!pool) return res.status(503).json({ message:'Base de datos no disponible.' });
   try {
     const result = await pool.query('SELECT state, version, updated_at FROM app_state WHERE id=1');
     const users = await pool.query('SELECT id,name,phone,email,role,status,zone,avatar,active_orders_count,assigned_toldo_ids,boat_name,approved_by_owner,approved_at,created_at,notes,last_login FROM app_users ORDER BY created_at ASC');
+    const authenticatedUser = await getAuthenticatedUser(req);
+    const rawState = result.rows[0]?.state || null;
+    const publicState = rawState ? {
+      menuItems: rawState.menuItems || [],
+      spots: rawState.spots || [],
+      excursion: rawState.excursion || null,
+      bcvRate: typeof rawState.bcvRate === 'number' ? rawState.bcvRate : null,
+    } : null;
     return res.json({
       initialized: Boolean(result.rows[0]),
+      authenticated: Boolean(authenticatedUser),
       version: result.rows[0]?.version || 0,
       updatedAt: result.rows[0]?.updated_at || null,
-      state: result.rows[0]?.state || null,
-      users: users.rows.map(toClientUser),
+      state: authenticatedUser ? rawState : publicState,
+      users: authenticatedUser ? users.rows.map(toClientUser) : users.rows.map(toPublicUser),
     });
   } catch {
     return res.status(500).json({ message:'No se pudo cargar el estado de la aplicación.' });
   }
 });
 
-app.put('/api/state', async (req,res) => {
+app.put('/api/state', requireAuth, requireRole('admin','waiter','kitchen','excursion'), async (req,res) => {
   if (!pool) return res.status(503).json({ message:'Base de datos no disponible.' });
   const state = req.body?.state;
   if (!state || typeof state !== 'object' || Array.isArray(state)) return res.status(400).json({ message:'Estado inválido.' });
@@ -161,7 +241,7 @@ app.put('/api/state', async (req,res) => {
   }
 });
 
-app.patch('/api/state', async (req,res) => {
+app.patch('/api/state', requireAuth, requireRole('admin','waiter','kitchen','excursion'), async (req,res) => {
   if (!pool) return res.status(503).json({ message:'Base de datos no disponible.' });
   const patch = req.body?.state;
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return res.status(400).json({ message:'Actualización inválida.' });
@@ -176,7 +256,7 @@ app.patch('/api/state', async (req,res) => {
   }
 });
 
-app.post('/api/users/sync', async (req,res) => {
+app.post('/api/users/sync', requireAuth, requireRole('admin'), async (req,res) => {
   if (!pool) return res.status(503).json({ message:'Base de datos no disponible.' });
   const users = Array.isArray(req.body?.users) ? req.body.users : [];
   if (!users.length) return res.status(400).json({ message:'No hay usuarios.' });
@@ -209,7 +289,8 @@ app.post('/api/auth/pin-login', async (req,res) => {
   }
   await pool.query('UPDATE app_users SET last_login=NOW(),updated_at=NOW() WHERE id=$1',[user.id]);
   delete user.pin_hash;
-  return res.json({ user: toClientUser(user) });
+  const token = await createSession(user.id);
+  return res.json(sessionResponse(user, token));
 });
 
 app.post('/api/auth/login', async (req,res) => {
@@ -226,7 +307,18 @@ app.post('/api/auth/login', async (req,res) => {
   user.last_login = new Date().toISOString();
   delete user.password_hash;
   delete user.pin_hash;
-  return res.json({ user:toClientUser(user) });
+  const token = await createSession(user.id);
+  return res.json(sessionResponse(user, token));
+});
+
+app.post('/api/auth/logout', requireAuth, async (req,res) => {
+  const rawToken = readBearerToken(req);
+  if (rawToken && pool) await pool.query('DELETE FROM auth_sessions WHERE token_hash=$1', [hashToken(rawToken)]);
+  return res.json({ ok:true });
+});
+
+app.get('/api/me', requireAuth, async (req,res) => {
+  return res.json({ user: toClientUser(req.authUser) });
 });
 
 app.post('/api/auth/request-reset', async (req,res) => {
@@ -275,6 +367,6 @@ app.post('/api/auth/reset-password', async (req,res) => {
   } finally { client.release(); }
 });
 
-ensureSchema().then(ensureOwner).catch(err => console.error('Database initialization failed:', err));
+ensureSchema().then(async () => { if (pool) await pool.query("DELETE FROM auth_sessions WHERE expires_at <= NOW()"); return ensureOwner(); }).catch(err => console.error('Database initialization failed:', err));
 
 app.listen(port,'0.0.0.0',()=>console.log(`API listening on 0.0.0.0:${port}`));
