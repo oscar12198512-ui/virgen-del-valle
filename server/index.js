@@ -9,20 +9,19 @@ import nodemailer from 'nodemailer';
 const { Pool } = pg;
 const app = express();
 const port = Number(process.env.PORT || 10000);
-const rawDatabaseUrl = process.env.DATABASE_URL;
+const rawDatabaseUrl = String(process.env.DATABASE_URL || '').trim();
 const renderDatabaseHost = process.env.RENDER_DATABASE_HOST || 'dpg-db09l47avr4c73eo1s10-a';
 let databaseUrl = rawDatabaseUrl;
 
-// Render's Postgres is reachable through its private hostname. The previous
-// deployment had a stale Docker Compose hostname ("base") in DATABASE_URL.
-// Keep the existing credentials/database name, but repair only that hostname.
+// Render's Postgres is reachable through its private hostname. Older local/Compose
+// configuration used the hostname "base". Replace that stale host even when the
+// stored connection string is not parseable by the URL constructor.
 if (rawDatabaseUrl) {
-  try {
-    const parsed = new URL(rawDatabaseUrl);
-    if (parsed.hostname === 'base') parsed.hostname = renderDatabaseHost;
-    databaseUrl = parsed.toString();
-  } catch (error) {
-    console.warn('DATABASE_URL is not a valid PostgreSQL URL:', error.message);
+  databaseUrl = rawDatabaseUrl
+    .replace(/(^|[@/:])base(?=[:/]|$)/g, '$1' + renderDatabaseHost)
+    .replace(/^base(?=[:/]|$)/g, renderDatabaseHost);
+  if (databaseUrl !== rawDatabaseUrl) {
+    console.warn('Repaired stale PostgreSQL hostname "base" for Render private networking.');
   }
 }
 
