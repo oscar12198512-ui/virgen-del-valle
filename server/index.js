@@ -112,6 +112,26 @@ app.put('/api/state', async (req,res) => {
   }
 });
 
+app.post('/api/users/sync', async (req,res) => {
+  if (!pool) return res.status(503).json({ message:'Base de datos no disponible.' });
+  const users = Array.isArray(req.body?.users) ? req.body.users : [];
+  if (!users.length) return res.status(400).json({ message:'No hay usuarios.' });
+  try {
+    for (const u of users) {
+      const email = normalizeEmail(u.email);
+      if (!email) continue;
+      const pinHash = u.pin ? await bcrypt.hash(String(u.pin), 12) : null;
+      await pool.query(
+        'INSERT INTO app_users (id,name,phone,email,role,pin_hash,status,zone,avatar,active_orders_count,assigned_toldo_ids,boat_name,approved_by_owner,approved_at,created_at,notes) VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16) ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name,phone=EXCLUDED.phone,role=EXCLUDED.role,pin_hash=COALESCE(EXCLUDED.pin_hash,app_users.pin_hash),status=EXCLUDED.status,zone=EXCLUDED.zone,avatar=EXCLUDED.avatar,active_orders_count=EXCLUDED.active_orders_count,assigned_toldo_ids=EXCLUDED.assigned_toldo_ids,boat_name=EXCLUDED.boat_name,approved_by_owner=EXCLUDED.approved_by_owner,approved_at=EXCLUDED.approved_at,notes=EXCLUDED.notes',
+        [u.id,u.name,u.phone || null,email,u.role,pinHash,u.status || 'active',u.zone || null,u.avatar || null,Number(u.activeOrdersCount || 0),JSON.stringify(u.assignedToldoIds || []),u.boatName || null,Boolean(u.approvedByOwner),u.approvedAt || null,u.createdAt || new Date().toISOString(),u.notes || null]
+      );
+    }
+    return res.json({ ok:true });
+  } catch {
+    return res.status(500).json({ message:'No se pudieron sincronizar los usuarios.' });
+  }
+});
+
 app.post('/api/auth/login', async (req,res) => {
   const email=normalizeEmail(req.body?.email);
   const password=String(req.body?.password || '');
