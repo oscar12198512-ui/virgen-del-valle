@@ -39,20 +39,22 @@ jobs:
           PY
       - run: npx capacitor-assets generate --android
       - run: npx cap sync android
-      - name: Create Play upload key
+      - name: Load stable Android signing key
         shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64"
           mkdir -p signing
-          STORE_PASSWORD="$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 28)"
-          KEY_ALIAS="virgen-del-valle-upload"
-          keytool -genkeypair -v -keystore signing/virgen-del-valle-upload.keystore -storetype PKCS12 -storepass "$STORE_PASSWORD" -keypass "$STORE_PASSWORD" -alias "$KEY_ALIAS" -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Virgen del Valle, OU=Mobile, O=Playa Buche, L=Caracas, ST=Miranda, C=VE"
-          echo "KSTOREPWD=$STORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "KEYPWD=$STORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
-          printf 'keystore_password=%s\nkey_alias=%s\n' "$STORE_PASSWORD" "$KEY_ALIAS" > signing/UPLOAD-KEY-CREDENTIALS.txt
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > signing/release.keystore
+
       - name: Configure release signing
         shell: bash
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -61,10 +63,10 @@ jobs:
           s = p.read_text()
           s = s.replace("buildTypes {", """signingConfigs {
               release {
-                  storeFile file("../../signing/virgen-del-valle-upload.keystore")
-                  storePassword System.getenv("KSTOREPWD")
-                  keyAlias System.getenv("KEY_ALIAS")
-                  keyPassword System.getenv("KEYPWD")
+                  storeFile file("../../signing/release.keystore")
+                  storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                  keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                  keyPassword System.getenv("ANDROID_KEY_PASSWORD")
               }
           }
 
@@ -75,6 +77,7 @@ jobs:
           s = s[:j] + "\n        signingConfig signingConfigs.release" + s[j:]
           p.write_text(s)
           PY
+
       - name: Build signed Android packages
         working-directory: android
         run: ./gradlew bundleRelease assembleRelease
