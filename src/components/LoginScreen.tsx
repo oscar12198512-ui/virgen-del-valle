@@ -23,6 +23,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [password, setPassword] = useState('');
   const [showSecret, setShowSecret] = useState(false);
   const [message, setMessage] = useState('');
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryMessage, setRecoveryMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [requestName, setRequestName] = useState('');
   const [requestPhone, setRequestPhone] = useState('+58 ');
@@ -106,6 +109,26 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       setMessage('No se pudo conectar con el servidor.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const requestPasswordRecovery = async () => {
+    const target = recoveryEmail.trim().toLowerCase();
+    if (!target) {
+      setRecoveryMessage('Indica el correo de la cuenta.');
+      return;
+    }
+    try {
+      const api = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      const response = await fetch(api + '/api/auth/request-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: target }),
+      });
+      const data = await response.json().catch(() => ({}));
+      setRecoveryMessage(data.message || 'Si la cuenta existe, recibirás instrucciones.');
+    } catch {
+      setRecoveryMessage('No se pudo conectar con el servicio de recuperación.');
     }
   };
 
@@ -214,6 +237,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <button type="button" onClick={() => setShowSecret((v) => !v)} className="absolute right-2 top-2.5 w-7 h-7 rounded-lg hover:bg-gray-100 flex items-center justify-center">{showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
                 </div>
                 <button disabled={busy} className="w-full h-11 rounded-xl bg-[#002546] text-white font-bold text-sm disabled:opacity-50">{busy ? 'Verificando…' : 'Entrar como dueño'}</button>
+                <button type="button" onClick={() => { setRecoveryOpen((v) => !v); setRecoveryMessage(''); }} className="w-full text-xs text-[#006782] font-bold hover:underline">¿Olvidaste tu clave?</button>
+                {recoveryOpen && (
+                  <div className="rounded-xl bg-sky-50 border border-sky-200 p-3 space-y-2">
+                    <input value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} type="email" placeholder="Correo de recuperación" className="w-full h-10 rounded-xl border border-gray-300 px-3 text-sm" />
+                    <button type="button" onClick={() => void requestPasswordRecovery()} className="w-full h-10 rounded-xl bg-[#006782] text-white text-xs font-bold">Enviar instrucciones</button>
+                    {recoveryMessage && <p className="text-[11px] text-[#002546]">{recoveryMessage}</p>}
+                  </div>
+                )}
               </form>
             )}
 
