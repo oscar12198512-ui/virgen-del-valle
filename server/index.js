@@ -3,6 +3,7 @@ import cors from 'cors';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import pg from 'pg';
+import nodemailer from 'nodemailer';
 
 const { Pool } = pg;
 const app = express();
@@ -25,6 +26,10 @@ app.use(express.json({ limit: '1mb' }));
 
 const normalizeEmail = value => String(value || '').trim().toLowerCase();
 const hashToken = value => crypto.createHash('sha256').update(value).digest('hex');
+
+const mailer = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD
+  ? nodemailer.createTransport({ host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT || 587), secure: Number(process.env.SMTP_PORT || 587) === 465, auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } })
+  : null;
 
 function toClientUser(row) {
   return {
@@ -217,8 +222,11 @@ app.post('/api/auth/request-reset', async (req,res) => {
       'INSERT INTO password_reset_tokens (user_id,token_hash,expires_at) VALUES ($1,$2,NOW()+INTERVAL \'30 minutes\')',
       [rows[0].id,hashToken(raw)]
     );
-    // Email delivery is intentionally left to configured SMTP credentials.
-    console.log('Password reset request recorded.');
+    if (mailer) {
+      const baseUrl = String(process.env.APP_URL || process.env.CORS_ORIGIN || '').split(',')[0].replace(/\/$/, '');
+      const resetUrl = baseUrl ? baseUrl + '/?resetToken=' + encodeURIComponent(raw) : null;
+      if (resetUrl) await mailer.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: email, subject: 'Recuperación de acceso — Virgen del Valle', text: 'Solicitaste recuperar tu acceso. Abre este enlace dentro de 30 minutos: ' + resetUrl, html: '<p>Solicitaste recuperar tu acceso a Virgen del Valle.</p><p><a href="' + resetUrl + '">Restablecer clave</a></p><p>El enlace vence en 30 minutos.</p>' });
+    } else console.warn('SMTP is not configured; recovery token was stored but no email was sent.');
   }
   return res.json({ message:'Si la cuenta existe, se generó un enlace de recuperación.' });
 });
