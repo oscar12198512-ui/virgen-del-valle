@@ -1,11 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Crown, LogIn, KeyRound, Mail, Lock, UserPlus, Umbrella, Ship, ShieldCheck, ArrowRight, Eye, EyeOff } from 'lucide-react';
-import { User, UserRole } from '../types';
+import { UserPlus } from 'lucide-react';
+import { UserRole } from '../types';
 
 interface LoginScreenProps {
-  users: User[];
   onAuthenticated: (user: User) => void;
-  onContinueAsClient: () => void;
   onRequestAccess: (role: UserRole, name: string, phone: string, email: string, zone?: string, boatName?: string) => void;
 }
 
