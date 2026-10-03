@@ -249,6 +249,13 @@ export const App: React.FC = () => {
   const handleSelectRole = (role: UserRole, user?: User) => {
     setCurrentRole(role);
     if (user) {
+      const token = (user as User & { sessionToken?: string }).sessionToken;
+      if (token) {
+        sessionStorage.setItem('virgen_del_valle_session', token);
+        setSessionToken(token);
+        setIsDbHydrated(false);
+        dbHydratedRef.current = false;
+      }
       setCurrentUser(user);
     } else {
       const match = users.find((u) => u.role === role && u.status !== 'pending_approval');
