@@ -972,14 +972,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Footer information */}
         <div className="px-5 py-3 bg-[#f8f9ff] border-t border-gray-200 flex items-center justify-between text-[11px] text-gray-500">
-          <button
-            type="button"
-            onClick={() => setShowHelperPins(!showHelperPins)}
-            className="text-[#006782] font-semibold hover:underline flex items-center gap-1"
-          >
-            <HelpCircle className="w-3.5 h-3.5" />
-            <span>{showHelperPins ? 'Ocultar ayuda de acceso' : 'Ver ayuda de acceso'}</span>
-          </button>
+          <span className="text-[10px] text-gray-500">PIN asignado individualmente por el dueño</span>
           <div className="flex items-center gap-3">
             <a href="/privacy.html" target="_blank" rel="noreferrer" className="text-[10px] text-[#006782] hover:underline">Privacidad</a>
             <a href="/delete-account.html" target="_blank" rel="noreferrer" className="text-[10px] text-[#006782] hover:underline">Eliminar cuenta</a>
