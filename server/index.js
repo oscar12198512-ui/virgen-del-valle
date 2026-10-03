@@ -17,9 +17,7 @@ let databaseUrl = rawDatabaseUrl;
 // configuration used the hostname "base". Replace that stale host even when the
 // stored connection string is not parseable by the URL constructor.
 if (rawDatabaseUrl) {
-  databaseUrl = rawDatabaseUrl
-    .replace(/(^|[@/:])base(?=[:/]|$)/g, '$1' + renderDatabaseHost)
-    .replace(/^base(?=[:/]|$)/g, renderDatabaseHost);
+  databaseUrl = rawDatabaseUrl.replaceAll('base', renderDatabaseHost);
   if (databaseUrl !== rawDatabaseUrl) {
     console.warn('Repaired stale PostgreSQL hostname "base" for Render private networking.');
   }
