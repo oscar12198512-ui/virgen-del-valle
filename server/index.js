@@ -310,7 +310,7 @@ app.post('/api/users/sync', requireAuth, requireRole('admin'), async (req,res) =
 app.post('/api/users/request', async (req,res) => {
   if (!pool) return res.status(503).json({ message:'Base de datos no disponible.' });
   const role = String(req.body?.role || '').trim();
-  const allowedRoles = new Set(['waiter','excursion','kitchen']);
+  const allowedRoles = new Set(['client','waiter','excursion','kitchen']);
   const name = String(req.body?.name || '').trim();
   const phone = String(req.body?.phone || '').trim();
   const email = normalizeEmail(req.body?.email);
