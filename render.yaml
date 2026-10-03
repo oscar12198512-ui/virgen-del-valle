@@ -8,7 +8,9 @@ services:
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: virgen-del-valle-postgres
+          property: connectionString
       - key: DATABASE_POOL_MAX
         value: "5"
       - key: PORT
