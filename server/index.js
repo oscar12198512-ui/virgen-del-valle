@@ -195,13 +195,33 @@ async function ensureOwner() {
     return;
   }
   const existing = await pool.query('SELECT id FROM app_users WHERE email=$1 LIMIT 1', [email]);
-  if (existing.rowCount) return;
-  const passwordHash = await bcrypt.hash(password, 12);
-  await pool.query(
-    'INSERT INTO app_users (name, phone, email, role, password_hash, status) VALUES ($1,$2,$3,$4,$5,$6)',
-    [process.env.OWNER_NAME || 'Emmanuel Mejías', process.env.OWNER_PHONE || '04127939128', email, 'admin', passwordHash, 'active']
-  );
-  console.log(`Owner account created: ${email}`);
+  if (!existing.rowCount) {
+    const passwordHash = await bcrypt.hash(password, 12);
+    await pool.query(
+      'INSERT INTO app_users (name, phone, email, role, password_hash, status) VALUES ($1,$2,$3,$4,$5,$6)',
+      [process.env.OWNER_NAME || 'Emmanuel Mejías', process.env.OWNER_PHONE || '04127939128', email, 'admin', passwordHash, 'active']
+    );
+    console.log('Owner account created: ' + email);
+  }
+
+  // One-time production cleanup: keep only the configured owner account.
+  // Future staff accounts can be created and approved from the owner's panel.
+  const marker = await pool.query("SELECT state->>'owner_only_cleanup_v1' AS done FROM app_state WHERE id=1");
+  if (marker.rows[0]?.done !== 'true') {
+    await pool.query('BEGIN');
+    try {
+      const owner = await pool.query('SELECT id FROM app_users WHERE email=$1 LIMIT 1', [email]);
+      if (!owner.rows[0]) throw new Error('Owner account could not be initialized.');
+      await pool.query('DELETE FROM auth_sessions WHERE user_id <> $1', [owner.rows[0].id]);
+      await pool.query('DELETE FROM app_users WHERE id <> $1', [owner.rows[0].id]);
+      await pool.query("INSERT INTO app_state (id,state) VALUES (1, jsonb_build_object('owner_only_cleanup_v1', true)) ON CONFLICT (id) DO UPDATE SET state=app_state.state || EXCLUDED.state, updated_at=NOW(), version=app_state.version+1");
+      await pool.query('COMMIT');
+      console.log('One-time owner-only account cleanup completed.');
+    } catch (error) {
+      await pool.query('ROLLBACK');
+      throw error;
+    }
+  }
 }
 
 app.get('/health', async (_req, res) => {
