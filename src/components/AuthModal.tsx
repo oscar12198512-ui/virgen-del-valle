@@ -134,17 +134,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     if (activeTab === 'admin') { void handleAdminPasswordLogin(); return; }
 
     if (activeTab === 'client') {
-      const clientUser = users.find((u) => u.role === 'client') || {
-        id: 'u-client',
-        name: `Comensal Toldo #${selectedToldoNum}`,
-        email: 'cliente@playabuche.com',
-        role: 'client',
-        zone: `Toldo VIP #${selectedToldoNum}`,
-      };
-      onSelectRole('client', {
-        ...clientUser,
-        zone: `Toldo #${selectedToldoNum}`,
-      });
+      if (currentUser?.role !== 'client') {
+        setErrorMsg('El cliente debe registrarse y esperar la autorización del Dueño antes de entrar.');
+        soundService.playWarning();
+        return;
+      }
+      onSelectRole('client', currentUser);
       soundService.playSuccess();
       onClose();
       return;
