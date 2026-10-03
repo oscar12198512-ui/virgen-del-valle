@@ -130,7 +130,7 @@ export const App: React.FC = () => {
   const [approachingAlertCount, setApproachingAlertCount] = useState<number>(0);
 
   // Modal controls
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(() => new URLSearchParams(window.location.search).has('resetToken'));
   const [activePagoMovilOrder, setActivePagoMovilOrder] = useState<Order | null>(null);
   const [activePazYSalvoClosing, setActivePazYSalvoClosing] = useState<WaiterClosingSummary | null>(null);
   const [isFiscalInvoiceOpen, setIsFiscalInvoiceOpen] = useState<boolean>(false);
