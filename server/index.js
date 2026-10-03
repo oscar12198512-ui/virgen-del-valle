@@ -11,36 +11,33 @@ const app = express();
 const port = Number(process.env.PORT || 10000);
 const rawDatabaseUrl = String(process.env.DATABASE_URL || '').trim();
 const renderDatabaseHost = process.env.RENDER_DATABASE_HOST || 'dpg-db09l47avr4c73eo1s10-a';
-let databaseUrl = rawDatabaseUrl;
+const databaseUrl = rawDatabaseUrl && !rawDatabaseUrl.includes('${{') ? rawDatabaseUrl : '';
 
-// Render's Postgres is reachable through its private hostname. Older local/Compose
-// configuration used the hostname "base". Replace that stale host even when the
-// stored connection string is not parseable by the URL constructor.
-if (rawDatabaseUrl) {
-  databaseUrl = rawDatabaseUrl.replaceAll('base', renderDatabaseHost);
-  if (databaseUrl !== rawDatabaseUrl) {
-    console.warn('Repaired stale PostgreSQL hostname "base" for Render private networking.');
-  }
+const pool = databaseUrl
+  ? new Pool({
+      connectionString: databaseUrl,
+      max: Number(process.env.DATABASE_POOL_MAX || 5),
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+      ssl: databaseUrl.includes('sslmode=disable') ? undefined : { rejectUnauthorized: false },
+    })
+  : (process.env.PGPASSWORD
+      ? new Pool({
+          host: renderDatabaseHost,
+          port: Number(process.env.PGPORT || 5432),
+          database: process.env.PGDATABASE || 'virgen_del_valle_postgres',
+          user: process.env.PGUSER || 'virgen_del_valle_postgres_user',
+          password: process.env.PGPASSWORD,
+          max: Number(process.env.DATABASE_POOL_MAX || 5),
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 10000,
+          ssl: { rejectUnauthorized: false },
+        })
+      : null);
+
+if (!databaseUrl && !process.env.PGPASSWORD) {
+  console.warn('Production PostgreSQL credentials are not configured.');
 }
-
-if (!databaseUrl) console.warn('DATABASE_URL is not configured; API will start but DB-backed auth will be unavailable.');
-if (rawDatabaseUrl) {
-  const maskedDatabaseUrl = rawDatabaseUrl.replace(/:\/\/[^@]*@/, '://***@');
-  console.warn('DATABASE_URL_SHAPE:', maskedDatabaseUrl.slice(0, 220));
-}
-
-const pool = (databaseUrl || process.env.PGHOST || process.env.PGDATABASE || process.env.PGUSER || process.env.PGPASSWORD) ? new Pool({
-  host: renderDatabaseHost,
-  port: Number(process.env.PGPORT || 5432),
-  database: process.env.PGDATABASE || 'virgen_del_valle_postgres',
-  user: process.env.PGUSER || 'virgen_del_valle_postgres_user',
-  password: process.env.PGPASSWORD,
-  max: Number(process.env.DATABASE_POOL_MAX || 5),
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
-  ssl: { rejectUnauthorized: false },
-}) : null;
-
 const allowedOrigins = (process.env.CORS_ORIGIN || '*').split(',').map(v => v.trim()).filter(Boolean);
 app.use(cors({ origin: allowedOrigins.includes('*') ? true : allowedOrigins }));
 app.use(express.json({ limit: '1mb' }));
