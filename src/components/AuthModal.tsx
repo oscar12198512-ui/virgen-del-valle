@@ -130,7 +130,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     } catch { setResetMsg('No se pudo conectar con el servicio de recuperación.'); }
   };
 
-  const handleLoginSubmit = (e?: React.FormEvent) => {
+  const handleLoginSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (activeTab === 'admin') { void handleAdminPasswordLogin(); return; }
 
