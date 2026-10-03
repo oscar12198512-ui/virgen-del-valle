@@ -45,10 +45,16 @@ import { AppInstallModal } from './components/AppInstallModal';
 export const App: React.FC = () => {
   // Production state is persisted in PostgreSQL through the Render API.
   const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const [sessionToken, setSessionToken] = useState<string>(() => sessionStorage.getItem('virgen_del_valle_session') || '');
   const [isDbHydrated, setIsDbHydrated] = useState(false);
   const dbHydratedRef = useRef(false);
   const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
+  const authHeaders = () => sessionToken
+    ? { Authorization: `Bearer ${sessionToken}` }
+    : {};
+
+  // Public bootstrap only exposes non-sensitive catalog data and staff display metadata.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -59,37 +65,51 @@ export const App: React.FC = () => {
       }
       try {
         const response = await fetch(apiBase + '/api/state');
-        if (!response.ok) throw new Error('state fetch failed');
+        if (!response.ok) throw new Error('public state fetch failed');
+        const data = await response.json();
+        if (cancelled) return;
+        if (Array.isArray(data.users) && data.users.length) setUsers(data.users);
+        if (data.state) {
+          if (Array.isArray(data.state.menuItems)) setMenuItems(data.state.menuItems);
+          if (Array.isArray(data.state.spots)) setSpots(data.state.spots);
+          if (data.state.excursion) setExcursion(data.state.excursion);
+          if (typeof data.state.bcvRate === 'number') setBcvRate(data.state.bcvRate);
+        }
+      } catch (error) {
+        console.warn('Public PostgreSQL state unavailable; using local catalog defaults.', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [apiBase]);
+
+  // Authenticated bootstrap hydrates the complete operational state.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!apiBase || !sessionToken) {
+        if (!apiBase) {
+          setIsDbHydrated(true);
+          dbHydratedRef.current = true;
+        } else {
+          setIsDbHydrated(false);
+          dbHydratedRef.current = false;
+        }
+        return;
+      }
+      try {
+        const response = await fetch(apiBase + '/api/state', { headers: authHeaders() });
+        if (response.status === 401) {
+          sessionStorage.removeItem('virgen_del_valle_session');
+          setSessionToken('');
+          throw new Error('session expired');
+        }
+        if (!response.ok) throw new Error('authenticated state fetch failed');
         const data = await response.json();
         if (cancelled) return;
         if (Array.isArray(data.users) && data.users.length) {
-          if (data.users.length < INITIAL_USERS.length) {
-            const syncResponse = await fetch(apiBase + '/api/users/sync', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ users: INITIAL_USERS }),
-            });
-            const syncData = await syncResponse.json().catch(() => ({}));
-            if (syncResponse.ok && Array.isArray(syncData.users) && syncData.users.length) {
-              setUsers(syncData.users);
-              const owner = syncData.users.find((u: User) => u.role === 'admin' && u.status === 'active');
-              if (owner) setCurrentUser(owner);
-            } else {
-              setUsers(data.users);
-            }
-          } else {
-            setUsers(data.users);
-            const owner = data.users.find((u: User) => u.role === 'admin' && u.status === 'active');
-            if (owner) setCurrentUser(owner);
-          }
-        } else if (apiBase) {
-          const syncResponse = await fetch(apiBase + '/api/users/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ users: INITIAL_USERS }),
-          });
-          const syncData = await syncResponse.json().catch(() => ({}));
-          if (syncResponse.ok && Array.isArray(syncData.users)) setUsers(syncData.users);
+          setUsers(data.users);
+          const sameUser = data.users.find((u: User) => u.id === currentUser.id);
+          if (sameUser) setCurrentUser(sameUser);
         }
         if (data.state) {
           if (Array.isArray(data.state.menuItems)) setMenuItems(data.state.menuItems);
@@ -101,17 +121,18 @@ export const App: React.FC = () => {
           if (data.state.drawerBills) setDrawerBills(data.state.drawerBills);
           if (typeof data.state.bcvRate === 'number') setBcvRate(data.state.bcvRate);
         }
+        setIsDbHydrated(true);
+        dbHydratedRef.current = true;
       } catch (error) {
-        console.warn('PostgreSQL state unavailable; using factory defaults.', error);
-      } finally {
         if (!cancelled) {
-          setIsDbHydrated(true);
-          dbHydratedRef.current = true;
+          setIsDbHydrated(false);
+          dbHydratedRef.current = false;
+          console.warn('Authenticated PostgreSQL state unavailable.', error);
         }
       }
     })();
     return () => { cancelled = true; };
-  }, [apiBase]);
+  }, [apiBase, sessionToken]);
 
   const [currentRole, setCurrentRole] = useState<UserRole>('waiter');
   const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]); // Carlos Rodríguez (waiter)
@@ -166,14 +187,14 @@ export const App: React.FC = () => {
 
   // Persist operational state after the database has hydrated.
   useEffect(() => {
-    if (!apiBase || !dbHydratedRef.current || !isDbHydrated) return;
+    if (!apiBase || !sessionToken || !dbHydratedRef.current || !isDbHydrated) return;
     const controller = new AbortController();
     const payload = { menuItems, spots, orders, excursion, bankConfig, waitersClosings, drawerBills, bcvRate };
     const timer = window.setTimeout(async () => {
       try {
         const response = await fetch(apiBase + '/api/state', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({ state: payload }),
           signal: controller.signal,
         });
@@ -183,17 +204,17 @@ export const App: React.FC = () => {
       }
     }, 500);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [apiBase, isDbHydrated, menuItems, spots, orders, excursion, bankConfig, waitersClosings, drawerBills, bcvRate]);
+  }, [apiBase, sessionToken, isDbHydrated, menuItems, spots, orders, excursion, bankConfig, waitersClosings, drawerBills, bcvRate]);
 
-  // Keep the staff roster durable as well.
+  // Only the authenticated owner can persist staff roster changes.
   useEffect(() => {
-    if (!apiBase || !dbHydratedRef.current || !isDbHydrated || !users.length) return;
+    if (!apiBase || !sessionToken || !dbHydratedRef.current || !isDbHydrated || currentUser.role !== 'admin' || !users.length) return;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
         const response = await fetch(apiBase + '/api/users/sync', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({ users }),
           signal: controller.signal,
         });
@@ -203,7 +224,8 @@ export const App: React.FC = () => {
       }
     }, 500);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [apiBase, isDbHydrated, users]);
+  }, [apiBase, sessionToken, isDbHydrated, users, currentUser.role]);
+
   // Compute live notifications count
   const now = new Date();
   const alertOrdersCount = orders.filter((o) => {
@@ -217,6 +239,13 @@ export const App: React.FC = () => {
   const [clientActiveOrder, setClientActiveOrder] = useState<Order | null>(orders[2] || null);
 
   // Switch role handler
+  const handleAuthenticated = (token: string) => {
+    sessionStorage.setItem('virgen_del_valle_session', token);
+    setSessionToken(token);
+    setIsDbHydrated(false);
+    dbHydratedRef.current = false;
+  };
+
   const handleSelectRole = (role: UserRole, user?: User) => {
     setCurrentRole(role);
     if (user) {
@@ -578,6 +607,7 @@ export const App: React.FC = () => {
           currentRole={currentRole}
           currentUser={currentUser}
           onSelectRole={handleSelectRole}
+          onAuthenticated={handleAuthenticated}
           onClose={() => setIsAuthModalOpen(false)}
           onRequestAccess={handleRequestAccess}
         />
