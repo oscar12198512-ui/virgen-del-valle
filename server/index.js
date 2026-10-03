@@ -10,7 +10,7 @@ const { Pool } = pg;
 const app = express();
 const port = Number(process.env.PORT || 10000);
 const rawDatabaseUrl = String(process.env.DATABASE_URL || '').trim();
-const renderDatabaseHost = process.env.RENDER_DATABASE_HOST || 'dpg-db09l47avr4c73eo1s10-a';
+const renderDatabaseHost = process.env.RENDER_DATABASE_HOST || 'dpg-db0d7460tbcc73fb0ang-a';
 const databaseUrl = rawDatabaseUrl && !rawDatabaseUrl.includes('${{') ? rawDatabaseUrl : '';
 
 const pool = databaseUrl
@@ -25,8 +25,8 @@ const pool = databaseUrl
       ? new Pool({
           host: renderDatabaseHost,
           port: Number(process.env.PGPORT || 5432),
-          database: process.env.PGDATABASE || 'virgen_del_valle_postgres',
-          user: process.env.PGUSER || 'virgen_del_valle_postgres_user',
+          database: process.env.PGDATABASE || 'virgen_del_valle_postgres_v6rt',
+          user: process.env.PGUSER || 'virgen_del_valle_postgres_v6rt_user',
           password: process.env.PGPASSWORD,
           max: Number(process.env.DATABASE_POOL_MAX || 5),
           idleTimeoutMillis: 30000,
