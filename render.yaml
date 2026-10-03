@@ -16,7 +16,11 @@ services:
       - key: PORT
         value: "10000"
       - key: CORS_ORIGIN
-        sync: false
+        value: "https://virgen-del-valle-web.onrender.com"
+      - key: APP_SESSION_SECRET
+        generateValue: true
+      - key: SESSION_TTL_HOURS
+        value: "24"
       - key: OWNER_NAME
         value: "Emmanuel Mejías"
       - key: OWNER_PHONE
@@ -42,7 +46,7 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
-        sync: false
+        value: "https://virgen-del-valle-api.onrender.com"
 
 
 # Existing Render Postgres managed by this Blueprint.
