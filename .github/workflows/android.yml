@@ -102,6 +102,6 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            android/app/build/outputs/apk/release/app-release.apk
-            android/app/build/outputs/bundle/release/app-release.aab
+            signing/virgen-del-valle-release.apk
+            signing/virgen-del-valle-release.aab
           generate_release_notes: true
