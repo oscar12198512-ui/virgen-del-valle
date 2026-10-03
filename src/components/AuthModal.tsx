@@ -51,6 +51,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [showHelperPins, setShowHelperPins] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [requestSuccessMsg, setRequestSuccessMsg] = useState<string | null>(null);
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryMsg, setRecoveryMsg] = useState('');
 
   // Quick Request Form state
   const [reqName, setReqName] = useState('');
@@ -149,6 +152,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     onSelectRole(activeTab, targetUser);
     soundService.playSuccess();
     onClose();
+  };
+
+  const handlePasswordRecovery = async () => {
+    const email = recoveryEmail.trim();
+    if (!email) { setRecoveryMsg('Indica tu correo electrónico.'); return; }
+    try {
+      const api = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      const response = await fetch(api + '/api/auth/request-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await response.json().catch(() => ({}));
+      setRecoveryMsg(data.message || 'Si la cuenta existe, recibirás instrucciones de recuperación.');
+    } catch {
+      setRecoveryMsg('No se pudo conectar con el servicio de recuperación.');
+    }
   };
 
   const handleSendRequest = (e: React.FormEvent) => {
@@ -358,6 +378,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-bold flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>{errorMsg}</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => { setShowRecovery((v) => !v); setRecoveryMsg(''); }}
+                  className="w-full text-xs text-[#006782] font-bold hover:underline"
+                >
+                  ¿Olvidaste tu clave? Recuperar acceso
+                </button>
+
+                {showRecovery && (
+                  <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl space-y-2">
+                    <label className="text-xs font-bold text-[#002546]">Correo de recuperación</label>
+                    <input
+                      type="email"
+                      value={recoveryEmail}
+                      onChange={(e) => setRecoveryEmail(e.target.value)}
+                      placeholder="correo@ejemplo.com"
+                      className="w-full h-10 px-3 rounded-xl border border-gray-300 bg-white text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={handlePasswordRecovery}
+                      className="w-full h-10 bg-[#006782] text-white rounded-xl text-xs font-bold"
+                    >
+                      Enviar instrucciones
+                    </button>
+                    {recoveryMsg && <p className="text-[11px] text-[#002546]">{recoveryMsg}</p>}
                   </div>
                 )}
 
