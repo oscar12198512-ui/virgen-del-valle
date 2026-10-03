@@ -126,6 +126,21 @@ app.put('/api/state', async (req,res) => {
   }
 });
 
+app.patch('/api/state', async (req,res) => {
+  if (!pool) return res.status(503).json({ message:'Base de datos no disponible.' });
+  const patch = req.body?.state;
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return res.status(400).json({ message:'Actualización inválida.' });
+  try {
+    const result = await pool.query(
+      'INSERT INTO app_state (id,state) VALUES (1,$1) ON CONFLICT (id) DO UPDATE SET state=app_state.state || EXCLUDED.state,version=app_state.version+1,updated_at=NOW() RETURNING version,updated_at',
+      [JSON.stringify(patch)]
+    );
+    return res.json({ ok:true, version:result.rows[0].version, updatedAt:result.rows[0].updated_at });
+  } catch {
+    return res.status(500).json({ message:'No se pudo actualizar el estado.' });
+  }
+});
+
 app.post('/api/users/sync', async (req,res) => {
   if (!pool) return res.status(503).json({ message:'Base de datos no disponible.' });
   const users = Array.isArray(req.body?.users) ? req.body.users : [];
