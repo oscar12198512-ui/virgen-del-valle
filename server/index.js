@@ -80,6 +80,38 @@ app.get('/health', async (_req, res) => {
   catch { return res.status(503).json({ ok:false, database:false }); }
 });
 
+app.get('/api/state', async (_req,res) => {
+  if (!pool) return res.status(503).json({ message:'Base de datos no disponible.' });
+  try {
+    const result = await pool.query('SELECT state, version, updated_at FROM app_state WHERE id=1');
+    const users = await pool.query('SELECT id,name,phone,email,role,status,zone,avatar,active_orders_count,assigned_toldo_ids,boat_name,approved_by_owner,approved_at,created_at,notes,last_login FROM app_users ORDER BY created_at ASC');
+    return res.json({
+      initialized: Boolean(result.rows[0]),
+      version: result.rows[0]?.version || 0,
+      updatedAt: result.rows[0]?.updated_at || null,
+      state: result.rows[0]?.state || null,
+      users: users.rows,
+    });
+  } catch {
+    return res.status(500).json({ message:'No se pudo cargar el estado de la aplicación.' });
+  }
+});
+
+app.put('/api/state', async (req,res) => {
+  if (!pool) return res.status(503).json({ message:'Base de datos no disponible.' });
+  const state = req.body?.state;
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return res.status(400).json({ message:'Estado inválido.' });
+  try {
+    const result = await pool.query(
+      'INSERT INTO app_state (id,state) VALUES (1,$1) ON CONFLICT (id) DO UPDATE SET state=EXCLUDED.state,version=app_state.version+1,updated_at=NOW() RETURNING version,updated_at',
+      [JSON.stringify(state)]
+    );
+    return res.json({ ok:true, version:result.rows[0].version, updatedAt:result.rows[0].updated_at });
+  } catch {
+    return res.status(500).json({ message:'No se pudo guardar el estado.' });
+  }
+});
+
 app.post('/api/auth/login', async (req,res) => {
   const email=normalizeEmail(req.body?.email);
   const password=String(req.body?.password || '');
