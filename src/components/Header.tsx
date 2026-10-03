@@ -9,7 +9,8 @@ import {
   Search,
   Calculator,
   Bell,
-  Sun
+  Sun,
+  LogOut
 } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 
@@ -27,6 +28,7 @@ interface HeaderProps {
   onOpenWeather?: () => void;
   onOpenNotifications?: () => void;
   onOpenPrototypeConsole?: () => void;
+  onLogout?: () => void;
   notificationCount?: number;
   userName?: string;
   currentUser?: User;
@@ -54,6 +56,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenWeather,
   onOpenNotifications,
   onOpenPrototypeConsole,
+  onLogout,
   notificationCount = 0,
   userName,
   currentUser,
@@ -191,17 +194,27 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
-          {/* User Profile / Switch Role */}
+          {/* User Profile / Access */}
           <button
             onClick={handleOpenAuth}
             className="flex items-center gap-1.5 p-1 rounded-full hover:bg-[#eff4ff] transition-colors group"
-            title="Cambiar rol o usuario"
+            title="Cuenta y acceso"
           >
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#002546] to-[#006782] text-white flex items-center justify-center font-bold text-xs ring-2 ring-[#57d1fd]/40 shadow-xs">
               {initials}
             </div>
             <UserCheck className="w-3.5 h-3.5 text-[#006782] opacity-70 group-hover:opacity-100 hidden md:block" />
           </button>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="p-2 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors"
+              title="Cerrar sesión"
+              aria-label="Cerrar sesión"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
     </header>
