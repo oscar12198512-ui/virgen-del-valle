@@ -23,6 +23,20 @@ jobs:
       - run: npm install
       - run: npm run build
       - run: npx cap add android
+      - name: Set Android version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          p = Path("android/app/build.gradle")
+          s = p.read_text()
+          version_code = int(os.environ.get("GITHUB_RUN_NUMBER", "1"))
+          s = s.replace("versionCode 1", f"versionCode {version_code}", 1)
+          s = s.replace('versionName "1.0"', f'versionName "1.0.{version_code}"', 1)
+          p.write_text(s)
+          PY
       - run: npx capacitor-assets generate --android
       - run: npx cap sync android
       - name: Create Play upload key
