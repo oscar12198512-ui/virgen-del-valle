@@ -586,7 +586,7 @@ export const App: React.FC = () => {
     setMenuItems((prev) => prev.filter((m) => m.id !== itemId));
   };
 
-  if (!sessionToken && currentRole !== 'client') {
+  if (!sessionToken && currentRole !== 'client' && !isAuthModalOpen) {
     return (
       <LoginScreen
         users={users}
