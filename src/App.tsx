@@ -330,11 +330,6 @@ export const App: React.FC = () => {
       return;
     }
 
-    if (role === 'client') {
-      handleContinueAsClient();
-      return;
-    }
-
     const canOpenModule = sessionToken && (currentUser.role === 'admin' || currentUser.role === role);
     if (canOpenModule) {
       setCurrentRole(role);
@@ -595,9 +590,7 @@ export const App: React.FC = () => {
   if ((!sessionToken && currentRole !== 'client') || directLoginRequested) {
     return (
       <LoginScreen
-        users={users}
         onAuthenticated={handleAuthenticated}
-        onContinueAsClient={handleContinueAsClient}
         onRequestAccess={handleRequestAccess}
       />
     );
