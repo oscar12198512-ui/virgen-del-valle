@@ -149,7 +149,7 @@ export const App: React.FC = () => {
     return () => { cancelled = true; };
   }, [apiBase, sessionToken]);
 
-  const [currentRole, setCurrentRole = useState<UserRole>('waiter');
+  const [currentRole, setCurrentRole] = useState<UserRole>('waiter');
   const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]);
   const [bcvRate, setBcvRate] = useState<number>(54.50);
   const [isOffline, setIsOffline] = useState<boolean>(false);
