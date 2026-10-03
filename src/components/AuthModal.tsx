@@ -31,7 +31,7 @@ interface AuthModalProps {
   currentUser: User | null;
   onSelectRole: (role: UserRole, user?: User) => void;
   onClose: () => void;
-  onRequestAccess?: (role: UserRole, name: string, phone: string, zone?: string, boatName?: string) => void;
+  onRequestAccess?: (role: UserRole, name: string, phone: string, email: string, zone?: string, boatName?: string) => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -63,6 +63,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // Quick Request Form state
   const [reqName, setReqName] = useState('');
   const [reqPhone, setReqPhone] = useState('+58 412 ');
+  const [reqEmail, setReqEmail] = useState('');
   const [reqZone, setReqZone] = useState('');
   const [reqBoatName, setReqBoatName] = useState('');
 
@@ -217,10 +218,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const handleSendRequest = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reqName.trim()) return;
+    if (!reqName.trim() || !reqPhone.trim() || !reqEmail.trim()) {
+      setErrorMsg('Nombre, teléfono y correo son obligatorios.');
+      return;
+    }
 
     if (onRequestAccess) {
-      onRequestAccess(activeTab, reqName.trim(), reqPhone.trim(), reqZone.trim(), reqBoatName.trim());
+      onRequestAccess(activeTab, reqName.trim(), reqPhone.trim(), reqEmail.trim(), reqZone.trim(), reqBoatName.trim());
     }
 
     soundService.playSuccess();
@@ -229,6 +233,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     );
     setShowRequestForm(false);
     setReqName('');
+    setReqEmail('');
   };
 
   // Filter users by tab
@@ -718,6 +723,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       onChange={(e) => setReqPhone(e.target.value)}
                       className="w-full h-9 px-3 rounded-xl border border-gray-300 bg-white"
                     />
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Correo electrónico</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="correo@ejemplo.com"
+                      value={reqEmail}
+                      onChange={(e) => setReqEmail(e.target.value)}
+                      className="w-full h-9 px-3 rounded-xl border border-gray-300 bg-white"
+                    />
+                  </div>
                   </div>
                   <button
                     type="submit"
