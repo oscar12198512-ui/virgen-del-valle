@@ -609,7 +609,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                           <Lock className="w-3.5 h-3.5 text-[#006782]" />
                           <span>PIN de {selectedUser.name} (4 dígitos)</span>
                         </label>
-                        <span className="text-[10px] text-gray-400 font-mono">Demo: {selectedUser.pin || '1234'}</span>
+                        <span className="text-[10px] text-gray-400 font-mono">PIN asignado por el Dueño</span>
                       </div>
 
                       <div className="relative">
@@ -780,7 +780,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       <Lock className="w-3.5 h-3.5 text-teal-700" />
                       <span>PIN Náutico (4 dígitos)</span>
                     </label>
-                    <span className="text-[10px] text-gray-400 font-mono">Demo: {selectedUser.pin || '5678'}</span>
+                    <span className="text-[10px] text-gray-400 font-mono">PIN asignado por el Dueño</span>
                   </div>
 
                   <input
@@ -840,7 +840,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <div className="bg-[#f8f9ff] p-4 rounded-2xl border border-gray-200 space-y-3">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-bold text-[#002546]">PIN de Fogón / KDS</span>
-                  <span className="font-mono text-gray-400">PIN: 0000</span>
+                  <span className="font-mono text-gray-400">PIN asignado por el Dueño</span>
                 </div>
 
                 <input
@@ -953,7 +953,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             className="text-[#006782] font-semibold hover:underline flex items-center gap-1"
           >
             <HelpCircle className="w-3.5 h-3.5" />
-            <span>{showHelperPins ? 'Ocultar PINs Demo' : 'Ver PINs de prueba'}</span>
+            <span>{showHelperPins ? 'Ocultar ayuda de acceso' : 'Ver ayuda de acceso'}</span>
           </button>
           <div className="flex items-center gap-3">
             <a href="/privacy.html" target="_blank" rel="noreferrer" className="text-[10px] text-[#006782] hover:underline">Privacidad</a>
