@@ -54,6 +54,7 @@ export default defineConfig(() => ({
       devOptions: { enabled: true, type: 'module' }
     })
   ],
+  build: { chunkSizeWarningLimit: 2000 },
   resolve: { alias: { '@': path.resolve(__dirname, '.') } },
   server: {
     hmr: process.env.DISABLE_HMR !== 'true',
