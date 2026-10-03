@@ -254,7 +254,7 @@ export const App: React.FC = () => {
         const response = await fetch(apiBase + '/api/users/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({ users: users.filter((u) => u.role !== 'client') }),
+          body: JSON.stringify({ users }),
           signal: controller.signal,
         });
         if (!response.ok) throw new Error('users sync failed');
