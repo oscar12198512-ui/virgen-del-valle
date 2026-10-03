@@ -24,6 +24,10 @@ if (rawDatabaseUrl) {
 }
 
 if (!databaseUrl) console.warn('DATABASE_URL is not configured; API will start but DB-backed auth will be unavailable.');
+if (rawDatabaseUrl) {
+  const maskedDatabaseUrl = rawDatabaseUrl.replace(/:\/\/[^@]*@/, '://***@');
+  console.warn('DATABASE_URL_SHAPE:', maskedDatabaseUrl.slice(0, 220));
+}
 
 const pool = (databaseUrl || process.env.PGHOST || process.env.PGDATABASE || process.env.PGUSER || process.env.PGPASSWORD) ? new Pool({
   host: renderDatabaseHost,
