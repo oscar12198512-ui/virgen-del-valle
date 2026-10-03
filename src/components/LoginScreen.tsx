@@ -24,6 +24,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [showSecret, setShowSecret] = useState(false);
   const [message, setMessage] = useState('');
   const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [resetToken] = useState(() => new URLSearchParams(window.location.search).get('resetToken') || '');
+  const [newPassword, setNewPassword] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryMessage, setRecoveryMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -132,6 +135,34 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
   };
 
+  const submitPasswordReset = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setResetMessage('');
+    if (newPassword.length < 8) {
+      setResetMessage('La nueva clave debe tener al menos 8 caracteres.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const api = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      const response = await fetch(api + '/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: resetToken, password: newPassword }),
+      });
+      const data = await response.json().catch(() => ({}));
+      setResetMessage(data.message || (response.ok ? 'Clave actualizada correctamente.' : 'No se pudo actualizar la clave.'));
+      if (response.ok) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        window.setTimeout(() => window.location.reload(), 700);
+      }
+    } catch {
+      setResetMessage('No se pudo conectar con el servicio de recuperación.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submitRequest = (event: React.FormEvent) => {
     event.preventDefault();
     if (!requestName.trim() || !requestPhone.trim() || !requestEmail.trim()) {
@@ -154,6 +185,36 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setRequestBoat('');
     setMode('staff');
   };
+
+  if (resetToken) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#002546] via-[#003b5f] to-[#f8f9ff] px-4 py-8 flex items-center justify-center">
+        <section className="w-full max-w-md bg-white rounded-[2rem] shadow-2xl border border-white/30 overflow-hidden">
+          <div className="p-6 border-b border-gray-100">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#006782]">Virgen del Valle</p>
+            <h1 className="text-2xl font-black text-[#002546] mt-1">Restablecer clave</h1>
+            <p className="text-xs text-gray-500 mt-2">Este enlace es independiente del menú operativo.</p>
+          </div>
+          <form onSubmit={submitPasswordReset} className="p-6 space-y-3">
+            <label className="text-xs font-bold text-[#002546]">Nueva clave</label>
+            <input
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              placeholder="Mínimo 8 caracteres"
+              className="w-full h-11 rounded-xl border border-gray-300 px-3 text-sm"
+            />
+            <button disabled={busy} className="w-full h-11 rounded-xl bg-[#002546] text-white font-bold text-sm disabled:opacity-50">
+              {busy ? 'Guardando…' : 'Guardar nueva clave'}
+            </button>
+            {resetMessage && <p className="rounded-xl bg-sky-50 border border-sky-200 p-3 text-xs text-[#002546]">{resetMessage}</p>}
+          </form>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#002546] via-[#003b5f] to-[#f8f9ff] px-4 py-8 flex items-center justify-center">

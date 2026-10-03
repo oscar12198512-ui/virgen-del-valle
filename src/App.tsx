@@ -166,7 +166,8 @@ export const App: React.FC = () => {
   const [approachingAlertCount, setApproachingAlertCount] = useState<number>(0);
 
   // Modal controls
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(() => new URLSearchParams(window.location.search).has('resetToken'));
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const directLoginRequested = new URLSearchParams(window.location.search).get('login') === '1';
   const [activePagoMovilOrder, setActivePagoMovilOrder] = useState<Order | null>(null);
   const [activePazYSalvoClosing, setActivePazYSalvoClosing] = useState<WaiterClosingSummary | null>(null);
   const [isFiscalInvoiceOpen, setIsFiscalInvoiceOpen] = useState<boolean>(false);
@@ -288,6 +289,9 @@ export const App: React.FC = () => {
     setCurrentUser(user);
     setCurrentRole(user.role);
     setIsAuthModalOpen(false);
+    if (directLoginRequested || window.location.search.includes('resetToken')) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   };
 
   const handleLogout = async () => {
@@ -586,7 +590,9 @@ export const App: React.FC = () => {
     setMenuItems((prev) => prev.filter((m) => m.id !== itemId));
   };
 
-  if (!sessionToken && currentRole !== 'client' && !isAuthModalOpen) {
+  // Operational modules are never rendered without an authenticated server session.
+  // The standalone login can also be opened explicitly with ?login=1.
+  if ((!sessionToken && currentRole !== 'client') || directLoginRequested) {
     return (
       <LoginScreen
         users={users}
