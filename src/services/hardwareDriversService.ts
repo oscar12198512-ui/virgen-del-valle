@@ -348,7 +348,7 @@ DRIVERS DEL PROTOTIPO:
 
     // 3. Add Capacitor configuration for Android APK compile
     const capacitorConfig = {
-      appId: 'com.playabuche.app',
+      appId: 'com.virgendelvalle.playabuche',
       appName: 'Playa Buche',
       webDir: 'dist',
       server: {
@@ -359,7 +359,7 @@ DRIVERS DEL PROTOTIPO:
 
     // 4. Add TWA manifest for Bubblewrap APK
     const twaManifest = {
-      packageId: 'com.playabuche.twa',
+      packageId: 'com.virgendelvalle.playabuche.twa',
       host: typeof window !== 'undefined' ? window.location.host : 'ais-pre-ctlsi4v7hvt7os75dy3meq-724902067430.us-east1.run.app',
       name: 'Playa Buche',
       launcherName: 'Playa Buche',
@@ -530,7 +530,7 @@ DRIVERS DEL PROTOTIPO:
 
     const a = document.createElement('a');
     a.href = downloadUrl;
-    a.download = 'PlayaBuche-Prototipo-Instalable.zip';
+    a.download = 'VirgenDelValle-Instalable.zip';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
