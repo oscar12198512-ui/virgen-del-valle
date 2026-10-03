@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   BankConfig,
   BillDenominationCount,
@@ -162,6 +162,40 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [wasteNotice, setWasteNotice] = useState<string | null>(null);
   const [selectedRbacRole, setSelectedRbacRole] = useState<string>('OWNER');
   const [showSqlPolicies, setShowSqlPolicies] = useState<boolean>(false);
+  const [adminStateHydrated, setAdminStateHydrated] = useState(false);
+  const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!apiBase) {
+      setAdminStateHydrated(true);
+      return;
+    }
+    fetch(apiBase + '/api/state')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (cancelled || !data?.state) return;
+        if (Array.isArray(data.state.arenaSupplies)) setArenaSupplies(data.state.arenaSupplies);
+        if (data.state.cargoBoat) setCargoBoat(data.state.cargoBoat);
+        if (Array.isArray(data.state.wasteReports)) setWasteReports(data.state.wasteReports);
+      })
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setAdminStateHydrated(true); });
+    return () => { cancelled = true; };
+  }, [apiBase]);
+
+  useEffect(() => {
+    if (!adminStateHydrated || !apiBase) return;
+    const timer = window.setTimeout(() => {
+      fetch(apiBase + '/api/state', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: { arenaSupplies, cargoBoat, wasteReports } }),
+      }).catch(() => undefined);
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [adminStateHydrated, apiBase, arenaSupplies, cargoBoat, wasteReports]);
+
 
   const handleConfirmBoatArrival = () => {
     soundService.playSuccess();
