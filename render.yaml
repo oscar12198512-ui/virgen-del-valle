@@ -8,9 +8,9 @@ services:
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: virgen-del-valle-postgres
-          property: connectionString
+        sync: false
+      - key: DATABASE_POOL_MAX
+        value: "5"
       - key: PORT
         value: "10000"
       - key: CORS_ORIGIN
@@ -41,8 +41,3 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false
-
-databases:
-  - name: virgen-del-valle-postgres
-    databaseName: virgen_del_valle
-    plan: free
