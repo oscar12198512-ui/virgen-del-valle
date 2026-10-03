@@ -4,7 +4,6 @@ const config: CapacitorConfig = {
   appId: 'com.virgendelvalle.playabuche',
   appName: 'Virgen del Valle',
   webDir: 'dist',
-  bundledWebRuntime: false,
   server: {
     androidScheme: 'https',
   },
