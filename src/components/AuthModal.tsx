@@ -54,6 +54,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryMsg, setRecoveryMsg] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [resetToken] = useState(() => new URLSearchParams(window.location.search).get('resetToken') || '');
+  const [newPassword, setNewPassword] = useState('');
+  const [resetMsg, setResetMsg] = useState('');
 
   // Quick Request Form state
   const [reqName, setReqName] = useState('');
@@ -102,8 +107,32 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setErrorMsg('');
   };
 
+  const handleAdminPasswordLogin = async () => {
+    const email = adminEmail.trim().toLowerCase();
+    if (!email || !adminPassword) { setErrorMsg('Correo y clave son obligatorios.'); return; }
+    try {
+      const api = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      const response = await fetch(api + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: adminPassword }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.user) { setErrorMsg(data.message || 'No se pudo iniciar sesión.'); return; }
+      onSelectRole('admin', data.user); soundService.playSuccess(); onClose();
+    } catch { setErrorMsg('No se pudo conectar con el servidor.'); }
+  };
+
+  const handleResetPassword = async () => {
+    if (newPassword.length < 8) { setResetMsg('La nueva clave debe tener al menos 8 caracteres.'); return; }
+    try {
+      const api = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      const response = await fetch(api + '/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: resetToken, password: newPassword }) });
+      const data = await response.json().catch(() => ({}));
+      setResetMsg(data.message || 'Clave actualizada.');
+      if (response.ok) { window.history.replaceState({}, document.title, window.location.pathname); setTimeout(() => window.location.reload(), 700); }
+    } catch { setResetMsg('No se pudo conectar con el servicio de recuperación.'); }
+  };
+
   const handleLoginSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (activeTab === 'admin') { void handleAdminPasswordLogin(); return; }
 
     if (activeTab === 'client') {
       const clientUser = users.find((u) => u.role === 'client') || {
@@ -313,6 +342,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Content Area */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+          {resetToken && (
+            <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl space-y-3">
+              <h3 className="font-bold text-[#002546]">Restablecer clave</h3>
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Nueva clave (mínimo 8 caracteres)" autoComplete="new-password" className="w-full h-11 px-3 rounded-xl border border-gray-300 bg-white text-sm" />
+              <button type="button" onClick={() => void handleResetPassword()} className="w-full h-11 bg-[#002546] text-white rounded-xl text-xs font-bold">Guardar nueva clave</button>
+              {resetMsg && <p className="text-[11px] text-[#002546]">{resetMsg}</p>}
+            </div>
+          )}
           {/* Toast / Success Message */}
           {requestSuccessMsg && (
             <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 font-medium flex items-start gap-2 shadow-xs">
@@ -347,24 +384,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <div className="flex justify-between items-center">
                   <label className="text-xs font-bold text-[#002546] flex items-center gap-1.5">
                     <KeyRound className="w-4 h-4 text-[#006782]" />
-                    <span>PIN Maestro de Gerencia</span>
+                    <span>Acceso del Dueño</span>
                   </label>
-                  <span className="text-[10px] font-mono text-gray-400">Default: 9999</span>
+                  <span className="text-[10px] font-mono text-gray-400">Correo + clave</span>
                 </div>
 
-                <div className="relative">
-                  <input
-                    type="password"
-                    maxLength={6}
-                    value={pinInput}
-                    onChange={(e) => {
-                      setPinInput(e.target.value);
-                      setErrorMsg('');
-                    }}
-                    placeholder="••••"
-                    className="w-full h-12 text-center text-xl font-mono tracking-widest rounded-xl border border-gray-300 focus:outline-none focus:border-[#006782] bg-white shadow-inner font-black"
-                  />
-                  <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-4" />
+                <div className="space-y-2">
+                  <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="Correo del dueño" autoComplete="username" className="w-full h-11 px-3 rounded-xl border border-gray-300 bg-white text-sm" />
+                  <input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="Clave maestra" autoComplete="current-password" className="w-full h-11 px-3 rounded-xl border border-gray-300 bg-white text-sm" />
                 </div>
 
                 {/* Keypad */}
@@ -412,7 +439,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => handleLoginSubmit()}
+                  onClick={() => void handleAdminPasswordLogin()}
                   className="w-full h-12 bg-[#002546] hover:bg-[#003666] text-white rounded-xl text-xs font-bold shadow-md active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Shield className="w-4 h-4 text-[#57d1fd]" />
