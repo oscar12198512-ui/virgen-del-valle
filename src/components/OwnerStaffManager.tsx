@@ -490,7 +490,7 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
                     <div className="flex items-center bg-[#f8f9ff] border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs font-mono">
                       <Key className="w-3.5 h-3.5 text-[#006782] mr-1.5" />
                       <span className="font-bold text-[#002546]">
-                        {isPinVisible ? user.pin || '1234' : '••••'}
+                        {isPinVisible ? user.pin || 'PIN pendiente' : '••••'}
                       </span>
                       <button
                         type="button"
