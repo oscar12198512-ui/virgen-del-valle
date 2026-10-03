@@ -25,7 +25,7 @@ const hashToken = value => crypto.createHash('sha256').update(value).digest('hex
 
 function toClientUser(row) {
   return {
-    id: row.id, name: row.name, phone: row.phone, email: row.email, role: row.role,
+    id: row.external_id || row.id, name: row.name, phone: row.phone, email: row.email, role: row.role,
     zone: row.zone, avatar: row.avatar, activeOrdersCount: row.active_orders_count || 0,
     assignedToldoIds: row.assigned_toldo_ids || [], boatName: row.boat_name,
     approvedByOwner: row.approved_by_owner, approvedAt: row.approved_at,
@@ -38,10 +38,12 @@ async function ensureSchema() {
   await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
   await pool.query(`ALTER TABLE app_users ALTER COLUMN password_hash DROP NOT NULL;`);
   await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS pin_hash TEXT;`);
+  await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS external_id TEXT UNIQUE;`);
   await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS pin_hash TEXT;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      external_id TEXT UNIQUE,
       name TEXT NOT NULL,
       phone TEXT,
       email TEXT UNIQUE NOT NULL,
@@ -134,8 +136,8 @@ app.post('/api/users/sync', async (req,res) => {
       if (!email) continue;
       const pinHash = u.pin ? await bcrypt.hash(String(u.pin), 12) : null;
       await pool.query(
-        'INSERT INTO app_users (id,name,phone,email,role,pin_hash,status,zone,avatar,active_orders_count,assigned_toldo_ids,boat_name,approved_by_owner,approved_at,created_at,notes) VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16) ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name,phone=EXCLUDED.phone,role=EXCLUDED.role,pin_hash=COALESCE(EXCLUDED.pin_hash,app_users.pin_hash),status=EXCLUDED.status,zone=EXCLUDED.zone,avatar=EXCLUDED.avatar,active_orders_count=EXCLUDED.active_orders_count,assigned_toldo_ids=EXCLUDED.assigned_toldo_ids,boat_name=EXCLUDED.boat_name,approved_by_owner=EXCLUDED.approved_by_owner,approved_at=EXCLUDED.approved_at,notes=EXCLUDED.notes',
-        [u.id,u.name,u.phone || null,email,u.role,pinHash,u.status || 'active',u.zone || null,u.avatar || null,Number(u.activeOrdersCount || 0),JSON.stringify(u.assignedToldoIds || []),u.boatName || null,Boolean(u.approvedByOwner),u.approvedAt || null,u.createdAt || new Date().toISOString(),u.notes || null]
+        'INSERT INTO app_users (external_id,name,phone,email,role,pin_hash,status,zone,avatar,active_orders_count,assigned_toldo_ids,boat_name,approved_by_owner,approved_at,created_at,notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16) ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name,phone=EXCLUDED.phone,role=EXCLUDED.role,pin_hash=COALESCE(EXCLUDED.pin_hash,app_users.pin_hash),status=EXCLUDED.status,zone=EXCLUDED.zone,avatar=EXCLUDED.avatar,active_orders_count=EXCLUDED.active_orders_count,assigned_toldo_ids=EXCLUDED.assigned_toldo_ids,boat_name=EXCLUDED.boat_name,approved_by_owner=EXCLUDED.approved_by_owner,approved_at=EXCLUDED.approved_at,notes=EXCLUDED.notes',
+        [String(u.id || ''),u.name,u.phone || null,email,u.role,pinHash,u.status || 'active',u.zone || null,u.avatar || null,Number(u.activeOrdersCount || 0),JSON.stringify(u.assignedToldoIds || []),u.boatName || null,Boolean(u.approvedByOwner),u.approvedAt || null,u.createdAt || new Date().toISOString(),u.notes || null]
       );
     }
     const result = await pool.query('SELECT * FROM app_users ORDER BY created_at ASC');
