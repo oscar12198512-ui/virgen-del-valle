@@ -170,17 +170,32 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
-    // PIN check
-    const expectedPin = targetUser.pin || (activeTab === 'admin' ? '9999' : activeTab === 'kitchen' ? '0000' : '1234');
-    if (pinInput && pinInput !== expectedPin && pinInput !== '1234' && pinInput !== '9999') {
-      setErrorMsg(`PIN incorrecto. (PIN asignado por el dueño: ${expectedPin})`);
-      soundService.playWarning();
+    // Production PIN validation happens on the API.
+    if (!pinInput) {
+      setErrorMsg('Introduce el PIN.');
       return;
     }
-
-    onSelectRole(activeTab, targetUser);
-    soundService.playSuccess();
-    onClose();
+    try {
+      const api = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      if (!api) throw new Error('API URL not configured');
+      const response = await fetch(api + '/api/auth/pin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: targetUser.email, pin: pinInput }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.user) {
+        setErrorMsg(data.message || 'PIN incorrecto.');
+        soundService.playWarning();
+        return;
+      }
+      onSelectRole(activeTab, data.user);
+      soundService.playSuccess();
+      onClose();
+    } catch {
+      setErrorMsg('No se pudo conectar con el servidor de autenticación.');
+      soundService.playWarning();
+    }
   };
 
   const handlePasswordRecovery = async () => {
