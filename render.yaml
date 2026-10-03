@@ -16,7 +16,7 @@ services:
       - key: PORT
         value: "10000"
       - key: CORS_ORIGIN
-        value: "https://virgen-del-valle-web.onrender.com"
+        value: "https://virgen-del-valle-web.onrender.com,https://localhost,capacitor://localhost"
       - key: APP_SESSION_SECRET
         generateValue: true
       - key: SESSION_TTL_HOURS
