@@ -278,6 +278,30 @@ app.post('/api/users/sync', requireAuth, requireRole('admin'), async (req,res) =
   }
 });
 
+app.post('/api/users/request', async (req,res) => {
+  if (!pool) return res.status(503).json({ message:'Base de datos no disponible.' });
+  const role = String(req.body?.role || '').trim();
+  const allowedRoles = new Set(['waiter','excursion','kitchen']);
+  const name = String(req.body?.name || '').trim();
+  const phone = String(req.body?.phone || '').trim();
+  const email = normalizeEmail(req.body?.email);
+  const zone = String(req.body?.zone || '').trim() || null;
+  const boatName = String(req.body?.boatName || '').trim() || null;
+  if (!allowedRoles.has(role) || !name || !email) {
+    return res.status(400).json({ message:'Solicitud de acceso inválida.' });
+  }
+  try {
+    const externalId = 'u-req-' + crypto.randomBytes(8).toString('hex');
+    const result = await pool.query(
+      'INSERT INTO app_users (external_id,name,phone,email,role,status,zone,boat_name,approved_by_owner,notes) VALUES ($1,$2,$3,$4,$5,\'pending_approval\',$6,$7,false,$8) ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name,phone=EXCLUDED.phone,role=EXCLUDED.role,status=\'pending_approval\',zone=EXCLUDED.zone,boat_name=EXCLUDED.boat_name,approved_by_owner=false,notes=EXCLUDED.notes RETURNING *',
+      [externalId,name,phone || null,email,role,zone,boatName,'Solicitud enviada desde la aplicación; requiere aprobación del dueño y asignación de PIN.']
+    );
+    return res.status(201).json({ ok:true, user:toPublicUser(result.rows[0]) });
+  } catch {
+    return res.status(500).json({ message:'No se pudo registrar la solicitud.' });
+  }
+});
+
 app.post('/api/auth/pin-login', async (req,res) => {
   const email=normalizeEmail(req.body?.email);
   const pin=String(req.body?.pin || '');
