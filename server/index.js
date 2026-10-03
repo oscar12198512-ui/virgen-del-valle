@@ -9,7 +9,22 @@ import nodemailer from 'nodemailer';
 const { Pool } = pg;
 const app = express();
 const port = Number(process.env.PORT || 10000);
-const databaseUrl = process.env.DATABASE_URL;
+const rawDatabaseUrl = process.env.DATABASE_URL;
+const renderDatabaseHost = process.env.RENDER_DATABASE_HOST || 'dpg-db09l47avr4c73eo1s10-a';
+let databaseUrl = rawDatabaseUrl;
+
+// Render's Postgres is reachable through its private hostname. The previous
+// deployment had a stale Docker Compose hostname ("base") in DATABASE_URL.
+// Keep the existing credentials/database name, but repair only that hostname.
+if (rawDatabaseUrl) {
+  try {
+    const parsed = new URL(rawDatabaseUrl);
+    if (parsed.hostname === 'base') parsed.hostname = renderDatabaseHost;
+    databaseUrl = parsed.toString();
+  } catch (error) {
+    console.warn('DATABASE_URL is not a valid PostgreSQL URL:', error.message);
+  }
+}
 
 if (!databaseUrl) console.warn('DATABASE_URL is not configured; API will start but DB-backed auth will be unavailable.');
 
