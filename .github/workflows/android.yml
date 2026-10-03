@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    tags:
-      - "v*"
+    tags: ["v*"]
 
 jobs:
   build:
@@ -19,10 +18,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm install
-      - run: npm install --save-dev @capacitor/cli @capacitor/core
-      - run: npm install @capacitor/android
       - run: npm run build
       - run: npx cap add android
+      - run: npx capacitor-assets generate --android
       - run: npx cap sync android
       - name: Build debug APK
         working-directory: android
