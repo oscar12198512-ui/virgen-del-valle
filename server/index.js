@@ -186,12 +186,14 @@ app.post('/api/auth/login', async (req,res) => {
   const password=String(req.body?.password || '');
   if (!email || !password) return res.status(400).json({ message:'Correo y clave son obligatorios.' });
   if (!pool) return res.status(503).json({ message:'Autenticación de producción no disponible.' });
-  const {rows}=await pool.query('SELECT id,name,phone,email,role,status,password_hash FROM app_users WHERE email=$1 LIMIT 1',[email]);
+  const {rows}=await pool.query('SELECT * FROM app_users WHERE email=$1 LIMIT 1',[email]);
   const user=rows[0];
   if (!user || user.status !== 'active' || !user.password_hash || !(await bcrypt.compare(password,user.password_hash))) {
     return res.status(401).json({ message:'Correo o clave incorrectos.' });
   }
-  return res.json({ user:{id:user.id,name:user.name,phone:user.phone,email:user.email,role:user.role,status:user.status} });
+  delete user.password_hash;
+  delete user.pin_hash;
+  return res.json({ user:toClientUser(user) });
 });
 
 app.post('/api/auth/request-reset', async (req,res) => {
