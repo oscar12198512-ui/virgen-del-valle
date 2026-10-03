@@ -41,6 +41,7 @@ import { ClientsView } from './views/ClientsView';
 import { soundService } from './services/soundService';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { AppInstallModal } from './components/AppInstallModal';
+import { LoginScreen } from './components/LoginScreen';
 
 export const App: React.FC = () => {
   // Production state is persisted in PostgreSQL through the Render API.
@@ -68,7 +69,16 @@ export const App: React.FC = () => {
         if (!response.ok) throw new Error('public state fetch failed');
         const data = await response.json();
         if (cancelled) return;
-        if (Array.isArray(data.users) && data.users.length) setUsers(data.users);
+        if (Array.isArray(data.users) && data.users.length) {
+          setUsers((prev) => {
+            const byEmail = new Map(data.users.map((u: User) => [u.email.toLowerCase(), u]));
+            const merged = prev.map((u) => byEmail.get(u.email.toLowerCase()) || u);
+            for (const remote of data.users as User[]) {
+              if (!merged.some((u) => u.email.toLowerCase() === remote.email.toLowerCase())) merged.push(remote);
+            }
+            return merged;
+          });
+        }
         if (data.state) {
           if (Array.isArray(data.state.menuItems)) setMenuItems(data.state.menuItems);
           if (Array.isArray(data.state.spots)) setSpots(data.state.spots);
@@ -107,9 +117,14 @@ export const App: React.FC = () => {
         const data = await response.json();
         if (cancelled) return;
         if (Array.isArray(data.users) && data.users.length) {
-          setUsers(data.users);
-          const sameUser = data.users.find((u: User) => u.id === currentUser.id);
-          if (sameUser) setCurrentUser(sameUser);
+          setUsers((prev) => {
+            const byEmail = new Map((data.users as User[]).map((u) => [u.email.toLowerCase(), u]));
+            const merged = prev.map((u) => byEmail.get(u.email.toLowerCase()) || u);
+            for (const remote of data.users as User[]) {
+              if (!merged.some((u) => u.email.toLowerCase() === remote.email.toLowerCase())) merged.push(remote);
+            }
+            return merged;
+          });
         }
         if (data.state) {
           if (Array.isArray(data.state.menuItems)) setMenuItems(data.state.menuItems);
@@ -134,8 +149,8 @@ export const App: React.FC = () => {
     return () => { cancelled = true; };
   }, [apiBase, sessionToken]);
 
-  const [currentRole, setCurrentRole] = useState<UserRole>('waiter');
-  const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]); // Carlos Rodríguez (waiter)
+  const [currentRole, setCurrentRole = useState<UserRole>('waiter');
+  const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]);
   const [bcvRate, setBcvRate] = useState<number>(54.50);
   const [isOffline, setIsOffline] = useState<boolean>(false);
 
@@ -161,6 +176,29 @@ export const App: React.FC = () => {
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState<boolean>(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
   const [isPrototypeModalOpen, setIsPrototypeModalOpen] = useState<boolean>(false);
+
+  // Restore the authenticated identity before rendering operational modules.
+  useEffect(() => {
+    if (!apiBase || !sessionToken) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(apiBase + '/api/me', { headers: authHeaders() });
+        if (!response.ok) throw new Error('session invalid');
+        const data = await response.json();
+        if (cancelled || !data.user) return;
+        setCurrentUser(data.user);
+        setCurrentRole(data.user.role);
+      } catch {
+        if (!cancelled) {
+          sessionStorage.removeItem('virgen_del_valle_session');
+          setSessionToken('');
+          setCurrentRole('waiter');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [apiBase, sessionToken]);
 
   // Reset demo data to factory defaults
   const handleResetFactoryData = () => {
@@ -215,7 +253,7 @@ export const App: React.FC = () => {
         const response = await fetch(apiBase + '/api/users/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({ users }),
+          body: JSON.stringify({ users: users.filter((u) => u.role !== 'client') }),
           signal: controller.signal,
         });
         if (!response.ok) throw new Error('users sync failed');
@@ -238,29 +276,68 @@ export const App: React.FC = () => {
   // Active client order
   const [clientActiveOrder, setClientActiveOrder] = useState<Order | null>(orders[2] || null);
 
-  // Switch role handler
-  const handleAuthenticated = (token: string) => {
-    sessionStorage.setItem('virgen_del_valle_session', token);
-    setSessionToken(token);
-    setIsDbHydrated(false);
-    dbHydratedRef.current = false;
+  // Authentication and role navigation
+  const handleAuthenticated = (user: User) => {
+    const token = (user as User & { sessionToken?: string }).sessionToken || '';
+    if (token) {
+      sessionStorage.setItem('virgen_del_valle_session', token);
+      setSessionToken(token);
+      setIsDbHydrated(false);
+      dbHydratedRef.current = false;
+    }
+    setCurrentUser(user);
+    setCurrentRole(user.role);
+    setIsAuthModalOpen(false);
+  };
+
+  const handleLogout = async () => {
+    const token = sessionToken;
+    try {
+      if (apiBase && token) {
+        await fetch(apiBase + '/api/auth/logout', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+    } catch {
+      // Local logout still completes if the network is unavailable.
+    } finally {
+      sessionStorage.removeItem('virgen_del_valle_session');
+      setSessionToken('');
+      setCurrentUser(INITIAL_USERS[0]);
+      setCurrentRole('waiter');
+      setIsDbHydrated(false);
+      dbHydratedRef.current = false;
+      setIsAuthModalOpen(false);
+    }
+  };
+
+  const handleContinueAsClient = () => {
+    const client = users.find((u) => u.role === 'client') || INITIAL_USERS.find((u) => u.role === 'client');
+    if (client) {
+      setCurrentUser(client);
+      setCurrentRole('client');
+    }
   };
 
   const handleSelectRole = (role: UserRole, user?: User) => {
-    setCurrentRole(role);
     if (user) {
-      const token = (user as User & { sessionToken?: string }).sessionToken;
-      if (token) {
-        sessionStorage.setItem('virgen_del_valle_session', token);
-        setSessionToken(token);
-        setIsDbHydrated(false);
-        dbHydratedRef.current = false;
-      }
-      setCurrentUser(user);
-    } else {
-      const match = users.find((u) => u.role === role && u.status !== 'pending_approval');
-      if (match) setCurrentUser(match);
+      handleAuthenticated(user);
+      return;
     }
+
+    if (role === 'client') {
+      handleContinueAsClient();
+      return;
+    }
+
+    const canOpenModule = sessionToken && (currentUser.role === 'admin' || currentUser.role === role);
+    if (canOpenModule) {
+      setCurrentRole(role);
+      return;
+    }
+
+    setIsAuthModalOpen(true);
   };
 
   // Staff Account & Access Management by Owner
@@ -286,7 +363,7 @@ export const App: React.FC = () => {
           status: 'active',
           approvedByOwner: true,
           approvedAt: new Date().toISOString(),
-          pin: pin || u.pin || '1234',
+          pin: pin || u.pin,
           zone: zone || u.zone,
           boatName: boatName || u.boatName,
         };
@@ -315,6 +392,7 @@ export const App: React.FC = () => {
     role: UserRole,
     name: string,
     phone: string,
+    email: string,
     zone?: string,
     boatName?: string
   ) => {
@@ -328,7 +406,7 @@ export const App: React.FC = () => {
     const newRequestUser: User = {
       id: `u-req-${Date.now()}`,
       name,
-      email: `${name.toLowerCase().replace(/\s+/g, '.')}.pos@playabuche.com`,
+      email: email.trim().toLowerCase(),
       role,
       phone,
       zone: zone || (role === 'waiter' ? 'Pendiente Asignación' : 'Muelle Bahía'),
@@ -350,6 +428,7 @@ export const App: React.FC = () => {
             role,
             name,
             phone,
+            email: newRequestUser.email,
             zone: zone || '',
             boatName: boatName || '',
             email: newRequestUser.email,
@@ -508,6 +587,17 @@ export const App: React.FC = () => {
     setMenuItems((prev) => prev.filter((m) => m.id !== itemId));
   };
 
+  if (!sessionToken && currentRole !== 'client') {
+    return (
+      <LoginScreen
+        users={users}
+        onAuthenticated={handleAuthenticated}
+        onContinueAsClient={handleContinueAsClient}
+        onRequestAccess={handleRequestAccess}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f8f9ff] text-[#002546] flex flex-col antialiased selection:bg-[#57d1fd] selection:text-[#002546]">
       {/* Offline Status Tracker & Auto Reconnect Alert */}
@@ -521,6 +611,7 @@ export const App: React.FC = () => {
         isOffline={isOffline}
         onToggleOffline={() => setIsOffline(!isOffline)}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onLogout={handleLogout}
         onOpenFiscalInvoice={() => setIsFiscalInvoiceOpen(true)}
         onOpenSearch={() => setIsCommandPaletteOpen(true)}
         onOpenCalculator={() => {
@@ -633,7 +724,6 @@ export const App: React.FC = () => {
           currentRole={currentRole}
           currentUser={currentUser}
           onSelectRole={handleSelectRole}
-          onAuthenticated={handleAuthenticated}
           onClose={() => setIsAuthModalOpen(false)}
           onRequestAccess={handleRequestAccess}
         />
