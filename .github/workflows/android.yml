@@ -25,11 +25,56 @@ jobs:
       - run: npx cap add android
       - run: npx capacitor-assets generate --android
       - run: npx cap sync android
-      - name: Build debug APK
+      - name: Create Play upload key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p signing
+          STORE_PASSWORD="$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 28)"
+          KEY_ALIAS="virgen-del-valle-upload"
+          keytool -genkeypair -v -keystore signing/virgen-del-valle-upload.keystore -storetype PKCS12 -storepass "$STORE_PASSWORD" -keypass "$STORE_PASSWORD" -alias "$KEY_ALIAS" -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Virgen del Valle, OU=Mobile, O=Playa Buche, L=Caracas, ST=Miranda, C=VE"
+          echo "KSTOREPWD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEYPWD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          printf 'keystore_password=%s\nkey_alias=%s\n' "$STORE_PASSWORD" "$KEY_ALIAS" > signing/UPLOAD-KEY-CREDENTIALS.txt
+      - name: Configure release signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle")
+          s = p.read_text()
+          s = s.replace("buildTypes {", """signingConfigs {
+              release {
+                  storeFile file("../../signing/virgen-del-valle-upload.keystore")
+                  storePassword System.getenv("KSTOREPWD")
+                  keyAlias System.getenv("KEY_ALIAS")
+                  keyPassword System.getenv("KEYPWD")
+              }
+          }
+
+          buildTypes {""", 1)
+          marker = "buildTypes {"
+          i = s.index(marker) + len(marker)
+          j = s.index("release {", i) + len("release {")
+          s = s[:j] + "\n        signingConfig signingConfigs.release" + s[j:]
+          p.write_text(s)
+          PY
+      - name: Build signed AAB
         working-directory: android
-        run: ./gradlew assembleDebug
-      - name: Upload APK
+        run: ./gradlew bundleRelease
+      - name: Verify AAB signature
+        run: jarsigner -verify -verbose -certs android/app/build/outputs/bundle/release/app-release.aab | grep -q "jar verified"
+      - name: Package release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp android/app/build/outputs/bundle/release/app-release.aab signing/virgen-del-valle-release.aab
+          sha256sum signing/virgen-del-valle-release.aab > signing/SHA256SUMS.txt
+      - name: Upload signed release
         uses: actions/upload-artifact@v4
         with:
-          name: virgen-del-valle-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: virgen-del-valle-google-play-release
+          path: signing/
+          retention-days: 90
