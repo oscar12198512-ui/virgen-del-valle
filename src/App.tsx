@@ -63,9 +63,33 @@ export const App: React.FC = () => {
         const data = await response.json();
         if (cancelled) return;
         if (Array.isArray(data.users) && data.users.length) {
-          setUsers(data.users);
-          const owner = data.users.find((u: User) => u.role === 'admin' && u.status === 'active');
-          if (owner) setCurrentUser(owner);
+          if (data.users.length < INITIAL_USERS.length) {
+            const syncResponse = await fetch(apiBase + '/api/users/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ users: INITIAL_USERS }),
+            });
+            const syncData = await syncResponse.json().catch(() => ({}));
+            if (syncResponse.ok && Array.isArray(syncData.users) && syncData.users.length) {
+              setUsers(syncData.users);
+              const owner = syncData.users.find((u: User) => u.role === 'admin' && u.status === 'active');
+              if (owner) setCurrentUser(owner);
+            } else {
+              setUsers(data.users);
+            }
+          } else {
+            setUsers(data.users);
+            const owner = data.users.find((u: User) => u.role === 'admin' && u.status === 'active');
+            if (owner) setCurrentUser(owner);
+          }
+        } else if (apiBase) {
+          const syncResponse = await fetch(apiBase + '/api/users/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ users: INITIAL_USERS }),
+          });
+          const syncData = await syncResponse.json().catch(() => ({}));
+          if (syncResponse.ok && Array.isArray(syncData.users)) setUsers(syncData.users);
         }
         if (data.state) {
           if (Array.isArray(data.state.menuItems)) setMenuItems(data.state.menuItems);
