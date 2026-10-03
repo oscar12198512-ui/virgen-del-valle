@@ -25,6 +25,7 @@ const hashToken = value => crypto.createHash('sha256').update(value).digest('hex
 
 async function ensureSchema() {
   if (!pool) return;
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
