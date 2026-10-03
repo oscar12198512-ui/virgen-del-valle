@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "virgen-del-valle",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "start": "node server/index.js",
+    "dev:server": "node --watch server/index.js"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -23,7 +25,9 @@
     "qrcode": "^1.5.4",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "pg": "^8.16.3",
+    "bcryptjs": "^3.0.2"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
