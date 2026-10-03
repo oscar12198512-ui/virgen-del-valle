@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.virgendelvalle.playabuche',
-  appName: 'Playa Buche',
+  appName: 'Virgen del Valle',
   webDir: 'dist',
   bundledWebRuntime: false,
   server: {
