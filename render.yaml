@@ -43,3 +43,9 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false
+
+
+# Existing Render Postgres managed by this Blueprint.
+# Because the database already exists, omitted fields are preserved by Render.
+databases:
+  - name: virgen-del-valle-postgres
