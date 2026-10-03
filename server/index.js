@@ -26,6 +26,7 @@ const hashToken = value => crypto.createHash('sha256').update(value).digest('hex
 async function ensureSchema() {
   if (!pool) return;
   await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
+  await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS pin_hash TEXT;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -33,7 +34,7 @@ async function ensureSchema() {
       phone TEXT,
       email TEXT UNIQUE NOT NULL,
       role TEXT NOT NULL DEFAULT 'client',
-      password_hash TEXT NOT NULL,
+      password_hash TEXT,
       status TEXT NOT NULL DEFAULT 'active',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -46,6 +47,12 @@ async function ensureSchema() {
       used_at TIMESTAMPTZ
     );
     CREATE INDEX IF NOT EXISTS idx_reset_token_hash ON password_reset_tokens(token_hash);
+    CREATE TABLE IF NOT EXISTS app_state (
+      id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      state JSONB NOT NULL DEFAULT '{}'::jsonb,
+      version BIGINT NOT NULL DEFAULT 1,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 }
 
