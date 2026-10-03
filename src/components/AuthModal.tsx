@@ -17,7 +17,6 @@ import {
   Clock,
   Smartphone,
   Phone,
-  HelpCircle,
   Delete,
   Sparkles,
   MapPin,
@@ -48,7 +47,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   });
   const [pinInput, setPinInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const [showHelperPins, setShowHelperPins] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [requestSuccessMsg, setRequestSuccessMsg] = useState<string | null>(null);
   const [showRecovery, setShowRecovery] = useState(false);
@@ -528,6 +526,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     />
                   </div>
                   <div>
+                    <label className="font-bold text-gray-700 block mb-1">Correo electrónico</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="correo@ejemplo.com"
+                      value={reqEmail}
+                      onChange={(e) => setReqEmail(e.target.value)}
+                      className="w-full h-9 px-3 rounded-xl border border-gray-300 bg-white"
+                    />
+                  </div>
+                  <div>
                     <label className="font-bold text-gray-700 block mb-1">Zona sugerida o turno</label>
                     <input
                       type="text"
@@ -867,7 +876,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     setPinInput(e.target.value);
                     setErrorMsg('');
                   }}
-                  placeholder="0000"
+                  placeholder="PIN asignado por el Dueño"
                   className="w-full h-11 text-center text-lg font-mono tracking-widest rounded-xl border border-gray-300 bg-white font-black"
                 />
 
@@ -961,7 +970,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           )}
         </div>
 
-        {/* Footer info & PIN hint toggle */}
+        {/* Footer information */}
         <div className="px-5 py-3 bg-[#f8f9ff] border-t border-gray-200 flex items-center justify-between text-[11px] text-gray-500">
           <button
             type="button"
@@ -978,15 +987,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <span className="text-[10px] text-gray-400">Bahía de Buche • Conexión Cifrada</span>
         </div>
 
-        {/* Floating helper pins banner */}
-        {showHelperPins && (
-          <div className="bg-amber-50 border-t border-amber-200 p-3 text-[11px] text-amber-900 grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <div>👑 Dueño: <b>9999</b></div>
-            <div>🍽️ Mesoneros: <b>1234</b></div>
-            <div>🚤 Excursiones: <b>5678</b></div>
-            <div>🍳 Cocina: <b>0000</b></div>
-          </div>
-        )}
       </div>
     </div>
   );
