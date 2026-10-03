@@ -68,7 +68,7 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
   const [newNotes, setNewNotes] = useState('');
 
   // Approval Form State
-  const [approvePin, setApprovePin] = useState('1234');
+  const [approvePin, setApprovePin] = useState(generateRandomPin());
   const [approveZone, setApproveZone] = useState('Zona Toldos Playa (Orilla)');
   const [approveBoatName, setApproveBoatName] = useState('');
 
@@ -83,7 +83,7 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
   const copyCredentials = (user: User) => {
     const text = `🏖️ *PLAYA BUCHE - INVERSIONES VIRGEN DEL VALLE*\n¡Hola ${user.name}! Tu cuenta operativa ha sido autorizada por el Dueño:\n\n🔑 *Rol:* ${
       user.role === 'waiter' ? 'Mesonero de Playa' : user.role === 'excursion' ? 'Operador de Excursiones' : user.role
-    }\n🔢 *PIN de acceso rápido:* ${user.pin || '1234'}\n📍 *Zona asignada:* ${user.zone || 'Asignada en muelle'}${
+    }\n🔢 *PIN de acceso rápido:* ${user.pin || 'PIN pendiente de asignación'}\n📍 *Zona asignada:* ${user.zone || 'Asignada en muelle'}${
       user.boatName ? `\n🚤 *Embarcación:* ${user.boatName}` : ''
     }\n\nIngresa desde tu teléfono a la aplicación: ${window.location.origin}`;
 
@@ -98,7 +98,7 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
     const text = encodeURIComponent(
       `🏖️ *PLAYA BUCHE - INVERSIONES VIRGEN DEL VALLE*\n¡Hola ${user.name}! Tu cuenta operativa ha sido creada y autorizada por la Gerencia:\n\n🔑 *Rol:* ${
         user.role === 'waiter' ? 'Mesonero de Playa' : user.role === 'excursion' ? 'Operador de Excursiones' : user.role
-      }\n🔢 *PIN de acceso:* ${user.pin || '1234'}\n📍 *Zona/Puesto:* ${user.zone || 'Buche'}${
+      }\n🔢 *PIN de acceso:* ${user.pin || 'PIN pendiente de asignación'}\n📍 *Zona/Puesto:* ${user.zone || 'Buche'}${
         user.boatName ? `\n🚤 *Embarcación:* ${user.boatName}` : ''
       }\n\nIngresa al sistema: ${window.location.origin}`
     );
@@ -109,7 +109,7 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName.trim()) return;
+    if (!newName.trim() || !newEmail.trim() || !/^\d{4,6}$/.test(newPin)) return;
 
     const initials = newName
       .trim()
@@ -121,9 +121,9 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
     const newUser: User = {
       id: `u-${Date.now()}`,
       name: newName.trim(),
-      email: newEmail.trim() || `${newName.toLowerCase().replace(/\s+/g, '.')}.pos@playabuche.com`,
+      email: newEmail.trim().toLowerCase(),
       role: newRole,
-      pin: newPin || '1234',
+      pin: newPin,
       phone: newPhone.trim(),
       zone: newRole === 'excursion' ? (newZone || 'Muelle Carenero - Buche') : newZone,
       boatName: newRole === 'excursion' ? newBoatName.trim() : undefined,
