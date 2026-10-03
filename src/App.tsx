@@ -431,7 +431,6 @@ export const App: React.FC = () => {
             email: newRequestUser.email,
             zone: zone || '',
             boatName: boatName || '',
-            email: newRequestUser.email,
           }),
         });
         if (!response.ok) throw new Error('access request failed');
