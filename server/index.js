@@ -23,6 +23,16 @@ app.use(express.json({ limit: '1mb' }));
 const normalizeEmail = value => String(value || '').trim().toLowerCase();
 const hashToken = value => crypto.createHash('sha256').update(value).digest('hex');
 
+function toClientUser(row) {
+  return {
+    id: row.id, name: row.name, phone: row.phone, email: row.email, role: row.role,
+    zone: row.zone, avatar: row.avatar, activeOrdersCount: row.active_orders_count || 0,
+    assignedToldoIds: row.assigned_toldo_ids || [], boatName: row.boat_name,
+    approvedByOwner: row.approved_by_owner, approvedAt: row.approved_at,
+    createdAt: row.created_at, status: row.status, notes: row.notes, lastLogin: row.last_login,
+  };
+}
+
 async function ensureSchema() {
   if (!pool) return;
   await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
@@ -92,7 +102,7 @@ app.get('/api/state', async (_req,res) => {
       version: result.rows[0]?.version || 0,
       updatedAt: result.rows[0]?.updated_at || null,
       state: result.rows[0]?.state || null,
-      users: users.rows,
+      users: users.rows.map(toClientUser),
     });
   } catch {
     return res.status(500).json({ message:'No se pudo cargar el estado de la aplicación.' });
@@ -128,7 +138,8 @@ app.post('/api/users/sync', async (req,res) => {
         [u.id,u.name,u.phone || null,email,u.role,pinHash,u.status || 'active',u.zone || null,u.avatar || null,Number(u.activeOrdersCount || 0),JSON.stringify(u.assignedToldoIds || []),u.boatName || null,Boolean(u.approvedByOwner),u.approvedAt || null,u.createdAt || new Date().toISOString(),u.notes || null]
       );
     }
-    return res.json({ ok:true });
+    const result = await pool.query('SELECT * FROM app_users ORDER BY created_at ASC');
+    return res.json({ ok:true, users: result.rows.map(toClientUser) });
   } catch {
     return res.status(500).json({ message:'No se pudieron sincronizar los usuarios.' });
   }
