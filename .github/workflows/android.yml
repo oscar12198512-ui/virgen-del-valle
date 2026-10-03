@@ -75,9 +75,9 @@ jobs:
           s = s[:j] + "\n        signingConfig signingConfigs.release" + s[j:]
           p.write_text(s)
           PY
-      - name: Build signed AAB
+      - name: Build signed Android packages
         working-directory: android
-        run: ./gradlew bundleRelease
+        run: ./gradlew bundleRelease assembleRelease
       - name: Verify AAB signature
         run: jarsigner -verify -verbose -certs android/app/build/outputs/bundle/release/app-release.aab | grep -q "jar verified"
       - name: Package release artifacts
@@ -85,7 +85,8 @@ jobs:
         run: |
           set -euo pipefail
           cp android/app/build/outputs/bundle/release/app-release.aab signing/virgen-del-valle-release.aab
-          sha256sum signing/virgen-del-valle-release.aab > signing/SHA256SUMS.txt
+          cp android/app/build/outputs/apk/release/app-release.apk signing/virgen-del-valle-release.apk
+          sha256sum signing/virgen-del-valle-release.aab signing/virgen-del-valle-release.apk > signing/SHA256SUMS.txt
       - name: Upload signed release
         uses: actions/upload-artifact@v4
         with:
