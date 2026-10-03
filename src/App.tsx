@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   BankConfig,
   BillDenominationCount,
@@ -43,27 +43,51 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 import { AppInstallModal } from './components/AppInstallModal';
 
 export const App: React.FC = () => {
-  // Primary operational state with localStorage persistence for staff accounts
-  const [users, setUsers] = useState<User[]>(() => {
-    try {
-      const saved = localStorage.getItem('pb_users_db');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.warn('Failed to parse local users', e);
-    }
-    return INITIAL_USERS;
-  });
+  // Production state is persisted in PostgreSQL through the Render API.
+  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const [isDbHydrated, setIsDbHydrated] = useState(false);
+  const dbHydratedRef = useRef(false);
+  const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
   useEffect(() => {
-    try {
-      localStorage.setItem('pb_users_db', JSON.stringify(users));
-    } catch (e) {
-      console.warn('Failed to save users to local storage', e);
-    }
-  }, [users]);
+    let cancelled = false;
+    (async () => {
+      if (!apiBase) {
+        setIsDbHydrated(true);
+        dbHydratedRef.current = true;
+        return;
+      }
+      try {
+        const response = await fetch(apiBase + '/api/state');
+        if (!response.ok) throw new Error('state fetch failed');
+        const data = await response.json();
+        if (cancelled) return;
+        if (Array.isArray(data.users) && data.users.length) {
+          setUsers(data.users);
+          const owner = data.users.find((u: User) => u.role === 'admin' && u.status === 'active');
+          if (owner) setCurrentUser(owner);
+        }
+        if (data.state) {
+          if (Array.isArray(data.state.menuItems)) setMenuItems(data.state.menuItems);
+          if (Array.isArray(data.state.spots)) setSpots(data.state.spots);
+          if (Array.isArray(data.state.orders)) setOrders(data.state.orders);
+          if (data.state.excursion) setExcursion(data.state.excursion);
+          if (data.state.bankConfig) setBankConfig(data.state.bankConfig);
+          if (Array.isArray(data.state.waitersClosings)) setWaitersClosings(data.state.waitersClosings);
+          if (data.state.drawerBills) setDrawerBills(data.state.drawerBills);
+          if (typeof data.state.bcvRate === 'number') setBcvRate(data.state.bcvRate);
+        }
+      } catch (error) {
+        console.warn('PostgreSQL state unavailable; using factory defaults.', error);
+      } finally {
+        if (!cancelled) {
+          setIsDbHydrated(true);
+          dbHydratedRef.current = true;
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [apiBase]);
 
   const [currentRole, setCurrentRole] = useState<UserRole>('waiter');
   const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]); // Carlos Rodríguez (waiter)
