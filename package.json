@@ -29,7 +29,8 @@
     "vite": "^6.2.3",
     "pg": "^8.16.3",
     "bcryptjs": "^3.0.2",
-    "@capacitor/core": "^8.0.0"
+    "@capacitor/core": "^8.0.0",
+    "nodemailer": "^7.0.6"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
