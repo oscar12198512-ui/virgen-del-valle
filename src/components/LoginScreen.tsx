@@ -258,6 +258,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <button onClick={() => { setMode('request'); setMessage(''); }} className={`rounded-xl py-2.5 text-xs font-bold ${mode === 'request' ? 'bg-[#002546] text-white' : 'text-gray-600'}`}>Solicitar acceso</button>
             </div>
 
+            {mode === 'request' && (
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {(['client','waiter','excursion','kitchen'] as UserRole[]).map((role) => (
+                  <button key={role} type="button" onClick={() => { setSelectedRole(role); setMessage(''); }} className={`rounded-xl border p-2 text-center text-[11px] font-bold ${selectedRole === role ? 'border-[#006782] bg-[#eff4ff] text-[#006782]' : 'border-gray-200 text-gray-600'}`}>
+                    {role === 'client' ? 'Cliente' : role === 'waiter' ? 'Mesonero' : role === 'excursion' ? 'Excursiones' : 'Cocina'}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {mode !== 'request' && (
               <div className="grid grid-cols-3 gap-2 mb-4">
                 {(['waiter','excursion','kitchen'] as UserRole[]).map((role) => (
