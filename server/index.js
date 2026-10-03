@@ -26,6 +26,8 @@ const hashToken = value => crypto.createHash('sha256').update(value).digest('hex
 async function ensureSchema() {
   if (!pool) return;
   await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
+  await pool.query(`ALTER TABLE app_users ALTER COLUMN password_hash DROP NOT NULL;`);
+  await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS pin_hash TEXT;`);
   await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS pin_hash TEXT;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_users (
