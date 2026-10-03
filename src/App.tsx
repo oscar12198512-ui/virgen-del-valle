@@ -311,7 +311,7 @@ export const App: React.FC = () => {
     soundService.playClick();
   };
 
-  const handleRequestAccess = (
+  const handleRequestAccess = async (
     role: UserRole,
     name: string,
     phone: string,
@@ -341,6 +341,25 @@ export const App: React.FC = () => {
     };
 
     setUsers((prev) => [newRequestUser, ...prev]);
+    if (apiBase) {
+      try {
+        const response = await fetch(apiBase + '/api/users/request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role,
+            name,
+            phone,
+            zone: zone || '',
+            boatName: boatName || '',
+            email: newRequestUser.email,
+          }),
+        });
+        if (!response.ok) throw new Error('access request failed');
+      } catch (error) {
+        console.warn('No se pudo registrar la solicitud de acceso en PostgreSQL.', error);
+      }
+    }
   };
 
   // Waiter sends new order to kitchen
