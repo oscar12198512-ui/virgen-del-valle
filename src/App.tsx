@@ -164,6 +164,46 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Persist operational state after the database has hydrated.
+  useEffect(() => {
+    if (!apiBase || !dbHydratedRef.current || !isDbHydrated) return;
+    const controller = new AbortController();
+    const payload = { menuItems, spots, orders, excursion, bankConfig, waitersClosings, drawerBills, bcvRate };
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(apiBase + '/api/state', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: payload }),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error('state save failed');
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') console.warn('No se pudo guardar el estado en PostgreSQL.', error);
+      }
+    }, 500);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [apiBase, isDbHydrated, menuItems, spots, orders, excursion, bankConfig, waitersClosings, drawerBills, bcvRate]);
+
+  // Keep the staff roster durable as well.
+  useEffect(() => {
+    if (!apiBase || !dbHydratedRef.current || !isDbHydrated || !users.length) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(apiBase + '/api/users/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ users }),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error('users sync failed');
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') console.warn('No se pudo sincronizar los usuarios con PostgreSQL.', error);
+      }
+    }, 500);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [apiBase, isDbHydrated, users]);
   // Compute live notifications count
   const now = new Date();
   const alertOrdersCount = orders.filter((o) => {
