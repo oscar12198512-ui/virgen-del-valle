@@ -125,11 +125,6 @@ export const App: React.FC = () => {
     setSpots(INITIAL_SPOTS);
     setBcvRate(54.50);
     setIsOffline(false);
-    try {
-      localStorage.removeItem('pb_users_db');
-    } catch (e) {
-      console.warn('Failed to clear local storage', e);
-    }
     soundService.playSuccess();
   };
 
