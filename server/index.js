@@ -25,13 +25,16 @@ if (rawDatabaseUrl) {
 
 if (!databaseUrl) console.warn('DATABASE_URL is not configured; API will start but DB-backed auth will be unavailable.');
 
-const pool = databaseUrl ? new Pool({
-  connectionString: databaseUrl,
+const pool = (databaseUrl || process.env.PGHOST || process.env.PGDATABASE || process.env.PGUSER || process.env.PGPASSWORD) ? new Pool({
   host: renderDatabaseHost,
+  port: Number(process.env.PGPORT || 5432),
+  database: process.env.PGDATABASE || 'virgen_del_valle_postgres',
+  user: process.env.PGUSER || 'virgen_del_valle_postgres_user',
+  password: process.env.PGPASSWORD,
   max: Number(process.env.DATABASE_POOL_MAX || 5),
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
-  ssl: databaseUrl.includes('sslmode=disable') ? undefined : { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: false },
 }) : null;
 
 const allowedOrigins = (process.env.CORS_ORIGIN || '*').split(',').map(v => v.trim()).filter(Boolean);
