@@ -13,7 +13,10 @@ if (!databaseUrl) console.warn('DATABASE_URL is not configured; API will start b
 
 const pool = databaseUrl ? new Pool({
   connectionString: databaseUrl,
-  ssl: /render\.com|amazonaws\.com|neon\.tech/i.test(databaseUrl) ? { rejectUnauthorized: false } : undefined,
+  max: Number(process.env.DATABASE_POOL_MAX || 5),
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+  ssl: databaseUrl.includes('sslmode=disable') ? undefined : { rejectUnauthorized: false },
 }) : null;
 
 const allowedOrigins = (process.env.CORS_ORIGIN || '*').split(',').map(v => v.trim()).filter(Boolean);
