@@ -36,10 +36,6 @@ function toClientUser(row) {
 async function ensureSchema() {
   if (!pool) return;
   await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
-  await pool.query(`ALTER TABLE app_users ALTER COLUMN password_hash DROP NOT NULL;`);
-  await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS pin_hash TEXT;`);
-  await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS external_id TEXT UNIQUE;`);
-  await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS pin_hash TEXT;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -68,6 +64,9 @@ async function ensureSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+  await pool.query('ALTER TABLE app_users ALTER COLUMN password_hash DROP NOT NULL;');
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS pin_hash TEXT;');
+  await pool.query('ALTER TABLE app_users ADD COLUMN IF NOT EXISTS external_id TEXT UNIQUE;');
 }
 
 async function ensureOwner() {
@@ -176,7 +175,7 @@ app.post('/api/auth/pin-login', async (req,res) => {
   }
   await pool.query('UPDATE app_users SET last_login=NOW(),updated_at=NOW() WHERE id=$1',[user.id]);
   delete user.pin_hash;
-  return res.json({ user });
+  return res.json({ user: toClientUser(user) });
 });
 
 app.post('/api/auth/login', async (req,res) => {
@@ -186,7 +185,7 @@ app.post('/api/auth/login', async (req,res) => {
   if (!pool) return res.status(503).json({ message:'Autenticación de producción no disponible.' });
   const {rows}=await pool.query('SELECT id,name,phone,email,role,status,password_hash FROM app_users WHERE email=$1 LIMIT 1',[email]);
   const user=rows[0];
-  if (!user || user.status !== 'active' || !(await bcrypt.compare(password,user.password_hash))) {
+  if (!user || user.status !== 'active' || !user.password_hash || !(await bcrypt.compare(password,user.password_hash))) {
     return res.status(401).json({ message:'Correo o clave incorrectos.' });
   }
   return res.json({ user:{id:user.id,name:user.name,phone:user.phone,email:user.email,role:user.role,status:user.status} });
@@ -206,7 +205,7 @@ app.post('/api/auth/request-reset', async (req,res) => {
       [rows[0].id,hashToken(raw)]
     );
     // Email delivery is intentionally left to configured SMTP credentials.
-    console.log(`Password reset token generated for ${email}: ${raw}`);
+    console.log('Password reset request recorded.');
   }
   return res.json({ message:'Si la cuenta existe, se generó un enlace de recuperación.' });
 });
