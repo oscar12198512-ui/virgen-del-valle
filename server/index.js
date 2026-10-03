@@ -114,7 +114,7 @@ function toPublicUser(row) {
 }
 
 function sessionResponse(user, token) {
-  return { token, user: toClientUser(user), expiresInHours: SESSION_TTL_HOURS };
+  return { token, user: { ...toClientUser(user), sessionToken: token }, expiresInHours: SESSION_TTL_HOURS };
 }
 
 const mailer = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD
