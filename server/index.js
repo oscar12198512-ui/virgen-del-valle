@@ -155,6 +155,8 @@ app.post('/api/users/sync', async (req,res) => {
         [String(u.id || ''),u.name,u.phone || null,email,u.role,pinHash,u.status || 'active',u.zone || null,u.avatar || null,Number(u.activeOrdersCount || 0),JSON.stringify(u.assignedToldoIds || []),u.boatName || null,Boolean(u.approvedByOwner),u.approvedAt || null,u.createdAt || new Date().toISOString(),u.notes || null]
       );
     }
+    const emails = users.map((u) => normalizeEmail(u.email)).filter(Boolean);
+    if (emails.length) await pool.query("DELETE FROM app_users WHERE email <> ALL($1::text[]) AND email <> $2", [emails, normalizeEmail(process.env.OWNER_EMAIL)]);
     const result = await pool.query('SELECT * FROM app_users ORDER BY created_at ASC');
     return res.json({ ok:true, users: result.rows.map(toClientUser) });
   } catch {
