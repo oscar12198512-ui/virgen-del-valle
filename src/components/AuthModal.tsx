@@ -940,6 +940,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <HelpCircle className="w-3.5 h-3.5" />
             <span>{showHelperPins ? 'Ocultar PINs Demo' : 'Ver PINs de prueba'}</span>
           </button>
+          <div className="flex items-center gap-3">
+            <a href="/privacy.html" target="_blank" rel="noreferrer" className="text-[10px] text-[#006782] hover:underline">Privacidad</a>
+            <a href="/delete-account.html" target="_blank" rel="noreferrer" className="text-[10px] text-[#006782] hover:underline">Eliminar cuenta</a>
+          </div>
           <span className="text-[10px] text-gray-400">Bahía de Buche • Conexión Cifrada</span>
         </div>
 
