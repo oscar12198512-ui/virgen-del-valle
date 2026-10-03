@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
@@ -204,6 +205,8 @@ app.post('/api/auth/login', async (req,res) => {
   if (!user || user.status !== 'active' || !user.password_hash || !(await bcrypt.compare(password,user.password_hash))) {
     return res.status(401).json({ message:'Correo o clave incorrectos.' });
   }
+  await pool.query('UPDATE app_users SET last_login=NOW(),updated_at=NOW() WHERE id=$1',[user.id]);
+  user.last_login = new Date().toISOString();
   delete user.password_hash;
   delete user.pin_hash;
   return res.json({ user:toClientUser(user) });
