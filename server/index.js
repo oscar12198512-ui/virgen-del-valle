@@ -27,6 +27,7 @@ if (!databaseUrl) console.warn('DATABASE_URL is not configured; API will start b
 
 const pool = databaseUrl ? new Pool({
   connectionString: databaseUrl,
+  host: renderDatabaseHost,
   max: Number(process.env.DATABASE_POOL_MAX || 5),
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
