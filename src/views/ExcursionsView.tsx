@@ -18,6 +18,7 @@ import {
   Edit3
 } from 'lucide-react';
 import { ComandaEditorModal } from '../components/ComandaEditorModal';
+import { CaptainVhfModal } from '../components/CaptainVhfModal';
 
 interface ExcursionsViewProps {
   excursion: ExcursionPackage;
@@ -38,6 +39,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
   const [alertSent, setAlertSent] = useState(excursion.isApproachingNotified);
   const [showAddDishModal, setShowAddDishModal] = useState(false);
   const [isEditingComandaModalOpen, setIsEditingComandaModalOpen] = useState(false);
+  const [isCaptainVhfOpen, setIsCaptainVhfOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [zoomedDish, setZoomedDish] = useState<MenuItem | null>(null);
@@ -650,6 +652,12 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
           >
             <Share2 className="w-3.5 h-3.5" /> Comanda Digital
           </button>
+          <button
+            onClick={() => setIsCaptainVhfOpen(true)}
+            className="h-10 bg-[#002546] hover:bg-[#003b5f] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+          >
+            <span aria-hidden="true">📻</span> VHF / Capitán
+          </button>
         </div>
 
         {noticeMessage && (
@@ -659,6 +667,33 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
           </div>
         )}
       </div>
+
+      {isCaptainVhfOpen && (
+        <CaptainVhfModal
+          isOpen={isCaptainVhfOpen}
+          onClose={() => setIsCaptainVhfOpen(false)}
+          excursion={excursion}
+          bcvRate={bcvRate}
+          onAdjustTime={(delta) => {
+            const match = delta.match(/^([+-])(\d+)\s*min$/i);
+            if (!match) return;
+            const amount = Number(match[2]) * (match[1] === '-' ? -1 : 1);
+            const timeMatch = excursion.arrivalTime.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+            if (!timeMatch) {
+              setNoticeMessage(`Ajuste solicitado: ${delta}. La hora actual no tiene formato ajustable.`);
+              return;
+            }
+            let totalMinutes = (Number(timeMatch[1]) % 12) * 60 + Number(timeMatch[2]) + amount;
+            totalMinutes = ((totalMinutes % 720) + 720) % 720;
+            const hour = Math.floor(totalMinutes / 60) || 12;
+            const minute = totalMinutes % 60;
+            const nextTime = `${hour}:${String(minute).padStart(2, '0')} ${timeMatch[3].toUpperCase()}`;
+            onUpdateExcursion({ ...excursion, arrivalTime: nextTime });
+            setNoticeMessage(`Hora de arribo ajustada a ${nextTime}.`);
+            setTimeout(() => setNoticeMessage(null), 3500);
+          }}
+        />
+      )}
 
       {/* Add Dish Modal for Excursion */}
       {showAddDishModal && (
