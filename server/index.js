@@ -9,33 +9,30 @@ import nodemailer from 'nodemailer';
 const { Pool } = pg;
 const app = express();
 const port = Number(process.env.PORT || 10000);
-const rawDatabaseUrl = String(process.env.DATABASE_URL || '').trim();
-const renderDatabaseHost = process.env.RENDER_DATABASE_HOST || 'dpg-db0d7460tbcc73fb0ang-a';
-const databaseUrl = rawDatabaseUrl && !rawDatabaseUrl.includes('${{') ? rawDatabaseUrl : '';
 
-const pool = databaseUrl
+const dbConfig = {
+  host: String(process.env.PGHOST || '').trim(),
+  port: Number(process.env.PGPORT || 5432),
+  database: String(process.env.PGDATABASE || '').trim(),
+  user: String(process.env.PGUSER || '').trim(),
+  password: String(process.env.PGPASSWORD || ''),
+};
+
+const hasDatabaseCredentials = Boolean(
+  dbConfig.host && dbConfig.database && dbConfig.user && dbConfig.password
+);
+
+const pool = hasDatabaseCredentials
   ? new Pool({
-      connectionString: databaseUrl,
+      ...dbConfig,
       max: Number(process.env.DATABASE_POOL_MAX || 5),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
-      ssl: databaseUrl.includes('sslmode=disable') ? undefined : { rejectUnauthorized: false },
+      ssl: { rejectUnauthorized: false },
     })
-  : (process.env.PGPASSWORD
-      ? new Pool({
-          host: renderDatabaseHost,
-          port: Number(process.env.PGPORT || 5432),
-          database: process.env.PGDATABASE || 'virgen_del_valle_postgres_v6rt',
-          user: process.env.PGUSER || 'virgen_del_valle_postgres_v6rt_user',
-          password: process.env.PGPASSWORD,
-          max: Number(process.env.DATABASE_POOL_MAX || 5),
-          idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 10000,
-          ssl: { rejectUnauthorized: false },
-        })
-      : null);
+  : null;
 
-if (!databaseUrl && !process.env.PGPASSWORD) {
+if (!hasDatabaseCredentials) {
   console.warn('Production PostgreSQL credentials are not configured.');
 }
 const allowedOrigins = (process.env.CORS_ORIGIN || '*').split(',').map(v => v.trim()).filter(Boolean);
