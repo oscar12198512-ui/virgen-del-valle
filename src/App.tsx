@@ -19,7 +19,6 @@ import {
   INITIAL_MENU_ITEMS,
   INITIAL_ORDERS,
   INITIAL_SPOTS,
-  INITIAL_USERS,
   INITIAL_WAITERS_CLOSINGS
 } from './data/initialData';
 import { Header } from './components/Header';
