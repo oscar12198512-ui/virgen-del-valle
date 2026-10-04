@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { UserPlus } from 'lucide-react';
-import { UserRole } from '../types';
+import { User, UserRole } from '../types';
 
 interface LoginScreenProps {
   onAuthenticated: (user: User) => void;
