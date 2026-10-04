@@ -203,7 +203,7 @@ export const App: React.FC = () => {
 
   // Reset demo data to factory defaults
   const handleResetFactoryData = () => {
-    setUsers(INITIAL_USERS);
+    setUsers([]);
     setOrders(INITIAL_ORDERS);
     setMenuItems(INITIAL_MENU_ITEMS);
     setSpots(INITIAL_SPOTS);
