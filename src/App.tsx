@@ -45,7 +45,7 @@ import { LoginScreen } from './components/LoginScreen';
 
 export const App: React.FC = () => {
   // Production state is persisted in PostgreSQL through the Render API.
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const [users, setUsers] = useState<User[]>([]);
   const [sessionToken, setSessionToken] = useState<string>(() => sessionStorage.getItem('virgen_del_valle_session') || '');
   const [isDbHydrated, setIsDbHydrated] = useState(false);
   const dbHydratedRef = useRef(false);
@@ -150,7 +150,8 @@ export const App: React.FC = () => {
   }, [apiBase, sessionToken]);
 
   const [currentRole, setCurrentRole] = useState<UserRole>('waiter');
-  const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]);
+  const EMPTY_USER: User = { id: '', name: '', email: '', role: 'client', status: 'pending_approval' };
+  const [currentUser, setCurrentUser] = useState<User>(EMPTY_USER);
   const [bcvRate, setBcvRate] = useState<number>(54.50);
   const [isOffline, setIsOffline] = useState<boolean>(false);
 
@@ -308,19 +309,11 @@ export const App: React.FC = () => {
     } finally {
       sessionStorage.removeItem('virgen_del_valle_session');
       setSessionToken('');
-      setCurrentUser(INITIAL_USERS[0]);
+      setCurrentUser(EMPTY_USER);
       setCurrentRole('waiter');
       setIsDbHydrated(false);
       dbHydratedRef.current = false;
       setIsAuthModalOpen(false);
-    }
-  };
-
-  const handleContinueAsClient = () => {
-    const client = users.find((u) => u.role === 'client') || INITIAL_USERS.find((u) => u.role === 'client');
-    if (client) {
-      setCurrentUser(client);
-      setCurrentRole('client');
     }
   };
 
@@ -587,7 +580,7 @@ export const App: React.FC = () => {
 
   // Operational modules are never rendered without an authenticated server session.
   // The standalone login can also be opened explicitly with ?login=1.
-  if ((!sessionToken && currentRole !== 'client') || directLoginRequested) {
+  if (!sessionToken || directLoginRequested) {
     return (
       <LoginScreen
         onAuthenticated={handleAuthenticated}
