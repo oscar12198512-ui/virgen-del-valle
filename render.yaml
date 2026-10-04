@@ -50,6 +50,7 @@ services:
 
 
 # Existing Render Postgres managed by this Blueprint.
+# DATABASE_URL is intentionally wired through fromDatabase so Render injects the internal connection string.
 # Because the database already exists, omitted fields are preserved by Render.
 databases:
   - name: virgen-del-valle-postgres
