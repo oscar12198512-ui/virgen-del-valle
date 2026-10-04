@@ -168,6 +168,11 @@ async function ensureSchema() {
       expires_at TIMESTAMPTZ NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    CREATE TABLE IF NOT EXISTS system_flags (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_token_hash ON auth_sessions(token_hash);
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions(expires_at);
   `);
@@ -206,15 +211,15 @@ async function ensureOwner() {
 
   // One-time production cleanup: keep only the configured owner account.
   // Future staff accounts can be created and approved from the owner's panel.
-  const marker = await pool.query("SELECT state->>'owner_only_cleanup_v1' AS done FROM app_state WHERE id=1");
-  if (marker.rows[0]?.done !== 'true') {
+  const marker = await pool.query("SELECT value FROM system_flags WHERE key='owner_only_cleanup_v1' LIMIT 1");
+  if (marker.rows[0]?.value !== 'true') {
     await pool.query('BEGIN');
     try {
       const owner = await pool.query('SELECT id FROM app_users WHERE email=$1 LIMIT 1', [email]);
       if (!owner.rows[0]) throw new Error('Owner account could not be initialized.');
       await pool.query('DELETE FROM auth_sessions WHERE user_id <> $1', [owner.rows[0].id]);
       await pool.query('DELETE FROM app_users WHERE id <> $1', [owner.rows[0].id]);
-      await pool.query("INSERT INTO app_state (id,state) VALUES (1, jsonb_build_object('owner_only_cleanup_v1', true)) ON CONFLICT (id) DO UPDATE SET state=app_state.state || EXCLUDED.state, updated_at=NOW(), version=app_state.version+1");
+      await pool.query("INSERT INTO system_flags (key,value) VALUES ('owner_only_cleanup_v1','true') ON CONFLICT (key) DO UPDATE SET value='true', updated_at=NOW()");
       await pool.query('COMMIT');
       console.log('One-time owner-only account cleanup completed.');
     } catch (error) {
@@ -249,7 +254,7 @@ app.get('/api/state', async (req,res) => {
       version: result.rows[0]?.version || 0,
       updatedAt: result.rows[0]?.updated_at || null,
       state: authenticatedUser ? rawState : publicState,
-      users: authenticatedUser ? users.rows.map(toClientUser) : users.rows.map(toPublicUser),
+      users: authenticatedUser ? users.rows.map(toClientUser) : [],
     });
   } catch {
     return res.status(500).json({ message:'No se pudo cargar el estado de la aplicación.' });
