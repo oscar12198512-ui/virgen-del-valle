@@ -3,6 +3,9 @@ services:
     name: virgen-del-valle-api
     runtime: node
     plan: free
+    region: virginia
+    branch: main
+    repo: https://github.com/oscar12198512-ui/virgen-del-valle
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /health
@@ -42,15 +45,16 @@ services:
 
   - type: static
     name: virgen-del-valle-web
+    plan: free
+    branch: main
+    repo: https://github.com/oscar12198512-ui/virgen-del-valle
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
         value: "https://virgen-del-valle-api.onrender.com"
 
-
-# Existing Render Postgres managed by this Blueprint.
-# DATABASE_URL is intentionally wired through fromDatabase so Render injects the internal connection string.
-# Because the database already exists, omitted fields are preserved by Render.
 databases:
   - name: virgen-del-valle-postgres
+    plan: free
+    region: virginia
