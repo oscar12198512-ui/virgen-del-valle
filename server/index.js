@@ -10,7 +10,8 @@ const { Pool } = pg;
 const app = express();
 const port = Number(process.env.PORT || 10000);
 
-const dbConfig = {
+const databaseUrl = String(process.env.DATABASE_URL || '').trim();
+const explicitDbConfig = {
   host: String(process.env.PGHOST || '').trim(),
   port: Number(process.env.PGPORT || 5432),
   database: String(process.env.PGDATABASE || '').trim(),
@@ -18,13 +19,17 @@ const dbConfig = {
   password: String(process.env.PGPASSWORD || ''),
 };
 
-const hasDatabaseCredentials = Boolean(
-  dbConfig.host && dbConfig.database && dbConfig.user && dbConfig.password
+const hasDatabaseUrl = Boolean(databaseUrl);
+const hasExplicitDatabaseCredentials = Boolean(
+  explicitDbConfig.host &&
+  explicitDbConfig.database &&
+  explicitDbConfig.user &&
+  explicitDbConfig.password
 );
 
-const pool = hasDatabaseCredentials
+const pool = hasDatabaseUrl || hasExplicitDatabaseCredentials
   ? new Pool({
-      ...dbConfig,
+      ...(hasDatabaseUrl ? { connectionString: databaseUrl } : explicitDbConfig),
       max: Number(process.env.DATABASE_POOL_MAX || 5),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
@@ -32,8 +37,8 @@ const pool = hasDatabaseCredentials
     })
   : null;
 
-if (!hasDatabaseCredentials) {
-  console.warn('Production PostgreSQL credentials are not configured.');
+if (!pool) {
+  console.error('PostgreSQL is not configured: set DATABASE_URL or PGHOST/PGDATABASE/PGUSER/PGPASSWORD.');
 }
 const allowedOrigins = (process.env.CORS_ORIGIN || '*').split(',').map(v => v.trim()).filter(Boolean);
 app.use(cors({ origin: allowedOrigins.includes('*') ? true : allowedOrigins }));
@@ -206,24 +211,8 @@ async function ensureOwner() {
     console.log('Owner account created: ' + email);
   }
 
-  // One-time production cleanup: keep only the configured owner account.
-  // Future staff accounts can be created and approved from the owner's panel.
-  const marker = await pool.query("SELECT value FROM system_flags WHERE key='owner_only_cleanup_v1' LIMIT 1");
-  if (marker.rows[0]?.value !== 'true') {
-    await pool.query('BEGIN');
-    try {
-      const owner = await pool.query('SELECT id FROM app_users WHERE email=$1 LIMIT 1', [email]);
-      if (!owner.rows[0]) throw new Error('Owner account could not be initialized.');
-      await pool.query('DELETE FROM auth_sessions WHERE user_id <> $1', [owner.rows[0].id]);
-      await pool.query('DELETE FROM app_users WHERE id <> $1', [owner.rows[0].id]);
-      await pool.query("INSERT INTO system_flags (key,value) VALUES ('owner_only_cleanup_v1','true') ON CONFLICT (key) DO UPDATE SET value='true', updated_at=NOW()");
-      await pool.query('COMMIT');
-      console.log('One-time owner-only account cleanup completed.');
-    } catch (error) {
-      await pool.query('ROLLBACK');
-      throw error;
-    }
-  }
+  // Never delete existing users during startup. Owner seeding must be idempotent.
+  // Staff accounts are managed explicitly by the owner.
 }
 
 app.get('/health', async (_req, res) => {
@@ -312,13 +301,13 @@ app.post('/api/users/sync', requireAuth, requireRole('admin'), async (req,res) =
 app.post('/api/users/request', async (req,res) => {
   if (!pool) return res.status(503).json({ message:'Base de datos no disponible.' });
   const role = String(req.body?.role || '').trim();
-  const allowedRoles = new Set(['client','waiter','excursion','kitchen']);
+  const role = 'client';
   const name = String(req.body?.name || '').trim();
   const phone = String(req.body?.phone || '').trim();
   const email = normalizeEmail(req.body?.email);
   const zone = String(req.body?.zone || '').trim() || null;
   const boatName = String(req.body?.boatName || '').trim() || null;
-  if (!allowedRoles.has(role) || !name || !email) {
+  if (!name || !email) {
     return res.status(400).json({ message:'Solicitud de acceso inválida.' });
   }
   try {
