@@ -10,6 +10,10 @@ services:
     startCommand: npm start
     healthCheckPath: /health
     envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: virgen-del-valle-postgres
+          property: connectionString
       - key: PGHOST
         fromDatabase:
           name: virgen-del-valle-postgres
