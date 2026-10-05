@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BankConfig,
   BillDenominationCount,
@@ -10,20 +10,18 @@ import {
   ToldoSpot,
   User,
   UserRole,
-  WaiterClosingSummary
+  WaiterClosingSummary,
 } from './types';
 import {
   INITIAL_BANK_CONFIG,
   INITIAL_DRAWER_BILLS,
   INITIAL_EXCURSION,
   INITIAL_MENU_ITEMS,
-  INITIAL_ORDERS,
   INITIAL_SPOTS,
-  INITIAL_WAITERS_CLOSINGS
 } from './data/initialData';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
-import { AuthModal } from './components/AuthModal';
+import { AccountPanel } from './components/AccountPanel';
 import { PagoMovilModal } from './components/PagoMovilModal';
 import { PazYSalvoModal } from './components/PazYSalvoModal';
 import { FiscalInvoiceModal } from './components/FiscalInvoiceModal';
@@ -42,94 +40,160 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 import { AppInstallModal } from './components/AppInstallModal';
 import { LoginScreen } from './components/LoginScreen';
 
+const SESSION_KEY = 'virgen_del_valle_session';
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+const STAFF_ROLES: UserRole[] = ['admin', 'waiter', 'kitchen', 'excursion'];
+const ALL_ROLES: UserRole[] = ['admin', 'waiter', 'kitchen', 'excursion', 'client'];
+
+const Splash: React.FC<{ label?: string }> = ({ label = 'Verificando sesión…' }) => (
+  <div className="min-h-screen bg-[#002546] flex flex-col items-center justify-center gap-3 text-white">
+    <div className="w-10 h-10 rounded-full border-2 border-white/25 border-t-[#57d1fd] animate-spin" />
+    <p className="text-xs font-bold tracking-widest uppercase text-white/70">{label}</p>
+  </div>
+);
+
 export const App: React.FC = () => {
-  // Production state is persisted in PostgreSQL through the Render API.
   const [users, setUsers] = useState<User[]>([]);
-  const [sessionToken, setSessionToken] = useState<string>(() => sessionStorage.getItem('virgen_del_valle_session') || '');
+  const [sessionToken, setSessionToken] = useState<string>(() => sessionStorage.getItem(SESSION_KEY) || '');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [identityResolved, setIdentityResolved] = useState(false);
   const [isDbHydrated, setIsDbHydrated] = useState(false);
   const dbHydratedRef = useRef(false);
-  const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
-  const authHeaders = () => sessionToken
-    ? { Authorization: `Bearer ${sessionToken}` }
-    : {};
+  const [bcvRate, setBcvRate] = useState<number>(54.5);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(INITIAL_MENU_ITEMS);
+  const [spots, setSpots] = useState<ToldoSpot[]>(INITIAL_SPOTS);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [excursion, setExcursion] = useState<ExcursionPackage>(INITIAL_EXCURSION);
+  const [bankConfig, setBankConfig] = useState<BankConfig>(INITIAL_BANK_CONFIG);
+  const [waitersClosings, setWaitersClosings] = useState<WaiterClosingSummary[]>([]);
+  const [drawerBills, setDrawerBills] = useState<BillDenominationCount>(INITIAL_DRAWER_BILLS);
+  const [selectedSpotId, setSelectedSpotId] = useState<string>('');
+  const [approachingAlertCount, setApproachingAlertCount] = useState<number>(0);
+  const [clientActiveOrder, setClientActiveOrder] = useState<Order | null>(null);
 
-  // Public bootstrap only exposes non-sensitive catalog data and staff display metadata.
+  const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [activePagoMovilOrder, setActivePagoMovilOrder] = useState<Order | null>(null);
+  const [activePazYSalvoClosing, setActivePazYSalvoClosing] = useState<WaiterClosingSummary | null>(null);
+  const [isFiscalInvoiceOpen, setIsFiscalInvoiceOpen] = useState(false);
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
+  const [calculatorInitialTotal, setCalculatorInitialTotal] = useState<number>(0);
+  const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
+  const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [viewRole, setViewRole] = useState<UserRole | null>(null);
+
+  const directLoginRequested = new URLSearchParams(window.location.search).get('login') === '1';
+
+  const authHeaders = useCallback(
+    () => (sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+    [sessionToken]
+  );
+
+  const signedInRole: UserRole | null = currentUser?.role ?? null;
+  const effectiveRole: UserRole = signedInRole ?? 'client';
+  // El dueño puede inspeccionar cualquier módulo; el resto solo el suyo.
+  const availableRoles = useMemo(
+    () => (signedInRole === 'admin' ? ALL_ROLES : signedInRole ? [signedInRole] : []),
+    [signedInRole]
+  );
+  const currentRole: UserRole = availableRoles.includes(viewRole ?? effectiveRole) ? (viewRole ?? effectiveRole) : effectiveRole;
+  const isClient = effectiveRole === 'client';
+
+  const clearSession = useCallback(() => {
+    sessionStorage.removeItem(SESSION_KEY);
+    setSessionToken('');
+    setCurrentUser(null);
+    setIdentityResolved(true);
+    setIsDbHydrated(false);
+    dbHydratedRef.current = false;
+    setViewRole(null);
+    setOrders([]);
+    setClientActiveOrder(null);
+  }, []);
+
+  // Identidad: se resuelve siempre contra la API antes de mostrar cualquier módulo.
   useEffect(() => {
+    if (!API_BASE) {
+      setIdentityResolved(true);
+      return;
+    }
+    if (!sessionToken) {
+      setCurrentUser(null);
+      setIdentityResolved(true);
+      return;
+    }
     let cancelled = false;
     (async () => {
-      if (!apiBase) {
-        setIsDbHydrated(true);
-        dbHydratedRef.current = true;
-        return;
-      }
       try {
-        const response = await fetch(apiBase + '/api/state');
-        if (!response.ok) throw new Error('public state fetch failed');
+        const response = await fetch(API_BASE + '/api/me', { headers: authHeaders() });
+        if (response.status === 401) {
+          clearSession();
+          return;
+        }
+        if (!response.ok) throw new Error('identity request failed');
         const data = await response.json();
-        if (cancelled) return;
-        if (Array.isArray(data.users) && data.users.length) {
-          setUsers((prev) => {
-            const byEmail = new Map(data.users.map((u: User) => [u.email.toLowerCase(), u]));
-            const merged = prev.map((u) => byEmail.get(u.email.toLowerCase()) || u);
-            for (const remote of data.users as User[]) {
-              if (!merged.some((u) => u.email.toLowerCase() === remote.email.toLowerCase())) merged.push(remote);
-            }
-            return merged;
-          });
-        }
-        if (data.state) {
-          if (Array.isArray(data.state.menuItems)) setMenuItems(data.state.menuItems);
-          if (Array.isArray(data.state.spots)) setSpots(data.state.spots);
-          if (data.state.excursion) setExcursion(data.state.excursion);
-          if (typeof data.state.bcvRate === 'number') setBcvRate(data.state.bcvRate);
-        }
-      } catch (error) {
-        console.warn('Public PostgreSQL state unavailable; using local catalog defaults.', error);
+        if (cancelled || !data.user) return;
+        setCurrentUser(data.user);
+      } catch {
+        if (!cancelled) clearSession();
+      } finally {
+        if (!cancelled) setIdentityResolved(true);
       }
     })();
-    return () => { cancelled = true; };
-  }, [apiBase]);
+    return () => {
+      cancelled = true;
+    };
+  }, [API_BASE, sessionToken, authHeaders, clearSession]);
 
-  // Authenticated bootstrap hydrates the complete operational state.
+  // Catálogo público para la pantalla de acceso (sin sesión no hay datos operativos).
   useEffect(() => {
+    if (!API_BASE || sessionToken) return;
     let cancelled = false;
     (async () => {
-      if (!apiBase || !sessionToken) {
-        if (!apiBase) {
-          setIsDbHydrated(true);
-          dbHydratedRef.current = true;
-        } else {
-          setIsDbHydrated(false);
-          dbHydratedRef.current = false;
-        }
-        return;
-      }
       try {
-        const response = await fetch(apiBase + '/api/state', { headers: authHeaders() });
+        const response = await fetch(API_BASE + '/api/state');
+        if (!response.ok) throw new Error('public state fetch failed');
+        const data = await response.json();
+        if (cancelled || !data.state) return;
+        if (Array.isArray(data.state.menuItems)) setMenuItems(data.state.menuItems);
+        if (Array.isArray(data.state.spots)) setSpots(data.state.spots);
+        if (data.state.excursion && data.state.excursion.id) setExcursion(data.state.excursion);
+        if (typeof data.state.bcvRate === 'number') setBcvRate(data.state.bcvRate);
+      } catch (error) {
+        console.warn('Catálogo público no disponible; se usan los valores locales.', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [API_BASE, sessionToken]);
+
+  // Estado operativo autenticado.
+  useEffect(() => {
+    if (!API_BASE || !sessionToken || !signedInRole) {
+      setIsDbHydrated(false);
+      dbHydratedRef.current = false;
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(API_BASE + '/api/state', { headers: authHeaders() });
         if (response.status === 401) {
-          sessionStorage.removeItem('virgen_del_valle_session');
-          setSessionToken('');
-          throw new Error('session expired');
+          clearSession();
+          return;
         }
         if (!response.ok) throw new Error('authenticated state fetch failed');
         const data = await response.json();
         if (cancelled) return;
-        if (Array.isArray(data.users) && data.users.length) {
-          setUsers((prev) => {
-            const byEmail = new Map((data.users as User[]).map((u) => [u.email.toLowerCase(), u]));
-            const merged = prev.map((u) => byEmail.get(u.email.toLowerCase()) || u);
-            for (const remote of data.users as User[]) {
-              if (!merged.some((u) => u.email.toLowerCase() === remote.email.toLowerCase())) merged.push(remote);
-            }
-            return merged;
-          });
-        }
+        if (Array.isArray(data.users)) setUsers(data.users);
         if (data.state) {
           if (Array.isArray(data.state.menuItems)) setMenuItems(data.state.menuItems);
           if (Array.isArray(data.state.spots)) setSpots(data.state.spots);
           if (Array.isArray(data.state.orders)) setOrders(data.state.orders);
-          if (data.state.excursion) setExcursion(data.state.excursion);
+          if (data.state.excursion && data.state.excursion.id) setExcursion(data.state.excursion);
           if (data.state.bankConfig) setBankConfig(data.state.bankConfig);
           if (Array.isArray(data.state.waitersClosings)) setWaitersClosings(data.state.waitersClosings);
           if (data.state.drawerBills) setDrawerBills(data.state.drawerBills);
@@ -141,97 +205,23 @@ export const App: React.FC = () => {
         if (!cancelled) {
           setIsDbHydrated(false);
           dbHydratedRef.current = false;
-          console.warn('Authenticated PostgreSQL state unavailable.', error);
+          console.warn('Estado de la base de datos no disponible.', error);
         }
       }
     })();
-    return () => { cancelled = true; };
-  }, [apiBase, sessionToken]);
-
-  const [currentRole, setCurrentRole] = useState<UserRole>('waiter');
-  const EMPTY_USER: User = { id: '', name: '', email: '', role: 'client', status: 'pending_approval' };
-  const [currentUser, setCurrentUser] = useState<User>(EMPTY_USER);
-  const [bcvRate, setBcvRate] = useState<number>(54.50);
-  const [isOffline, setIsOffline] = useState<boolean>(false);
-
-  // Entities state
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(INITIAL_MENU_ITEMS);
-  const [spots, setSpots] = useState<ToldoSpot[]>(INITIAL_SPOTS);
-  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
-  const [excursion, setExcursion] = useState<ExcursionPackage>(INITIAL_EXCURSION);
-  const [bankConfig, setBankConfig] = useState<BankConfig>(INITIAL_BANK_CONFIG);
-  const [waitersClosings, setWaitersClosings] = useState<WaiterClosingSummary[]>(INITIAL_WAITERS_CLOSINGS);
-  const [drawerBills, setDrawerBills] = useState<BillDenominationCount>(INITIAL_DRAWER_BILLS);
-  const [selectedSpotId, setSelectedSpotId] = useState<string>('spot-14');
-  const [approachingAlertCount, setApproachingAlertCount] = useState<number>(0);
-
-  // Modal controls
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const directLoginRequested = new URLSearchParams(window.location.search).get('login') === '1';
-  const [activePagoMovilOrder, setActivePagoMovilOrder] = useState<Order | null>(null);
-  const [activePazYSalvoClosing, setActivePazYSalvoClosing] = useState<WaiterClosingSummary | null>(null);
-  const [isFiscalInvoiceOpen, setIsFiscalInvoiceOpen] = useState<boolean>(false);
-  const [isCalculatorOpen, setIsCalculatorOpen] = useState<boolean>(false);
-  const [calculatorInitialTotal, setCalculatorInitialTotal] = useState<number>(0);
-  const [isWeatherModalOpen, setIsWeatherModalOpen] = useState<boolean>(false);
-  const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState<boolean>(false);
-  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
-  const [isPrototypeModalOpen, setIsPrototypeModalOpen] = useState<boolean>(false);
-
-  // Restore the authenticated identity before rendering operational modules.
-  useEffect(() => {
-    if (!apiBase || !sessionToken) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const response = await fetch(apiBase + '/api/me', { headers: authHeaders() });
-        if (!response.ok) throw new Error('session invalid');
-        const data = await response.json();
-        if (cancelled || !data.user) return;
-        setCurrentUser(data.user);
-        setCurrentRole(data.user.role);
-      } catch {
-        if (!cancelled) {
-          sessionStorage.removeItem('virgen_del_valle_session');
-          setSessionToken('');
-          setCurrentRole('waiter');
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [apiBase, sessionToken]);
-
-  // Reset demo data to factory defaults
-  const handleResetFactoryData = () => {
-    setUsers([]);
-    setOrders(INITIAL_ORDERS);
-    setMenuItems(INITIAL_MENU_ITEMS);
-    setSpots(INITIAL_SPOTS);
-    setBcvRate(54.50);
-    setIsOffline(false);
-    soundService.playSuccess();
-  };
-
-  // Global Ctrl+K / Cmd+K listener
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setIsCommandPaletteOpen((prev) => !prev);
-      }
+    return () => {
+      cancelled = true;
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [API_BASE, sessionToken, signedInRole, authHeaders, clearSession]);
 
-  // Persist operational state after the database has hydrated.
+  // Solo el personal operativo escribe el estado; el cliente usa endpoints propios.
   useEffect(() => {
-    if (!apiBase || !sessionToken || !dbHydratedRef.current || !isDbHydrated) return;
+    if (!API_BASE || !sessionToken || !isDbHydrated || !signedInRole || !STAFF_ROLES.includes(signedInRole)) return;
     const controller = new AbortController();
     const payload = { menuItems, spots, orders, excursion, bankConfig, waitersClosings, drawerBills, bcvRate };
     const timer = window.setTimeout(async () => {
       try {
-        const response = await fetch(apiBase + '/api/state', {
+        const response = await fetch(API_BASE + '/api/state', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({ state: payload }),
@@ -239,382 +229,203 @@ export const App: React.FC = () => {
         });
         if (!response.ok) throw new Error('state save failed');
       } catch (error) {
-        if ((error as Error).name !== 'AbortError') console.warn('No se pudo guardar el estado en PostgreSQL.', error);
+        if ((error as Error).name !== 'AbortError') console.warn('No se pudo guardar el estado.', error);
       }
-    }, 500);
-    return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [apiBase, sessionToken, isDbHydrated, menuItems, spots, orders, excursion, bankConfig, waitersClosings, drawerBills, bcvRate]);
+    }, 600);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    API_BASE, sessionToken, isDbHydrated, signedInRole, menuItems, spots, orders,
+    excursion, bankConfig, waitersClosings, drawerBills, bcvRate, authHeaders,
+  ]);
 
-  // Only the authenticated owner can persist staff roster changes.
   useEffect(() => {
-    if (!apiBase || !sessionToken || !dbHydratedRef.current || !isDbHydrated || currentUser.role !== 'admin' || !users.length) return;
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      try {
-        const response = await fetch(apiBase + '/api/users/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({ users }),
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error('users sync failed');
-      } catch (error) {
-        if ((error as Error).name !== 'AbortError') console.warn('No se pudo sincronizar los usuarios con PostgreSQL.', error);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setIsCommandPaletteOpen((previous) => !previous);
       }
-    }, 500);
-    return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [apiBase, sessionToken, isDbHydrated, users, currentUser.role]);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
-  // Compute live notifications count
-  const now = new Date();
-  const alertOrdersCount = orders.filter((o) => {
-    if (o.status === 'delivered' || o.status === 'cancelled' || o.status === 'ready_pass') return false;
-    const t = getOrderDeliveryTiming(o, now);
-    return t.minutesRemaining <= 30 && t.minutesRemaining > 0;
-  }).length;
-  const totalNotificationCount = alertOrdersCount + approachingAlertCount;
-
-  // Active client order
-  const [clientActiveOrder, setClientActiveOrder] = useState<Order | null>(orders[2] || null);
-
-  // Authentication and role navigation
   const handleAuthenticated = (user: User) => {
     const token = (user as User & { sessionToken?: string }).sessionToken || '';
-    if (token) {
-      sessionStorage.setItem('virgen_del_valle_session', token);
-      setSessionToken(token);
-      setIsDbHydrated(false);
-      dbHydratedRef.current = false;
-    }
-    setCurrentUser(user);
-    setCurrentRole(user.role);
-    setIsAuthModalOpen(false);
-    if (directLoginRequested || window.location.search.includes('resetToken')) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
+    if (!token) return;
+    sessionStorage.setItem(SESSION_KEY, token);
+    setSessionToken(token);
+    setCurrentUser({ ...user, sessionToken: undefined });
+    setIdentityResolved(true);
+    setIsDbHydrated(false);
+    dbHydratedRef.current = false;
+    setViewRole(null);
+    if (window.location.search) window.history.replaceState({}, document.title, window.location.pathname);
   };
 
   const handleLogout = async () => {
     const token = sessionToken;
+    setIsAccountPanelOpen(false);
     try {
-      if (apiBase && token) {
-        await fetch(apiBase + '/api/auth/logout', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-        });
+      if (API_BASE && token) {
+        await fetch(API_BASE + '/api/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       }
     } catch {
-      // Local logout still completes if the network is unavailable.
+      // El cierre de sesión local se completa aunque la red falle.
     } finally {
-      sessionStorage.removeItem('virgen_del_valle_session');
-      setSessionToken('');
-      setCurrentUser(EMPTY_USER);
-      setCurrentRole('waiter');
-      setIsDbHydrated(false);
-      dbHydratedRef.current = false;
-      setIsAuthModalOpen(false);
+      clearSession();
     }
   };
 
-  const handleSelectRole = (role: UserRole, user?: User) => {
-    if (user) {
-      handleAuthenticated(user);
-      return;
-    }
-
-    const canOpenModule = sessionToken && (currentUser.role === 'admin' || currentUser.role === role);
-    if (canOpenModule) {
-      setCurrentRole(role);
-      return;
-    }
-
-    setIsAuthModalOpen(true);
+  // Un rol nunca puede abrir un módulo ajeno, aunque se manipule la interfaz.
+  const handleSelectRole = (role: UserRole) => {
+    if (!availableRoles.includes(role)) return;
+    setViewRole(role === effectiveRole ? null : role);
   };
 
-  // Staff Account & Access Management by Owner
-  const handleAddUser = (newUser: User) => {
-    setUsers((prev) => [newUser, ...prev]);
-    soundService.playSuccess();
+  const handleOpenCalculator = (initialTotal?: number) => {
+    setCalculatorInitialTotal(initialTotal || 0);
+    setIsCalculatorOpen(true);
   };
 
-  const handleUpdateUser = (updatedUser: User) => {
-    setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
-    if (currentUser.id === updatedUser.id) {
-      setCurrentUser(updatedUser);
-    }
-    soundService.playSuccess();
-  };
+  const now = new Date();
+  const alertOrdersCount = orders.filter((order) => {
+    if (order.status === 'delivered' || order.status === 'cancelled' || order.status === 'ready_pass') return false;
+    const timing = getOrderDeliveryTiming(order, now);
+    return timing.minutesRemaining <= 30 && timing.minutesRemaining > 0;
+  }).length;
+  const totalNotificationCount = alertOrdersCount + approachingAlertCount;
 
-  const handleApproveUser = (userId: string, pin: string, zone?: string, boatName?: string) => {
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id !== userId) return u;
-        return {
-          ...u,
-          status: 'active',
-          approvedByOwner: true,
-          approvedAt: new Date().toISOString(),
-          pin: pin || u.pin,
-          zone: zone || u.zone,
-          boatName: boatName || u.boatName,
-        };
-      })
-    );
-    soundService.playSuccess();
-  };
-
-  const handleToggleUserStatus = (userId: string) => {
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id !== userId) return u;
-        const newStatus = u.status === 'suspended' ? 'active' : 'suspended';
-        return { ...u, status: newStatus };
-      })
-    );
-    soundService.playClick();
-  };
-
-  const handleDeleteUser = (userId: string) => {
-    setUsers((prev) => prev.filter((u) => u.id !== userId));
-    soundService.playClick();
-  };
-
-  const handleRequestAccess = async (
-    role: UserRole,
-    name: string,
-    phone: string,
-    email: string,
-    zone?: string,
-    boatName?: string
-  ) => {
-    const initials = name
-      .trim()
-      .split(' ')
-      .slice(0, 2)
-      .map((w) => w[0]?.toUpperCase())
-      .join('');
-
-    const newRequestUser: User = {
-      id: `u-req-${Date.now()}`,
-      name,
-      email: email.trim().toLowerCase(),
-      role,
-      phone,
-      zone: zone || (role === 'waiter' ? 'Pendiente Asignación' : 'Muelle Bahía'),
-      boatName,
-      avatar: initials || 'PB',
-      status: 'pending_approval',
-      approvedByOwner: false,
-      createdAt: new Date().toISOString(),
-      notes: `Solicitó acceso desde pantalla de inicio. Requiere aprobación y asignación de PIN por el dueño.`,
-    };
-
-    setUsers((prev) => [newRequestUser, ...prev]);
-    if (apiBase) {
-      try {
-        const response = await fetch(apiBase + '/api/users/request', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            role,
-            name,
-            phone,
-            email: newRequestUser.email,
-            zone: zone || '',
-            boatName: boatName || '',
-          }),
-        });
-        if (!response.ok) throw new Error('access request failed');
-      } catch (error) {
-        console.warn('No se pudo registrar la solicitud de acceso en PostgreSQL.', error);
-      }
-    }
-  };
-
-  // Waiter sends new order to kitchen
   const handleSendOrderToKitchen = (newOrder: Order) => {
-    setOrders((prev) => [newOrder, ...prev]);
+    setOrders((previous) => [newOrder, ...previous]);
     soundService.playBell();
   };
 
-  // Kitchen KDS update order status with prep duration tracking
   const handleUpdateOrderStatus = (orderId: string, newStatus: OrderStatus) => {
-    setOrders((prev) =>
-      prev.map((o) => {
-        if (o.id !== orderId) return o;
-        const now = new Date();
-        const updates: Partial<Order> = {
-          status: newStatus,
-          updatedAt: now.toISOString(),
-        };
-
-        // When marked as ready_pass or delivered, compute prep time from receipt to ready
-        if ((newStatus === 'ready_pass' || newStatus === 'delivered') && !o.readyAt) {
-          const readyIso = now.toISOString();
-          let durationMinutes = 12;
-          if (o.createdAt) {
-            const createdMs = new Date(o.createdAt).getTime();
-            const elapsedMs = now.getTime() - createdMs;
-            if (elapsedMs > 0 && elapsedMs < 12 * 60 * 60 * 1000) {
-              durationMinutes = Math.max(1, Math.round(elapsedMs / 60000));
-            } else if (o.elapsedSeconds) {
-              durationMinutes = Math.max(1, Math.round(o.elapsedSeconds / 60));
-            }
-          } else if (o.elapsedSeconds) {
-            durationMinutes = Math.max(1, Math.round(o.elapsedSeconds / 60));
-          }
-          updates.readyAt = readyIso;
-          updates.prepDurationMinutes = durationMinutes;
+    setOrders((previous) =>
+      previous.map((order) => {
+        if (order.id !== orderId) return order;
+        const updatedAt = new Date().toISOString();
+        const updates: Partial<Order> = { status: newStatus, updatedAt };
+        if ((newStatus === 'ready_pass' || newStatus === 'delivered') && !order.readyAt) {
+          const createdMs = order.createdAt ? new Date(order.createdAt).getTime() : 0;
+          const elapsedMs = createdMs ? Date.now() - createdMs : 0;
+          updates.readyAt = updatedAt;
+          updates.prepDurationMinutes =
+            elapsedMs > 0 && elapsedMs < 12 * 60 * 60 * 1000
+              ? Math.max(1, Math.round(elapsedMs / 60000))
+              : order.elapsedSeconds
+                ? Math.max(1, Math.round(order.elapsedSeconds / 60))
+                : 1;
         }
-
-        return {
-          ...o,
-          ...updates,
-        };
+        return { ...order, ...updates };
       })
     );
   };
 
-  // Excursion approaching alert
-  const handleSendApproachingAlert = () => {
-    setApproachingAlertCount((prev) => prev + 1);
+  const handleUpdateOrder = (updatedOrder: Order) => {
+    setOrders((previous) => previous.map((order) => (order.id === updatedOrder.id ? updatedOrder : order)));
+    if (clientActiveOrder?.id === updatedOrder.id) setClientActiveOrder(updatedOrder);
   };
 
-  // Client creates direct order
-  const handleClientPlaceOrder = (items: OrderItem[], spot: ToldoSpot, requestedTime?: string) => {
-    const subtotal = items.reduce((acc, i) => acc + i.quantity * i.unitPriceUsd, 0);
-    const newOrd: Order = {
-      id: 'ord-client-' + Date.now(),
-      displayNumber: '#' + Math.floor(200 + Math.random() * 800),
+  const handleClientPlaceOrder = async (items: OrderItem[], spot: ToldoSpot, requestedTime?: string) => {
+    const subtotal = items.reduce((total, item) => total + item.quantity * item.unitPriceUsd, 0);
+    const nowIso = new Date().toISOString();
+    const newOrder: Order = {
+      id: `ord-client-${Date.now()}`,
+      displayNumber: `#${Math.floor(200 + Math.random() * 800)}`,
       origin: 'client_qr',
       spotId: spot.id,
       spotName: `${spot.name} • ${spot.typeDesc}`,
-      customerName: 'Carlos Mendoza',
+      customerName: currentUser?.name || 'Cliente',
       items,
       subtotalUsd: subtotal,
-      tipPercent: 10,
-      tipUsd: subtotal * 0.1,
-      totalUsd: subtotal * 1.1,
-      totalBs: subtotal * 1.1 * bcvRate,
+      tipPercent: 0,
+      tipUsd: 0,
+      totalUsd: subtotal,
+      totalBs: subtotal * bcvRate,
       status: 'in_fire',
       paymentStatus: 'pending',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      estimatedDeliveryTime: requestedTime || 'Ahora (~20 min)',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      estimatedDeliveryTime: requestedTime || 'Ahora',
       kitchenStep: 2,
-      elapsedSeconds: 30,
     };
 
-    setOrders((prev) => [newOrd, ...prev]);
-    setClientActiveOrder(newOrd);
+    setClientActiveOrder(newOrder);
     soundService.playBell();
-  };
-
-  // Update an existing comanda (items added/removed, time modified, notes changed)
-  const handleUpdateOrder = (updatedOrder: Order) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o))
-    );
-    if (clientActiveOrder && (clientActiveOrder.id === updatedOrder.id || clientActiveOrder.spotId === updatedOrder.spotId)) {
-      setClientActiveOrder(updatedOrder);
+    // El cliente registra su pedido en el servidor: cocina y personal lo ven de inmediato.
+    try {
+      const response = await fetch(API_BASE + '/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ order: newOrder }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data.orders) && data.orders.length) {
+          setOrders(data.orders);
+        } else {
+          setOrders((previous) => [newOrder, ...previous]);
+        }
+      } else {
+        setOrders((previous) => [newOrder, ...previous]);
+      }
+    } catch (error) {
+      console.warn('No se pudo registrar el pedido en el servidor.', error);
+      setOrders((previous) => [newOrder, ...previous]);
     }
-    soundService.playFireAlert();
   };
 
-  // Settle waiter in closing view
-  const handleSettleWaiter = (settledClosing: WaiterClosingSummary) => {
-    setWaitersClosings((prev) =>
-      prev.map((w) => (w.id === settledClosing.id ? settledClosing : w))
-    );
-  };
-
-  const handleUpdateWaiterClosing = (updatedClosing: WaiterClosingSummary) => {
-    setWaitersClosings((prev) =>
-      prev.map((w) => (w.id === updatedClosing.id ? updatedClosing : w))
-    );
-  };
-
-  // Payment completed
   const handlePaymentSuccess = (orderId: string, reference: string, method: 'pago_movil' | 'zelle') => {
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === orderId
-          ? {
-              ...o,
-              paymentStatus: 'verified',
-              paymentMethod: method,
-              paymentReference: reference,
-            }
-          : o
-      )
-    );
-    if (clientActiveOrder && clientActiveOrder.id === orderId) {
-      setClientActiveOrder((prev) => (prev ? { ...prev, paymentStatus: 'verified' } : null));
-    }
+    const applyPayment = (order: Order) =>
+      order.id === orderId
+        ? { ...order, paymentStatus: 'verified' as const, paymentMethod: method, paymentReference: reference }
+        : order;
+    setOrders((previous) => previous.map(applyPayment));
+    setClientActiveOrder((previous) => (previous ? applyPayment(previous) : previous));
   };
 
-  // Toggle menu item availability (quitar y colocar platos)
-  const handleToggleMenuAvailability = (itemId: string) => {
-    setMenuItems((prev) =>
-      prev.map((m) => (m.id === itemId ? { ...m, isAvailable: !m.isAvailable } : m))
-    );
-  };
-
-  // Add new menu item from owner panel
-  const handleAddMenuItem = (newItem: MenuItem) => {
-    setMenuItems((prev) => [newItem, ...prev]);
-  };
-
-  // Update existing menu item
-  const handleUpdateMenuItem = (updatedItem: MenuItem) => {
-    setMenuItems((prev) =>
-      prev.map((m) => (m.id === updatedItem.id ? updatedItem : m))
-    );
-  };
-
-  // Delete menu item from menu
-  const handleDeleteMenuItem = (itemId: string) => {
-    setMenuItems((prev) => prev.filter((m) => m.id !== itemId));
-  };
-
-  // Operational modules are never rendered without an authenticated server session.
-  // The standalone login can also be opened explicitly with ?login=1.
-  if (!sessionToken || directLoginRequested) {
+  if (!API_BASE) {
     return (
-      <LoginScreen
-        onAuthenticated={handleAuthenticated}
-        onRequestAccess={handleRequestAccess}
-      />
+      <Splash label="Falta configurar VITE_API_URL con la dirección de la API de producción." />
     );
+  }
+
+  if (directLoginRequested) {
+    return <LoginScreen onAuthenticated={handleAuthenticated} />;
+  }
+
+  if (!sessionToken) {
+    return <LoginScreen onAuthenticated={handleAuthenticated} />;
+  }
+
+  if (!identityResolved || !currentUser) {
+    return <Splash />;
   }
 
   return (
     <div className="min-h-screen bg-[#f8f9ff] text-[#002546] flex flex-col antialiased selection:bg-[#57d1fd] selection:text-[#002546]">
-      {/* Offline Status Tracker & Auto Reconnect Alert */}
       <OfflineIndicator />
 
-      {/* Universal Responsive Header */}
       <Header
         currentRole={currentRole}
         currentUser={currentUser}
         bcvRate={bcvRate}
-        isOffline={isOffline}
-        onToggleOffline={() => setIsOffline(!isOffline)}
-        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onOpenAccount={() => setIsAccountPanelOpen(true)}
         onLogout={handleLogout}
         onOpenFiscalInvoice={() => setIsFiscalInvoiceOpen(true)}
         onOpenSearch={() => setIsCommandPaletteOpen(true)}
-        onOpenCalculator={() => {
-          setCalculatorInitialTotal(0);
-          setIsCalculatorOpen(true);
-        }}
+        onOpenCalculator={() => handleOpenCalculator()}
         onOpenWeather={() => setIsWeatherModalOpen(true)}
         onOpenNotifications={() => setIsNotificationCenterOpen(true)}
-        onOpenPrototypeConsole={() => setIsPrototypeModalOpen(true)}
+        onOpenInstall={() => setIsInstallModalOpen(true)}
         notificationCount={totalNotificationCount}
+        canPreviewRoles={availableRoles.length > 1}
       />
 
-      {/* Main Role-Based Content Area */}
       <main className="flex-1 w-full max-w-2xl mx-auto px-2 sm:px-4 pt-20 pb-24">
         {currentRole === 'waiter' && (
           <WaitersView
@@ -624,12 +435,9 @@ export const App: React.FC = () => {
             orders={orders}
             bcvRate={bcvRate}
             onSendOrderToKitchen={handleSendOrderToKitchen}
-            onOpenPaymentModal={(ord) => setActivePagoMovilOrder(ord)}
+            onOpenPaymentModal={setActivePagoMovilOrder}
             onUpdateOrder={handleUpdateOrder}
-            onOpenCalculator={(initialTotal) => {
-              setCalculatorInitialTotal(initialTotal || 0);
-              setIsCalculatorOpen(true);
-            }}
+            onOpenCalculator={handleOpenCalculator}
           />
         )}
 
@@ -638,8 +446,8 @@ export const App: React.FC = () => {
             excursion={excursion}
             bcvRate={bcvRate}
             menuItems={menuItems}
-            onUpdateExcursion={(updated) => setExcursion(updated)}
-            onSendApproachingAlert={handleSendApproachingAlert}
+            onUpdateExcursion={setExcursion}
+            onSendApproachingAlert={() => setApproachingAlertCount((previous) => previous + 1)}
           />
         )}
 
@@ -652,31 +460,31 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentRole === 'admin' && (
+        {currentRole === 'admin' && currentUser.role === 'admin' && (
           <AdminView
+            apiBase={API_BASE}
+            authHeaders={authHeaders}
+            currentUserId={currentUser.id}
+            onUsersChanged={setUsers}
             bcvRate={bcvRate}
-            onUpdateBcvRate={(r) => setBcvRate(r)}
+            onUpdateBcvRate={setBcvRate}
             bankConfig={bankConfig}
-            onUpdateBankConfig={(c) => setBankConfig(c)}
+            onUpdateBankConfig={setBankConfig}
             menuItems={menuItems}
-            onToggleMenuAvailability={handleToggleMenuAvailability}
-            onAddMenuItem={handleAddMenuItem}
-            onUpdateMenuItem={handleUpdateMenuItem}
-            onDeleteMenuItem={handleDeleteMenuItem}
+            onToggleMenuAvailability={(itemId) =>
+              setMenuItems((previous) => previous.map((item) => (item.id === itemId ? { ...item, isAvailable: !item.isAvailable } : item)))
+            }
+            onAddMenuItem={(item) => setMenuItems((previous) => [item, ...previous])}
+            onUpdateMenuItem={(item) => setMenuItems((previous) => previous.map((entry) => (entry.id === item.id ? item : entry)))}
+            onDeleteMenuItem={(itemId) => setMenuItems((previous) => previous.filter((item) => item.id !== itemId))}
             waitersClosings={waitersClosings}
-            onSettleWaiter={handleSettleWaiter}
-            onUpdateWaiterClosing={handleUpdateWaiterClosing}
-            onOpenPazYSalvo={(closing) => setActivePazYSalvoClosing(closing)}
+            onSettleWaiter={(closing) => setWaitersClosings((previous) => previous.map((entry) => (entry.id === closing.id ? closing : entry)))}
+            onUpdateWaiterClosing={(closing) => setWaitersClosings((previous) => previous.map((entry) => (entry.id === closing.id ? closing : entry)))}
+            onOpenPazYSalvo={setActivePazYSalvoClosing}
             drawerBills={drawerBills}
-            onUpdateDrawerBills={(bills) => setDrawerBills(bills)}
+            onUpdateDrawerBills={setDrawerBills}
             staffUsers={users}
-            onAddUser={handleAddUser}
-            onUpdateUser={handleUpdateUser}
-            onApproveUser={handleApproveUser}
-            onToggleUserStatus={handleToggleUserStatus}
-            onDeleteUser={handleDeleteUser}
             onOpenFiscalInvoice={() => setIsFiscalInvoiceOpen(true)}
-            onOpenPrototypeConsole={() => setIsPrototypeModalOpen(true)}
             orders={orders}
             onUpdateOrderStatus={handleUpdateOrderStatus}
             onUpdateOrder={handleUpdateOrder}
@@ -684,42 +492,45 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentRole === 'client' && (
+        {currentRole === 'client' && currentUser.role === 'client' && (
           <ClientsView
             spots={spots}
             menuItems={menuItems}
             activeOrder={clientActiveOrder}
+            clientName={currentUser.name}
             bcvRate={bcvRate}
             selectedSpotId={selectedSpotId}
-            onSelectSpot={(sId) => setSelectedSpotId(sId)}
+            onSelectSpot={setSelectedSpotId}
             onPlaceOrder={handleClientPlaceOrder}
-            onOpenPaymentModal={(ord) => setActivePagoMovilOrder(ord)}
+            onOpenPaymentModal={setActivePagoMovilOrder}
             onOpenFiscalInvoice={() => setIsFiscalInvoiceOpen(true)}
             onUpdateOrder={handleUpdateOrder}
           />
         )}
       </main>
 
-      {/* Persistent 5-Role Bottom Navigation */}
       <BottomNav
         currentRole={currentRole}
         onSelectRole={handleSelectRole}
-        activeOrdersCount={orders.filter((o) => o.status === 'in_fire').length}
+        activeOrdersCount={orders.filter((order) => order.status === 'in_fire').length}
+        availableRoles={availableRoles}
       />
 
-      {/* Role Selection & PIN Security Modal */}
-      {isAuthModalOpen && (
-        <AuthModal
-          users={users}
-          currentRole={currentRole}
+      {isAccountPanelOpen && (
+        <AccountPanel
           currentUser={currentUser}
+          availableRoles={availableRoles}
+          currentRole={currentRole}
           onSelectRole={handleSelectRole}
-          onClose={() => setIsAuthModalOpen(false)}
-          onRequestAccess={handleRequestAccess}
+          onLogout={handleLogout}
+          onClose={() => setIsAccountPanelOpen(false)}
+          onOpenInstall={() => {
+            setIsAccountPanelOpen(false);
+            setIsInstallModalOpen(true);
+          }}
         />
       )}
 
-      {/* Pago Móvil & Zelle Modal with Gemini OCR */}
       {activePagoMovilOrder && (
         <PagoMovilModal
           order={activePagoMovilOrder}
@@ -730,7 +541,6 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Paz y Salvo Thermal Modal with SHA-256 and QR */}
       {activePazYSalvoClosing && (
         <PazYSalvoModal
           closing={activePazYSalvoClosing}
@@ -739,7 +549,6 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Comprobante Fiscal Digital Modal (SENIAT Inversiones Virgen del Valle) */}
       {isFiscalInvoiceOpen && (
         <FiscalInvoiceModal
           order={clientActiveOrder}
@@ -748,7 +557,6 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Quick Currency & Vueltos Calculator Modal */}
       <CurrencyCalculatorModal
         isOpen={isCalculatorOpen}
         onClose={() => setIsCalculatorOpen(false)}
@@ -756,63 +564,48 @@ export const App: React.FC = () => {
         initialTotalUsd={calculatorInitialTotal}
       />
 
-      {/* Beach & Maritime Weather Modal */}
-      <BeachWeatherModal
-        isOpen={isWeatherModalOpen}
-        onClose={() => setIsWeatherModalOpen(false)}
-      />
+      <BeachWeatherModal isOpen={isWeatherModalOpen} onClose={() => setIsWeatherModalOpen(false)} />
 
-      {/* Live Notification Center Dropdown */}
       <NotificationCenterDropdown
         isOpen={isNotificationCenterOpen}
         onClose={() => setIsNotificationCenterOpen(false)}
         orders={orders}
         approachingAlertCount={approachingAlertCount}
-        onNavigateToView={(role) => handleSelectRole(role)}
+        onNavigateToView={(role) => {
+          setIsNotificationCenterOpen(false);
+          handleSelectRole(role);
+        }}
         onSelectOrder={(orderId) => {
-          const ord = orders.find((o) => o.id === orderId);
-          if (ord) {
-            handleSelectRole(ord.origin === 'waiter_pos' ? 'waiter' : 'kitchen');
-          }
+          const order = orders.find((entry) => entry.id === orderId);
+          setIsNotificationCenterOpen(false);
+          if (!order) return;
+          handleSelectRole(order.origin === 'waiter_pos' ? 'waiter' : 'kitchen');
         }}
       />
 
-      {/* Universal Command Palette (Ctrl+K) */}
-      <GlobalCommandPalette
-        isOpen={isCommandPaletteOpen}
-        onClose={() => setIsCommandPaletteOpen(false)}
-        menuItems={menuItems}
-        spots={spots}
-        orders={orders}
-        bcvRate={bcvRate}
-        onNavigateToRole={(role) => handleSelectRole(role)}
-        onOpenCalculator={() => {
-          setCalculatorInitialTotal(0);
-          setIsCalculatorOpen(true);
-        }}
-        onOpenWeather={() => setIsWeatherModalOpen(true)}
-        onOpenFiscalInvoice={() => setIsFiscalInvoiceOpen(true)}
-        onOpenPrototypeConsole={() => setIsPrototypeModalOpen(true)}
-        onToggleOffline={() => setIsOffline(!isOffline)}
-        isOffline={isOffline}
-      />
+      {availableRoles.length > 1 && (
+        <GlobalCommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={() => setIsCommandPaletteOpen(false)}
+          menuItems={menuItems}
+          spots={spots}
+          orders={orders}
+          bcvRate={bcvRate}
+          availableRoles={availableRoles}
+          onNavigateToRole={(role) => {
+            setIsCommandPaletteOpen(false);
+            handleSelectRole(role);
+          }}
+          onOpenCalculator={() => handleOpenCalculator()}
+          onOpenWeather={() => setIsWeatherModalOpen(true)}
+          onOpenFiscalInvoice={() => setIsFiscalInvoiceOpen(true)}
+        />
+      )}
 
-      {/* Prototype Settings, Hardware Console & Direct Download Suite */}
       <AppInstallModal
-        isOpen={isPrototypeModalOpen}
-        onClose={() => setIsPrototypeModalOpen(false)}
-        bcvRate={bcvRate}
-        onUpdateBcvRate={(rate) => setBcvRate(rate)}
-        isOffline={isOffline}
-        onToggleOffline={() => setIsOffline(!isOffline)}
-        currentRole={currentRole}
-        onSelectRole={handleSelectRole}
-        orders={orders}
-        menuItems={menuItems}
-        spots={spots}
-        users={users}
-        bankConfig={bankConfig}
-        onResetFactoryData={handleResetFactoryData}
+        isOpen={isInstallModalOpen}
+        onClose={() => setIsInstallModalOpen(false)}
+        appUrl={typeof window !== 'undefined' ? window.location.origin : ''}
       />
     </div>
   );

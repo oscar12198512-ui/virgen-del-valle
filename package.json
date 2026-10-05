@@ -7,10 +7,11 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "node scripts/prepare-brand-assets.mjs && vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "start": "node server/index.js",
     "dev:server": "node --watch server/index.js",
+    "db:migrate": "node server/migrate.js",
     "cap:sync": "npm run build && npx cap sync"
   },
   "dependencies": {

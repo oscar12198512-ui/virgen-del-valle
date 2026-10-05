@@ -6,6 +6,7 @@ import {
   User,
   WaiterClosingSummary,
   ArenaSupplyItem,
+  AuditLogItem,
   CargoBoatManifest,
   WasteReportItem,
   RbacRoleDefinition,
@@ -14,6 +15,7 @@ import {
 } from '../types';
 import {
   INITIAL_ARENA_SUPPLIES,
+  INITIAL_AUDIT_LOGS,
   INITIAL_CARGO_BOAT,
   INITIAL_WASTE_REPORTS,
   RBAC_ROLE_DEFINITIONS,
@@ -85,13 +87,11 @@ interface AdminViewProps {
   drawerBills: BillDenominationCount;
   onUpdateDrawerBills: (bills: BillDenominationCount) => void;
   staffUsers: User[];
-  onAddUser?: (user: User) => void;
-  onUpdateUser?: (user: User) => void;
-  onApproveUser?: (userId: string, pin: string, zone?: string, boatName?: string) => void;
-  onToggleUserStatus?: (userId: string) => void;
-  onDeleteUser?: (userId: string) => void;
+  apiBase: string;
+  authHeaders: () => Record<string, string>;
+  currentUserId: string;
+  onUsersChanged: (users: User[]) => void;
   onOpenFiscalInvoice?: () => void;
-  onOpenPrototypeConsole?: () => void;
   orders?: Order[];
   onUpdateOrderStatus?: (orderId: string, newStatus: OrderStatus) => void;
   onUpdateOrder?: (updated: Order) => void;
@@ -115,13 +115,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
   drawerBills,
   onUpdateDrawerBills,
   staffUsers,
-  onAddUser,
-  onUpdateUser,
-  onApproveUser,
-  onToggleUserStatus,
-  onDeleteUser,
+  apiBase,
+  authHeaders,
+  currentUserId,
+  onUsersChanged,
   onOpenFiscalInvoice,
-  onOpenPrototypeConsole,
   orders = INITIAL_ORDERS,
   onUpdateOrderStatus,
   onUpdateOrder,
@@ -130,9 +128,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [adminTab, setAdminTab] = useState<
     'closings' | 'staff_access' | 'menu' | 'fiscal_audit' | 'contingency' | 'order_sync' | 'logistics' | 'rbac' | 'dashboard'
   >('closings');
-  const pendingStaffCount = staffUsers.filter(
-    (u) => u.status === 'pending_approval' || u.approvedByOwner === false
-  ).length;
   const [kdsSubView, setKdsSubView] = useState<'monitor' | 'editor'>('monitor');
   const [rateInput, setRateInput] = useState<string>(bcvRate.toString());
   const [closingsFilter, setClosingsFilter] = useState<'pending' | 'settled' | 'all'>('pending');
@@ -163,7 +158,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [selectedRbacRole, setSelectedRbacRole] = useState<string>('OWNER');
   const [showSqlPolicies, setShowSqlPolicies] = useState<boolean>(false);
   const [adminStateHydrated, setAdminStateHydrated] = useState(false);
-  const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+  const [isReachable, setIsReachable] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,30 +166,36 @@ export const AdminView: React.FC<AdminViewProps> = ({
       setAdminStateHydrated(true);
       return;
     }
-    fetch(apiBase + '/api/state')
-      .then((r) => r.ok ? r.json() : null)
+    fetch(apiBase + '/api/state', { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data?.state) return;
         if (Array.isArray(data.state.arenaSupplies)) setArenaSupplies(data.state.arenaSupplies);
         if (data.state.cargoBoat) setCargoBoat(data.state.cargoBoat);
         if (Array.isArray(data.state.wasteReports)) setWasteReports(data.state.wasteReports);
       })
-      .catch(() => undefined)
-      .finally(() => { if (!cancelled) setAdminStateHydrated(true); });
-    return () => { cancelled = true; };
-  }, [apiBase]);
+      .catch(() => {
+        if (!cancelled) setIsReachable(false);
+      })
+      .finally(() => {
+        if (!cancelled) setAdminStateHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase, authHeaders]);
 
   useEffect(() => {
     if (!adminStateHydrated || !apiBase) return;
     const timer = window.setTimeout(() => {
       fetch(apiBase + '/api/state', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ state: { arenaSupplies, cargoBoat, wasteReports } }),
       }).catch(() => undefined);
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [adminStateHydrated, apiBase, arenaSupplies, cargoBoat, wasteReports]);
+  }, [adminStateHydrated, apiBase, authHeaders, arenaSupplies, cargoBoat, wasteReports]);
 
 
   const handleConfirmBoatArrival = () => {
@@ -448,6 +449,25 @@ export const AdminView: React.FC<AdminViewProps> = ({
   );
 
   const totalGlobalGross = waitersClosings.reduce((acc, w) => acc + w.totalCollectedUsd, 0);
+  const paidOrders = orders.filter((order) => order.paymentStatus === 'verified');
+  const totalVerified = paidOrders.reduce((acc, order) => acc + order.totalUsd, 0);
+  const averageTicket = paidOrders.length ? totalVerified / paidOrders.length : 0;
+  const dispatchedCount = orders.filter((order) =>
+    ['ready_pass', 'delivered'].includes(order.status)
+  ).length;
+  const totalWasteUsd = wasteReports.reduce((acc, report) => acc + (report.costUsd || 0), 0);
+  const totalWasteBs = wasteReports.reduce((acc, report) => acc + (report.costBs || 0), 0);
+  const [auditEntries, setAuditEntries] = useState<AuditLogItem[]>(INITIAL_AUDIT_LOGS);
+
+  useEffect(() => {
+    if (!adminStateHydrated || !apiBase) return;
+    fetch(apiBase + '/api/state', { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (Array.isArray(data?.state?.auditLogs)) setAuditEntries(data.state.auditLogs);
+      })
+      .catch(() => undefined);
+  }, [adminStateHydrated, apiBase, authHeaders]);
   const totalDigitalVerified = waitersClosings.reduce((acc, w) => acc + w.digitalReportedUsd, 0);
   const totalTips = waitersClosings.reduce((acc, w) => acc + w.commissionWaiterUsd, 0);
   const diffCash = totalPhysicalCash - totalCollectedPending;
@@ -534,12 +554,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
   return (
     <div className="flex flex-col gap-4 max-w-lg mx-auto pb-28 pt-2 px-3">
-      {/* Telemetría Marina Bar */}
+      {/* Estado real de la operación: conexión y tasa vigente */}
       <div className="bg-[#002546] text-white rounded-2xl p-3 shadow-sm flex flex-col gap-2 border border-[#0d3b66]">
         <div className="flex items-center justify-between text-[11px]">
           <div className="flex items-center gap-1.5 text-[#bbe9ff]">
-            <span className="w-2 h-2 rounded-full bg-[#57d1fd] animate-pulse"></span>
-            <span>Starlink Bahía Buche <strong className="text-white font-bold">98 Mbps</strong></span>
+            <span className={`w-2 h-2 rounded-full ${isReachable ? 'animate-pulse' : ''}`} style={{ backgroundColor: isReachable ? '#57d1fd' : '#f87171' }} />
+            <span>
+              {isReachable ? 'API de producción conectada' : 'API sin respuesta'}
+            </span>
           </div>
           <div className="flex items-center gap-1 bg-[#0d3b66] px-2.5 py-0.5 rounded-full text-[#bbe9ff]">
             <span className="font-bold text-[10px]">Tasa BCV:</span>
@@ -549,11 +571,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
         <div className="flex items-center justify-between text-[#81a6d7] text-[10px] pt-1.5 border-t border-white/10">
           <div className="flex items-center gap-1">
             <Anchor className="w-3.5 h-3.5 text-[#57d1fd]" />
-            <span>Muelle: 3 Lanchas atracadas</span>
+            <span>{orders.length} órdenes cargadas del servidor</span>
           </div>
           <div className="flex items-center gap-1">
             <Radio className="w-3.5 h-3.5 text-[#57d1fd]" />
-            <span>VHF Canales: 16 / 72 Activo</span>
+            <span>Actualizado {new Date().toLocaleTimeString('es-VE')}</span>
           </div>
         </div>
       </div>
@@ -631,16 +653,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </p>
           </div>
         </div>
-        {onOpenPrototypeConsole && (
-          <button
-            type="button"
-            onClick={onOpenPrototypeConsole}
-            className="w-full sm:w-auto px-4 py-2 bg-[#57d1fd] hover:bg-[#7fe2ff] text-[#002546] rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-98 shrink-0"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Ajustes & Descargar Prototipo</span>
-          </button>
-        )}
       </div>
 
       {/* Top Toggle Navigation Bar */}
@@ -666,11 +678,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
         >
           <UserCheck className="w-3.5 h-3.5 text-[#57d1fd] shrink-0" />
           <span>Personal & Accesos</span>
-          {pendingStaffCount > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-rose-500 text-white animate-pulse">
-              {pendingStaffCount}
-            </span>
-          )}
         </button>
         <button
           onClick={() => setAdminTab('menu')}
@@ -771,32 +778,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
       {adminTab === 'staff_access' ? (
         <OwnerStaffManager
           users={staffUsers}
-          onAddUser={onAddUser || (() => {})}
-          onUpdateUser={onUpdateUser || (() => {})}
-          onApproveUser={onApproveUser || (() => {})}
-          onToggleUserStatus={onToggleUserStatus || (() => {})}
-          onDeleteUser={onDeleteUser || (() => {})}
+          apiBase={apiBase}
+          authHeaders={authHeaders}
+          onUsersChanged={onUsersChanged}
+          currentUserId={currentUserId}
         />
       ) : adminTab === 'closings' ? (
         /* ========== VIEW 1: CIERRE DE CAJA Y LIQUIDACIÓN DIARIA ========== */
         <div className="space-y-4">
-          {/* Pending Staff Approval Banner */}
-          {pendingStaffCount > 0 && (
-            <div className="p-3 bg-rose-50 border border-rose-300 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-2xs">
-              <div className="flex items-center gap-2 text-xs text-rose-900 font-bold">
-                <UserCheck className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>Hay {pendingStaffCount} solicitud(es) de nuevo personal esperando tu autorización de acceso.</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAdminTab('staff_access')}
-                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all shrink-0 cursor-pointer"
-              >
-                Autorizar Personal
-              </button>
-            </div>
-          )}
-
           {/* Header Title */}
           <div>
             <div className="flex items-center justify-between">
@@ -2040,27 +2029,33 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </div>
           </div>
 
-          {/* Resumen Financiero y Sello de Empresa */}
+          {/* Merma registrada y sello de empresa */}
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200 flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-[#006782] uppercase font-bold tracking-wider">
-                Resumen de Compras del Día
+                Merma Registrada
               </span>
-              <span className="text-[10px] text-gray-500 font-mono">14 Nov 2024</span>
+              <span className="text-[10px] text-gray-500 font-mono">
+                {new Date().toLocaleDateString('es-VE')}
+              </span>
             </div>
             <div className="flex items-baseline justify-between pt-1">
               <div className="flex flex-col">
-                <span className="text-lg text-[#002546] font-mono font-bold">$340.00 USD</span>
+                <span className="text-lg text-[#002546] font-mono font-bold">
+                  {formatUsd(totalWasteUsd)}
+                </span>
                 <span className="text-xs text-[#006782] font-mono font-semibold">
-                  18,530.00 Bs. (Tasa {bcvRate.toFixed(2)})
+                  {formatBsDirect(totalWasteBs)} (Tasa {bcvRate.toFixed(2)})
                 </span>
               </div>
               <div className="flex flex-col items-end">
                 <div className="flex items-center gap-1 text-[#002546] text-[10px] font-bold bg-[#bbe9ff] px-2 py-0.5 rounded-full">
                   <CheckCircle2 className="w-3 h-3 text-[#006782]" />
-                  <span>Aprobado por Socio</span>
+                  <span>{wasteReports.length} reportes</span>
                 </div>
-                <span className="text-[9px] text-gray-400 mt-0.5">Ref: OPR-BUCHE-339</span>
+                <span className="text-[9px] text-gray-400 mt-0.5">
+                  {wasteReports.length === 0 ? 'Sin mermas registradas' : 'Registrado por el dueño'}
+                </span>
               </div>
             </div>
 
@@ -2092,6 +2087,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
           <RbacSecurityMatrix
             bcvRate={bcvRate}
             onOpenFiscalInvoice={onOpenFiscalInvoice}
+            auditEntries={auditEntries}
           />
         </div>
       ) : (
@@ -2239,29 +2235,29 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </button>
           </div>
 
-          {/* Executive Metrics */}
+          {/* Executive Metrics — calculados con las órdenes reales del turno */}
           <div className="grid grid-cols-2 gap-2.5">
             <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-xs">
               <span className="text-[10px] font-bold uppercase text-gray-500 block">Ventas Brutas</span>
-              <span className="text-xl font-extrabold text-[#002546]">
-                ${totalGlobalGross > 0 ? totalGlobalGross.toFixed(2) : '3,485.00'}
+              <span className="text-xl font-extrabold text-[#002546]">${totalGlobalGross.toFixed(2)}</span>
+              <span className="text-[10px] text-gray-500 font-bold block mt-0.5">
+                {orders.length} {orders.length === 1 ? 'comanda' : 'comandas'} del turno
               </span>
-              <span className="text-[10px] text-emerald-700 font-bold block mt-0.5">↗ +18.4% vs ayer</span>
             </div>
             <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-xs">
-              <span className="text-[10px] font-bold uppercase text-gray-500 block">Margen Neto (3S)</span>
-              <span className="text-xl font-extrabold text-[#002546]">$1,428.80</span>
-              <span className="text-[10px] text-[#006782] font-bold block mt-0.5">41% margen libre</span>
+              <span className="text-[10px] font-bold uppercase text-gray-500 block">Total cobrado</span>
+              <span className="text-xl font-extrabold text-[#002546]">${totalVerified.toFixed(2)}</span>
+              <span className="text-[10px] text-[#006782] font-bold block mt-0.5">Órdenes verificadas</span>
             </div>
             <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-xs">
               <span className="text-[10px] font-bold uppercase text-gray-500 block">Ticket Promedio</span>
-              <span className="text-xl font-extrabold text-[#002546]">$42.50</span>
-              <span className="text-[10px] text-gray-500 block mt-0.5">x consumo playa</span>
+              <span className="text-xl font-extrabold text-[#002546]">${averageTicket.toFixed(2)}</span>
+              <span className="text-[10px] text-gray-500 block mt-0.5">Sobre órdenes cobradas</span>
             </div>
             <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-xs">
               <span className="text-[10px] font-bold uppercase text-gray-500 block">Comandas / Pax</span>
-              <span className="text-xl font-extrabold text-[#002546]">82 ord.</span>
-              <span className="text-[10px] text-gray-500 block mt-0.5">76 despachadas</span>
+              <span className="text-xl font-extrabold text-[#002546]">{orders.length} ord.</span>
+              <span className="text-[10px] text-gray-500 block mt-0.5">{dispatchedCount} despachadas</span>
             </div>
           </div>
 
@@ -2373,8 +2369,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
             <div className="flex justify-between items-center">
               <div>
-                <h3 className="text-sm font-bold text-[#002546]">Gestión de Accesos PIN POS</h3>
-                <p className="text-[11px] text-gray-500">Mesoneros y Coordinación Náutica</p>
+                <h3 className="text-sm font-bold text-[#002546]">Cuentas de Mesoneros y Excursiones</h3>
+                <p className="text-[11px] text-gray-500">Acceso por correo y clave cifrada</p>
               </div>
               <Users className="w-4 h-4 text-[#006782]" />
             </div>
@@ -2389,8 +2385,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
                     <span className="font-bold text-[#002546] block">{staff.name}</span>
                     <span className="text-[10px] text-gray-500">{staff.email}</span>
                   </div>
-                  <span className="text-xs font-mono bg-white px-2.5 py-1 rounded-md border border-gray-200 text-[#006782] font-bold">
-                    PIN: {staff.pin || '1234'}
+                  <span
+                    className={`text-[10px] font-bold px-2.5 py-1 rounded-md border ${
+                      staff.status === 'suspended'
+                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : 'bg-white text-[#006782] border-gray-200'
+                    }`}
+                  >
+                    {staff.zone || 'Sin zona'}
                   </span>
                 </div>
               ))}

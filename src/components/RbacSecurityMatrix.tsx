@@ -21,6 +21,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { soundService } from '../services/soundService';
+import { AuditLogItem } from '../types';
 
 export type RbacRoleKey = 'owner' | 'waiter' | 'kitchen' | 'excursion' | 'client';
 
@@ -280,11 +281,13 @@ const ROLE_METADATA: Record<
 interface RbacSecurityMatrixProps {
   bcvRate: number;
   onOpenFiscalInvoice?: () => void;
+  auditEntries?: AuditLogItem[];
 }
 
 export const RbacSecurityMatrix: React.FC<RbacSecurityMatrixProps> = ({
   bcvRate,
-  onOpenFiscalInvoice
+  onOpenFiscalInvoice,
+  auditEntries = []
 }) => {
   const [activeRole, setActiveRole] = useState<RbacRoleKey>('owner');
   const [rolePermissions, setRolePermissions] = useState<Record<RbacRoleKey, Record<string, boolean>>>(
@@ -521,51 +524,26 @@ export const RbacSecurityMatrix: React.FC<RbacSecurityMatrixProps> = ({
         </div>
 
         <div className="flex flex-col gap-2 text-xs">
-          <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#f8f9ff] border border-gray-100">
-            <Coins className="w-4 h-4 text-[#006782] shrink-0 mt-0.5" />
-            <div className="flex flex-col flex-1">
-              <span className="font-semibold text-[#002546]">
-                Cambio de Tasa a 54.50 por Socio #1
-              </span>
-              <span className="text-[10px] text-gray-500">
-                Hoy, 10:42 AM • IP Starlink Terminal Buche #01
-              </span>
-            </div>
-            <span className="text-[#006782] text-[10px] font-bold bg-[#bbe9ff] px-2 py-0.5 rounded-full">
-              EXITOSO
-            </span>
-          </div>
-
-          <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#f8f9ff] border border-gray-100">
-            <CheckCircle2 className="w-4 h-4 text-[#006782] shrink-0 mt-0.5" />
-            <div className="flex flex-col flex-1">
-              <span className="font-semibold text-[#002546]">
-                Paz y Salvo emitido a Mesonero Yender R.
-              </span>
-              <span className="text-[10px] text-gray-500">
-                Ayer, 06:15 PM • Comandas cuadradas y liquidadas
-              </span>
-            </div>
-            <span className="text-[#006782] text-[10px] font-bold bg-[#bbe9ff] px-2 py-0.5 rounded-full">
-              FIRMADO
-            </span>
-          </div>
-
-          <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#f8f9ff] border border-gray-100">
-            <Ship className="w-4 h-4 text-[#006782] shrink-0 mt-0.5" />
-            <div className="flex flex-col flex-1">
-              <span className="font-semibold text-[#002546]">
-                Recepción Lancha Morro II confirmada
-              </span>
-              <span className="text-[10px] text-gray-500">
-                Ayer, 02:30 PM • 30 sacos de hielo + 40 pargos recibidos
-              </span>
-            </div>
-            <span className="text-[#006782] text-[10px] font-bold bg-[#bbe9ff] px-2 py-0.5 rounded-full">
-              DESCARGADO
-            </span>
-          </div>
-        </div>
+          {auditEntries.length === 0 ? (
+            <p className="text-[11px] text-gray-500 p-3 rounded-xl bg-[#f8f9ff] border border-dashed border-gray-300">
+              Todav&iacute;a no hay acciones registradas en esta bit&aacute;cora.
+            </p>
+          ) : (
+            auditEntries.slice(0, 6).map((entry) => (
+              <div key={entry.id} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#f8f9ff] border border-gray-100">
+                <History className="w-4 h-4 text-[#006782] shrink-0 mt-0.5" />
+                <div className="flex flex-col flex-1">
+                  <span className="font-semibold text-[#002546]">{entry.action}</span>
+                  <span className="text-[10px] text-gray-500">
+                    {new Date(entry.timestamp).toLocaleString('es-VE')} &bull; {entry.user}
+                  </span>
+                </div>
+                <span className="text-[#006782] text-[10px] font-bold bg-[#bbe9ff] px-2 py-0.5 rounded-full">
+                  {entry.hash ? 'SHA-256' : 'REGISTRADO'}
+                </span>
+              </div>
+            ))
+          )}        </div>
       </section>
 
       {/* Políticas RLS & NestJS Guard Visualizer */}

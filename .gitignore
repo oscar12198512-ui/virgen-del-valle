@@ -2,7 +2,14 @@ node_modules/
 build/
 dist/
 coverage/
+dev-dist/
+assets/
+android/
+release/
+signing/
 .DS_Store
 *.log
+*.jks
+*.keystore
 .env*
 !.env.example

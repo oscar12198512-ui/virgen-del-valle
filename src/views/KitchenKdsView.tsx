@@ -868,7 +868,8 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
                           <input
                             type="checkbox"
                             checked={isChecked}
-                            onChange={() => {}}
+                            onChange={() => handleToggleItem(item.id)}
+                            aria-label={`Marcar ${item.name} como listo`}
                             className="w-4 h-4 rounded text-[#006782] focus:ring-[#006782] shrink-0 mt-1 cursor-pointer"
                           />
                         </div>

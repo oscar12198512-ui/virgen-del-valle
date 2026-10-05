@@ -1,6 +1,6 @@
 {
-  "name": "Virgen del Valle / Virgen del Valle",
-  "description": "Sistema integral de gestión costera, comandera de mesoneros, control de excursiones, cocina KDS, administración financiera y menú digital para Virgen del Valle.",
-  "requestFramePermissions": ["camera"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "name": "Playa Buche",
+  "description": "Sistema de gestion de Playa Buche (Inversiones Virgen del Valle): comandera de mesoneros, cocina KDS, excursiones, caja, personal y menu digital.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
 }

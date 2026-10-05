@@ -18,14 +18,14 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
-      - name: Comprobar que el build no incluye localhost
+      - name: El bundle de produccion no debe contener localhost
         run: |
           set -euo pipefail
-          if grep -rn "localhost" dist/assets dist/index.html; then
+          if grep -rn "localhost" dist/index.html dist/assets; then
             echo "::error::El bundle de produccion contiene localhost"
             exit 1
           fi
-      - name: Comprobar sintaxis del servidor y migraciones
+      - name: Sintaxis del servidor
         run: |
           node --check server/index.js
           node --check server/db.js
@@ -63,7 +63,7 @@ jobs:
             echo "signed=true" >> "$GITHUB_OUTPUT"
           else
             echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Sin ANDROID_KEYSTORE_BASE64: se genera un APK de depuracion instalable."
+            echo "::notice::Sin ANDROID_KEYSTORE_BASE64 se genera un APK de depuracion instalable."
           fi
 
       - name: Configurar firma de release
@@ -106,9 +106,8 @@ jobs:
         run: ./gradlew bundleRelease assembleRelease
       - name: Verificar firma del paquete
         if: steps.signing.outputs.signed == 'true'
-        run: |
-          jarsigner -verify android/app/build/outputs/bundle/release/app-release.aab
-      - name: Empaquetar artefactos
+        run: jarsigner -verify android/app/build/outputs/bundle/release/app-release.aab
+      - name: Empaquetar artefactos firmados
         if: steps.signing.outputs.signed == 'true'
         shell: bash
         run: |

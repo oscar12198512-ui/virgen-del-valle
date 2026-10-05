@@ -33,6 +33,7 @@ interface ClientsViewProps {
   spots: ToldoSpot[];
   menuItems: MenuItem[];
   activeOrder: Order | null;
+  clientName?: string;
   bcvRate: number;
   onSelectSpot: (spotId: string) => void;
   selectedSpotId: string;
@@ -46,6 +47,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   spots,
   menuItems,
   activeOrder,
+  clientName = 'Cliente',
   bcvRate,
   onSelectSpot,
   selectedSpotId,
@@ -79,11 +81,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     typeDesc: 'Toldo Playa Doble',
     status: 'occupied',
     distanceDesc: 'A 15 metros del muelle',
-    assignedWaiterId: 'user-carlos',
-    assignedWaiterName: 'Carlos Gómez',
+    assignedWaiterId: '',
+    assignedWaiterName: '',
     capacity: 4,
   };
   const selectedSpot = (spots && spots.find((s) => s.id === selectedSpotId)) || (spots && spots[0]) || defaultClientSpot;
+
+  const firstName = clientName.split(' ')[0] || 'Cliente';
 
   const handleAddToCart = (item: MenuItem) => {
     soundService.playFireAlert();
@@ -180,7 +184,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             </span>
           </div>
           <h1 className="text-base font-bold text-[#002546] leading-tight">
-            ¡Hola, Carlos! 👋
+            ¡Hola, {firstName}!
           </h1>
           <p className="text-xs text-gray-500 line-clamp-1">
             ¿Dónde te llevamos tu servicio hoy?
@@ -632,7 +636,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 <h2 className="text-xl font-bold mt-0.5">
                   {activeOrder?.spotName || selectedSpot.name}
                 </h2>
-                <p className="text-xs text-gray-300">Carlos Mendoza</p>
+                <p className="text-xs text-gray-300">{activeOrder?.customerName || clientName}</p>
               </div>
               <div className="inline-flex items-center gap-1.5 bg-amber-400/20 text-amber-300 border border-amber-300/30 px-2.5 py-1 rounded-full text-xs font-bold">
                 <Flame className="w-3.5 h-3.5 text-amber-400 animate-pulse" />

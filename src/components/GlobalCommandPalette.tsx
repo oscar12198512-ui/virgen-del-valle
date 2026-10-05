@@ -35,9 +35,7 @@ interface GlobalCommandPaletteProps {
   onOpenCalculator: () => void;
   onOpenWeather: () => void;
   onOpenFiscalInvoice: () => void;
-  onOpenPrototypeConsole?: () => void;
-  onToggleOffline: () => void;
-  isOffline: boolean;
+  availableRoles?: UserRole[];
 }
 
 export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
@@ -51,9 +49,7 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
   onOpenCalculator,
   onOpenWeather,
   onOpenFiscalInvoice,
-  onOpenPrototypeConsole,
-  onToggleOffline,
-  isOffline,
+  availableRoles = ['admin', 'waiter', 'kitchen', 'excursion', 'client'],
 }) => {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -90,17 +86,6 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
 
   // Search results
   const matchedActions = [
-    {
-      id: 'act-prototype',
-      title: 'Descargar Prototipo & Ajustes Completos',
-      desc: 'Descargar ZIP, Lanzador .HTML, Menú Offline, Código QR e instalación PWA',
-      icon: Download,
-      color: 'bg-emerald-50 text-emerald-800',
-      action: () => {
-        if (onOpenPrototypeConsole) onOpenPrototypeConsole();
-        onClose();
-      },
-    },
     {
       id: 'act-calc',
       title: 'Calculadora de Vueltos & Divisas',
@@ -140,6 +125,7 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
       desc: 'Ver fogones y órdenes activas por hora de entrega',
       icon: ChefHat,
       color: 'bg-rose-50 text-rose-700',
+      role: 'kitchen' as UserRole,
       action: () => {
         onNavigateToRole('kitchen');
         onClose();
@@ -151,6 +137,7 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
       desc: 'Tomar pedido para toldo o mesa de playa',
       icon: UtensilsCrossed,
       color: 'bg-indigo-50 text-indigo-700',
+      role: 'waiter' as UserRole,
       action: () => {
         onNavigateToRole('waiter');
         onClose();
@@ -162,23 +149,17 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
       desc: 'Arqueo de caja, auditoría fiscal y carta',
       icon: BarChart3,
       color: 'bg-blue-50 text-blue-700',
+      role: 'admin' as UserRole,
       action: () => {
         onNavigateToRole('admin');
         onClose();
       },
     },
-    {
-      id: 'act-offline',
-      title: isOffline ? 'Reconectar Starlink Satelital' : 'Simular Corte Starlink (Modo Offline)',
-      desc: isOffline ? 'Sincronizar cola de transacciones locales' : 'Probar persistencia en caché local de playa',
-      icon: isOffline ? Wifi : WifiOff,
-      color: isOffline ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700',
-      action: () => {
-        onToggleOffline();
-        onClose();
-      },
-    },
-  ].filter((a) => !q || a.title.toLowerCase().includes(q) || a.desc.toLowerCase().includes(q));
+  ].filter(
+    (a) =>
+      (!q || a.title.toLowerCase().includes(q) || a.desc.toLowerCase().includes(q)) &&
+      (!('role' in a) || !a.role || availableRoles.includes(a.role as UserRole))
+  );
 
   // Matched Menu items
   const matchedDishes = menuItems

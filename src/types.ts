@@ -1,23 +1,30 @@
 export type UserRole = 'waiter' | 'excursion' | 'kitchen' | 'admin' | 'client';
 
+export const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Dueño',
+  waiter: 'Mesonero',
+  kitchen: 'Cocina',
+  excursion: 'Excursiones',
+  client: 'Cliente',
+};
+
 export interface User {
   id: string;
   name: string;
   email: string;
   role: UserRole;
-  pin?: string;
-  zone?: string;
+  roleLabel?: string;
+  zone?: string | null;
   activeOrdersCount?: number;
-  phone?: string;
-  avatar?: string;
-  status?: 'active' | 'pending_approval' | 'suspended';
+  phone?: string | null;
+  avatar?: string | null;
+  status?: 'active' | 'suspended';
   assignedToldoIds?: string[];
-  boatName?: string;
+  boatName?: string | null;
   createdAt?: string;
-  approvedByOwner?: boolean;
-  approvedAt?: string;
-  notes?: string;
-  lastLogin?: string;
+  notes?: string | null;
+  lastLogin?: string | null;
+  sessionToken?: string;
 }
 
 export type SpotZone = 'beach' | 'churuata' | 'muelle';
@@ -98,6 +105,7 @@ export interface Order {
   elapsedSeconds?: number;
   readyAt?: string; // ISO string when marked ready_pass or delivered
   prepDurationMinutes?: number; // Calculated minutes elapsed from receipt (createdAt) to ready
+  clientUserId?: string; // Identificador del usuario cliente que creo el pedido
 }
 
 export interface ExcursionPackage {
