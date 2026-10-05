@@ -20,13 +20,18 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   const current = currentRole || activeView || 'waiter';
   const handleSelect = onSelectRole || onSelectView || (() => {});
 
-  const navItems: { role: UserRole; label: string; icon: React.FC<{ className?: string }> }[] = [
+  const allNavItems: { role: UserRole; label: string; icon: React.FC<{ className?: string }> }[] = [
     { role: 'waiter', label: 'Mesoneros', icon: UtensilsCrossed },
     { role: 'excursion', label: 'Excursiones', icon: Ship },
     { role: 'kitchen', label: 'Cocina', icon: ChefHat },
     { role: 'admin', label: 'Dueños', icon: BarChart3 },
     { role: 'client', label: 'Clientes', icon: Umbrella },
   ];
+
+  // Owners can switch between all modules. Every other role sees only its own area.
+  const navItems = current === 'admin'
+    ? allNavItems
+    : allNavItems.filter(item => item.role === current);
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 pb-[env(safe-area-inset-bottom,0px)] bg-[#f8f9ff]/95 backdrop-blur-xl shadow-[0_-4px_20px_rgba(0,37,70,0.08)] border-t border-[#002546]/10">
