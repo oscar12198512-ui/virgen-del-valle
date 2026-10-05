@@ -231,12 +231,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             <form onSubmit={submitRequest} className="space-y-3">
               <p className="text-sm font-bold text-[#002546]">Crear solicitud de acceso</p>
               <p className="text-xs text-gray-500">Tu cuenta quedará pendiente hasta que el dueño la autorice.</p>
-              <div className="grid grid-cols-2 gap-2">
-                {(['client','waiter','excursion','kitchen'] as UserRole[]).map(role => (
-                  <button key={role} type="button" onClick={() => setSelectedRole(role)} className={`rounded-xl border p-2.5 text-xs font-bold ${selectedRole === role ? 'border-[#006782] bg-[#eff4ff] text-[#006782]' : 'border-gray-200 text-gray-600'}`}>
-                    {role === 'client' ? 'Cliente' : role === 'waiter' ? 'Mesonero' : role === 'excursion' ? 'Excursiones' : 'Cocina'}
-                  </button>
-                ))}
+              <div className="rounded-xl border border-[#006782]/20 bg-[#eff4ff] p-3 text-xs text-[#002546]">
+                <div className="font-bold text-[#006782]">Registro de cliente</div>
+                <div className="mt-1">Los accesos de mesoneros, cocina y excursiones son creados y autorizados exclusivamente por el dueño.</div>
               </div>
               <input value={requestName} onChange={(e) => setRequestName(e.target.value)} placeholder="Nombre completo" className="w-full h-11 rounded-xl border border-gray-300 px-3 text-sm" />
               <input value={requestEmail} onChange={(e) => setRequestEmail(e.target.value)} type="email" placeholder="Correo electrónico" className="w-full h-11 rounded-xl border border-gray-300 px-3 text-sm" />
