@@ -5,6 +5,7 @@
 
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { getAuth, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -28,6 +29,7 @@ if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 
 // Importar datos iniciales
 const INITIAL_BCV_RATE = 54.50;
@@ -220,6 +222,11 @@ const INITIAL_DRAWER_BILLS = {
 async function seed() {
   console.log('🚀 Iniciando migración de datos hacia Firebase Firestore...');
   
+  try {
+    console.log('🔑 Intentando autenticación...');
+    await signInAnonymously(auth).catch(() => null);
+  } catch {}
+
   const statePayload = {
     menuItems: INITIAL_MENU_ITEMS,
     spots: INITIAL_SPOTS,
