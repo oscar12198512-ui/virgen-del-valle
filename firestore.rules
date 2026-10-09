@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Función de ayuda para verificar autenticación
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Función de ayuda para verificar rol del usuario
+    function getUserRole() {
+      return get(/databases/$(database)/documents/app_users/$(request.auth.uid)).data.role;
+    }
+    
+    function isStaff() {
+      return isAuthenticated() && (
+        getUserRole() in ['admin', 'waiter', 'kitchen', 'excursion']
+      );
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+
+    // Estado global de la aplicación (menú, spots, órdenes, excursión, tasas)
+    match /app_state/{docId} {
+      // Cualquier usuario puede leer para ver el menú y precios
+      allow read: if true;
+      // Staff y clientes autenticados pueden actualizar órdenes / estado
+      allow write: if isAuthenticated();
+    }
+    
+    // Colección de Usuarios y Perfiles
+    match /app_users/{userId} {
+      // El propio usuario puede leer y escribir su perfil; staff y admin pueden leer
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && (request.auth.uid == userId || isAdmin() || isStaff());
+      allow delete: if isAdmin();
+    }
+    
+    // Colección de Órdenes individuales (si se usan colecciones directas)
+    match /orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isStaff();
+    }
+  }
+}

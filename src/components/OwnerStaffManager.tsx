@@ -1,6 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { RefreshCw, ShieldCheck, UserPlus, Trash2, KeyRound, Ban, CheckCircle2 } from 'lucide-react';
 import { ROLE_LABELS, User, UserRole } from '../types';
+import { isFirebaseConfigured } from '../config/firebase';
+import {
+  saveUserToFirestore,
+  deleteUserFromFirestore,
+  fetchUsersFromFirestore
+} from '../services/firebaseDb';
 
 interface OwnerStaffManagerProps {
   users: User[];
@@ -54,6 +60,11 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
 
   const reload = async () => {
     setReloadKey((value) => value + 1);
+    if (isFirebaseConfigured()) {
+      const firestoreUsers = await fetchUsersFromFirestore();
+      onUsersChanged(firestoreUsers);
+      return;
+    }
     const data = await request('GET', '/api/staff');
     onUsersChanged(data.users || []);
   };
@@ -72,28 +83,44 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
     }
     setBusy(true);
     try {
-      if (form.id) {
-        await request('PATCH', `/api/staff/${form.id}`, {
+      if (isFirebaseConfigured()) {
+        const userId = form.id || `staff-${Date.now()}`;
+        const userData: User = {
+          id: userId,
           name: form.name.trim(),
-          email: undefined,
-          phone: form.phone.trim(),
+          email: form.email.trim().toLowerCase(),
+          phone: form.phone.trim() || null,
           role: form.role,
-          zone: form.zone.trim(),
-          boatName: form.boatName.trim(),
-        });
-        await request('POST', `/api/staff/${form.id}/password`, { password: form.password });
-        setMessage(`Cuenta de ${form.name} actualizada. Se cerró su sesión para aplicar la nueva clave.`);
+          zone: form.zone.trim() || null,
+          boatName: form.boatName.trim() || null,
+          status: 'active',
+        };
+        await saveUserToFirestore(userData);
+        setMessage(`Cuenta de ${form.name} guardada en Firebase Firestore.`);
       } else {
-        await request('POST', '/api/staff', {
-          name: form.name.trim(),
-          email: form.email.trim(),
-          phone: form.phone.trim(),
-          role: form.role,
-          zone: form.zone.trim(),
-          boatName: form.boatName.trim(),
-          password: form.password,
-        });
-        setMessage(`Cuenta de ${form.name} creada. Entrega la clave de forma segura.`);
+        if (form.id) {
+          await request('PATCH', `/api/staff/${form.id}`, {
+            name: form.name.trim(),
+            email: undefined,
+            phone: form.phone.trim(),
+            role: form.role,
+            zone: form.zone.trim(),
+            boatName: form.boatName.trim(),
+          });
+          await request('POST', `/api/staff/${form.id}/password`, { password: form.password });
+          setMessage(`Cuenta de ${form.name} actualizada. Se cerró su sesión para aplicar la nueva clave.`);
+        } else {
+          await request('POST', '/api/staff', {
+            name: form.name.trim(),
+            email: form.email.trim(),
+            phone: form.phone.trim(),
+            role: form.role,
+            zone: form.zone.trim(),
+            boatName: form.boatName.trim(),
+            password: form.password,
+          });
+          setMessage(`Cuenta de ${form.name} creada. Entrega la clave de forma segura.`);
+        }
       }
       setForm(emptyForm());
       await reload();
@@ -109,8 +136,13 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
     setMessage('');
     const nextStatus = user.status === 'suspended' ? 'active' : 'suspended';
     try {
-      await request('PATCH', `/api/staff/${user.id}`, { status: nextStatus });
-      setMessage(`${user.name} quedó ${nextStatus === 'active' ? 'activo' : 'suspendido'}.`);
+      if (isFirebaseConfigured()) {
+        await saveUserToFirestore({ ...user, status: nextStatus });
+        setMessage(`${user.name} quedó ${nextStatus === 'active' ? 'activo' : 'suspendido'}.`);
+      } else {
+        await request('PATCH', `/api/staff/${user.id}`, { status: nextStatus });
+        setMessage(`${user.name} quedó ${nextStatus === 'active' ? 'activo' : 'suspendido'}.`);
+      }
       await reload();
     } catch (requestError) {
       setError((requestError as Error).message);
@@ -122,8 +154,13 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
     setMessage('');
     if (!window.confirm(`¿Eliminar la cuenta de ${user.name}? La acción no se puede deshacer.`)) return;
     try {
-      await request('DELETE', `/api/staff/${user.id}`);
-      setMessage(`Cuenta de ${user.name} eliminada.`);
+      if (isFirebaseConfigured()) {
+        await deleteUserFromFirestore(user.id);
+        setMessage(`Cuenta de ${user.name} eliminada.`);
+      } else {
+        await request('DELETE', `/api/staff/${user.id}`);
+        setMessage(`Cuenta de ${user.name} eliminada.`);
+      }
       await reload();
     } catch (requestError) {
       setError((requestError as Error).message);

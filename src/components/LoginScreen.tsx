@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { LogIn, UserPlus, KeyRound, Ship } from 'lucide-react';
 import { User } from '../types';
+import { isFirebaseConfigured } from '../config/firebase';
+import { loginWithEmail, registerWithEmail, sendResetPassword } from '../services/firebaseAuth';
 
 interface LoginScreenProps {
   onAuthenticated: (user: User) => void;
@@ -35,16 +37,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
   const [newPassword, setNewPassword] = useState('');
   const [resetMessage, setResetMessage] = useState('');
 
-  if (!API) {
-    return (
-      <Shell>
-        <p className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs text-rose-800">
-          Falta configurar <code>VITE_API_URL</code> para apuntar a la API de producción.
-        </p>
-      </Shell>
-    );
-  }
-
   const submitLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     setMessage('');
@@ -54,14 +46,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
     }
     setBusy(true);
     try {
+      if (isFirebaseConfigured()) {
+        const user = await loginWithEmail(email, password);
+        onAuthenticated(user);
+        return;
+      }
+      if (!API) {
+        setMessage('Configura las credenciales de Firebase en el archivo .env');
+        return;
+      }
       const { ok, data } = await postJson('/api/auth/login', { email: email.trim().toLowerCase(), password });
       if (!ok || !data.user) {
         setMessage(data.message || 'No se pudo iniciar sesión.');
         return;
       }
       onAuthenticated(data.user);
-    } catch {
-      setMessage('No se pudo conectar con el servidor.');
+    } catch (err: any) {
+      console.error(err);
+      setMessage(err?.message || 'No se pudo conectar con el servicio de autenticación.');
     } finally {
       setBusy(false);
     }
@@ -80,6 +82,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
     }
     setBusy(true);
     try {
+      if (isFirebaseConfigured()) {
+        const user = await registerWithEmail(email, password, name, phone, 'client');
+        onAuthenticated(user);
+        return;
+      }
+      if (!API) {
+        setMessage('Configura las credenciales de Firebase en el archivo .env');
+        return;
+      }
       const { ok, data } = await postJson('/api/auth/register', {
         name: name.trim(),
         email: email.trim().toLowerCase(),
@@ -91,8 +102,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
         return;
       }
       onAuthenticated(data.user);
-    } catch {
-      setMessage('No se pudo conectar con el servidor.');
+    } catch (err: any) {
+      console.error(err);
+      setMessage(err?.message || 'No se pudo conectar con el servidor.');
     } finally {
       setBusy(false);
     }
@@ -105,10 +117,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
       return;
     }
     try {
+      if (isFirebaseConfigured()) {
+        await sendResetPassword(target);
+        setRecoveryMessage('Se envió un correo para restablecer tu clave.');
+        return;
+      }
       const { data } = await postJson('/api/auth/request-reset', { email: target });
       setRecoveryMessage(data.message || 'Si la cuenta existe, se envió el enlace de recuperación.');
-    } catch {
-      setRecoveryMessage('No se pudo conectar con el servicio de recuperación.');
+    } catch (err: any) {
+      console.error(err);
+      setRecoveryMessage(err?.message || 'No se pudo conectar con el servicio de recuperación.');
     }
   };
 
@@ -276,13 +294,21 @@ const NOTE = 'rounded-xl bg-sky-50 border border-sky-200 p-3 text-xs text-[#0025
 const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="min-h-screen bg-gradient-to-b from-[#002546] via-[#003b5f] to-[#f8f9ff] px-4 py-8 flex items-center justify-center">
     <section className="w-full max-w-md bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-white/30">
-      <div className="p-6 bg-[#002546] text-white flex items-center gap-3">
-        <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center">
-          <Ship className="w-5 h-5 text-[#57d1fd]" />
+      <div className="p-6 bg-[#002546] text-white flex items-center gap-4">
+        <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center overflow-hidden border border-white/20 p-1 flex-shrink-0">
+          <img
+            src="/logo.png"
+            alt="Playa Buche"
+            className="w-full h-full object-contain rounded-xl"
+            onError={(e) => {
+              (e.currentTarget as HTMLElement).style.display = 'none';
+            }}
+          />
         </div>
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#57d1fd]">Inversiones Virgen del Valle</p>
-          <h1 className="text-2xl font-black mt-0.5">Playa Buche</h1>
+          <h1 className="text-2xl font-black mt-0.5 tracking-tight">Playa Buche</h1>
+          <p className="text-[10px] text-cyan-200/80 font-mono">J 40536768-7</p>
         </div>
       </div>
       <div className="p-5">{children}</div>

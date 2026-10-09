@@ -3,15 +3,20 @@ import path from 'node:path';
 import sharp from 'sharp';
 
 const root = process.cwd();
-const source = path.join(root, 'public', 'icon.svg');
-const assets = path.join(root, 'assets');
 const publicDir = path.join(root, 'public');
+const assets = path.join(root, 'assets');
+
+let source = path.join(publicDir, 'icon.svg');
+try {
+  await fs.access(path.join(publicDir, 'logo.png'));
+  source = path.join(publicDir, 'logo.png');
+} catch {}
 
 await fs.mkdir(assets, { recursive: true });
 
 const base = sharp(source).resize(1024, 1024, {
   fit: 'contain',
-  background: { r: 0, g: 37, b: 70, alpha: 1 }
+  background: { r: 0, g: 37, b: 70, alpha: 0 }
 });
 
 await base.clone().png().toFile(path.join(assets, 'icon-only.png'));

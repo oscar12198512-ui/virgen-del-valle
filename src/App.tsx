@@ -39,6 +39,16 @@ import { soundService } from './services/soundService';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { AppInstallModal } from './components/AppInstallModal';
 import { LoginScreen } from './components/LoginScreen';
+import { isFirebaseConfigured } from './config/firebase';
+import {
+  subscribeToAppState,
+  saveAppState,
+  getAppStateOnce,
+  pushOrderToFirestore,
+  subscribeToUsers,
+  fetchUsersFromFirestore
+} from './services/firebaseDb';
+import { subscribeToAuthState, logoutFirebase } from './services/firebaseAuth';
 
 const SESSION_KEY = 'virgen_del_valle_session';
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -113,8 +123,16 @@ export const App: React.FC = () => {
     setClientActiveOrder(null);
   }, []);
 
-  // Identidad: se resuelve siempre contra la API antes de mostrar cualquier módulo.
+  // Identidad: Firebase Auth en tiempo real o resolución contra la API REST
   useEffect(() => {
+    if (isFirebaseConfigured()) {
+      const unsubscribe = subscribeToAuthState((user) => {
+        setCurrentUser(user);
+        setIdentityResolved(true);
+      });
+      return () => unsubscribe();
+    }
+
     if (!API_BASE) {
       setIdentityResolved(true);
       return;
@@ -147,8 +165,41 @@ export const App: React.FC = () => {
     };
   }, [API_BASE, sessionToken, authHeaders, clearSession]);
 
-  // Catálogo público para la pantalla de acceso (sin sesión no hay datos operativos).
+  // Sincronización de datos (Firebase Firestore Real-Time / Fallback REST API)
   useEffect(() => {
+    if (isFirebaseConfigured()) {
+      // Suscripción en tiempo real con Firestore para estado operativo
+      const unsubState = subscribeToAppState(
+        (state) => {
+          if (Array.isArray(state.menuItems) && state.menuItems.length) setMenuItems(state.menuItems);
+          if (Array.isArray(state.spots) && state.spots.length) setSpots(state.spots);
+          if (Array.isArray(state.orders)) setOrders(state.orders);
+          if (state.excursion && state.excursion.id) setExcursion(state.excursion);
+          if (state.bankConfig) setBankConfig(state.bankConfig);
+          if (Array.isArray(state.waitersClosings)) setWaitersClosings(state.waitersClosings);
+          if (state.drawerBills) setDrawerBills(state.drawerBills);
+          if (typeof state.bcvRate === 'number') setBcvRate(state.bcvRate);
+
+          setIsDbHydrated(true);
+          dbHydratedRef.current = true;
+        },
+        (error) => {
+          console.warn('Error al sincronizar Firestore en tiempo real:', error);
+        }
+      );
+
+      // Suscripción a usuarios de Firestore si tiene rol administrativo/staff
+      const unsubUsers = subscribeToUsers((firestoreUsers) => {
+        if (Array.isArray(firestoreUsers)) setUsers(firestoreUsers);
+      });
+
+      return () => {
+        unsubState();
+        unsubUsers();
+      };
+    }
+
+    // Fallback público para API REST
     if (!API_BASE || sessionToken) return;
     let cancelled = false;
     (async () => {
@@ -170,11 +221,13 @@ export const App: React.FC = () => {
     };
   }, [API_BASE, sessionToken]);
 
-  // Estado operativo autenticado.
+  // Estado operativo autenticado para API REST (cuando no se usa Firebase)
   useEffect(() => {
-    if (!API_BASE || !sessionToken || !signedInRole) {
-      setIsDbHydrated(false);
-      dbHydratedRef.current = false;
+    if (isFirebaseConfigured() || !API_BASE || !sessionToken || !signedInRole) {
+      if (!isFirebaseConfigured()) {
+        setIsDbHydrated(false);
+        dbHydratedRef.current = false;
+      }
       return;
     }
     let cancelled = false;
@@ -214,11 +267,24 @@ export const App: React.FC = () => {
     };
   }, [API_BASE, sessionToken, signedInRole, authHeaders, clearSession]);
 
-  // Solo el personal operativo escribe el estado; el cliente usa endpoints propios.
+  // Persistencia de cambios de personal operativo (Firestore / REST)
   useEffect(() => {
-    if (!API_BASE || !sessionToken || !isDbHydrated || !signedInRole || !STAFF_ROLES.includes(signedInRole)) return;
-    const controller = new AbortController();
+    if (!isDbHydrated || !signedInRole || !STAFF_ROLES.includes(signedInRole)) return;
     const payload = { menuItems, spots, orders, excursion, bankConfig, waitersClosings, drawerBills, bcvRate };
+    
+    if (isFirebaseConfigured()) {
+      const timer = window.setTimeout(async () => {
+        try {
+          await saveAppState(payload);
+        } catch (error) {
+          console.warn('No se pudo guardar el estado en Firestore.', error);
+        }
+      }, 600);
+      return () => window.clearTimeout(timer);
+    }
+
+    if (!API_BASE || !sessionToken) return;
+    const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
         const response = await fetch(API_BASE + '/api/state', {
@@ -254,13 +320,14 @@ export const App: React.FC = () => {
 
   const handleAuthenticated = (user: User) => {
     const token = (user as User & { sessionToken?: string }).sessionToken || '';
-    if (!token) return;
-    sessionStorage.setItem(SESSION_KEY, token);
-    setSessionToken(token);
+    if (token) {
+      sessionStorage.setItem(SESSION_KEY, token);
+      setSessionToken(token);
+    }
     setCurrentUser({ ...user, sessionToken: undefined });
     setIdentityResolved(true);
-    setIsDbHydrated(false);
-    dbHydratedRef.current = false;
+    setIsDbHydrated(true);
+    dbHydratedRef.current = true;
     setViewRole(null);
     if (window.location.search) window.history.replaceState({}, document.title, window.location.pathname);
   };
@@ -269,7 +336,9 @@ export const App: React.FC = () => {
     const token = sessionToken;
     setIsAccountPanelOpen(false);
     try {
-      if (API_BASE && token) {
+      if (isFirebaseConfigured()) {
+        await logoutFirebase();
+      } else if (API_BASE && token) {
         await fetch(API_BASE + '/api/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       }
     } catch {
@@ -356,7 +425,18 @@ export const App: React.FC = () => {
 
     setClientActiveOrder(newOrder);
     soundService.playBell();
-    // El cliente registra su pedido en el servidor: cocina y personal lo ven de inmediato.
+
+    if (isFirebaseConfigured()) {
+      try {
+        await pushOrderToFirestore(newOrder);
+      } catch (error) {
+        console.warn('No se pudo guardar la orden en Firestore:', error);
+      }
+      setOrders((previous) => [newOrder, ...previous]);
+      return;
+    }
+
+    // Fallback REST API
     try {
       const response = await fetch(API_BASE + '/api/orders', {
         method: 'POST',
