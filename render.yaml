@@ -6,18 +6,11 @@ services:
     region: virginia
     branch: main
     repo: https://github.com/oscar12198512-ui/virgen-del-valle
-    buildCommand: npm ci --omit=dev && npm run db:migrate
+    buildCommand: npm ci --omit=dev
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
     envVars:
-      # Cadena de conexion completa que entrega Render. La API la usa tal cual.
-      - key: DATABASE_URL
-        fromDatabase:
-          name: virgen-del-valle-postgres
-          property: connectionString
-      - key: DATABASE_POOL_MAX
-        value: "5"
       - key: PORT
         value: "10000"
       - key: NODE_ENV
@@ -26,28 +19,26 @@ services:
         value: "https://virgen-del-valle-web.onrender.com"
       - key: CORS_ORIGIN
         value: "https://virgen-del-valle-web.onrender.com,http://localhost:3000,http://localhost:5173,https://localhost"
-      - key: SESSION_TTL_HOURS
-        value: "24"
+      - key: VITE_FIREBASE_API_KEY
+        value: "AIzaSyAnMvY9S2ZCRwaY-rCzMnSUGe6XSY7kl5k"
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        value: "playa-buche-pos.firebaseapp.com"
+      - key: VITE_FIREBASE_PROJECT_ID
+        value: "playa-buche-pos"
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        value: "playa-buche-pos.firebasestorage.app"
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        value: "637742279156"
+      - key: VITE_FIREBASE_APP_ID
+        value: "1:637742279156:web:daa2a086b0b82d6ecc31a1"
+      - key: VITE_FIREBASE_MEASUREMENT_ID
+        value: "G-705S44KGDC"
       - key: OWNER_NAME
         value: "Emmanuel Mejías"
       - key: OWNER_PHONE
         value: "04127939128"
       - key: OWNER_EMAIL
         value: "Emmanuelmejias2616@gmail.com"
-      - key: OWNER_INITIAL_PASSWORD
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM
-        sync: false
 
   - type: static
     name: virgen-del-valle-web
@@ -62,11 +53,17 @@ services:
         source: /*
         destination: /index.html
     envVars:
-      - key: VITE_API_URL
-        value: "https://virgen-del-valle-api.onrender.com"
-
-databases:
-  - name: virgen-del-valle-postgres
-    databaseName: virgen_del_valle
-    plan: free
-    region: virginia
+      - key: VITE_FIREBASE_API_KEY
+        value: "AIzaSyAnMvY9S2ZCRwaY-rCzMnSUGe6XSY7kl5k"
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        value: "playa-buche-pos.firebaseapp.com"
+      - key: VITE_FIREBASE_PROJECT_ID
+        value: "playa-buche-pos"
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        value: "playa-buche-pos.firebasestorage.app"
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        value: "637742279156"
+      - key: VITE_FIREBASE_APP_ID
+        value: "1:637742279156:web:daa2a086b0b82d6ecc31a1"
+      - key: VITE_FIREBASE_MEASUREMENT_ID
+        value: "G-705S44KGDC"

@@ -1,37 +1,26 @@
 /**
- * Script para sembrar / migrar los datos iniciales de Playa Buche a Firebase Firestore.
+ * Script para sembrar y poblar todas las colecciones de Playa Buche en Firebase Firestore.
  * Ejecución: node scripts/seed-firebase.mjs
  */
 
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { getAuth, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import * as dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
 
 dotenv.config();
 
 const firebaseConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY,
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || process.env.FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.VITE_FIREBASE_APP_ID || process.env.FIREBASE_APP_ID,
+  apiKey: process.env.VITE_FIREBASE_API_KEY || "AIzaSyAnMvY9S2ZCRwaY-rCzMnSUGe6XSY7kl5k",
+  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || "playa-buche-pos.firebaseapp.com",
+  projectId: process.env.VITE_FIREBASE_PROJECT_ID || "playa-buche-pos",
+  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || "playa-buche-pos.firebasestorage.app",
+  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "637742279156",
+  appId: process.env.VITE_FIREBASE_APP_ID || "1:637742279156:web:daa2a086b0b82d6ecc31a1",
 };
-
-if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-  console.error('❌ Error: Falta configurar VITE_FIREBASE_API_KEY y VITE_FIREBASE_PROJECT_ID en el archivo .env');
-  console.log('Por favor agrega tus credenciales en el archivo .env y vuelve a ejecutar este script.');
-  process.exit(1);
-}
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const auth = getAuth(app);
 
-// Importar datos iniciales
 const INITIAL_BCV_RATE = 54.50;
 
 const INITIAL_MENU_ITEMS = [
@@ -219,14 +208,56 @@ const INITIAL_DRAWER_BILLS = {
   bill100: 2,
 };
 
-async function seed() {
-  console.log('🚀 Iniciando migración de datos hacia Firebase Firestore...');
-  
-  try {
-    console.log('🔑 Intentando autenticación...');
-    await signInAnonymously(auth).catch(() => null);
-  } catch {}
+const INITIAL_STAFF = [
+  {
+    id: 'admin-emmanuel',
+    name: 'Emmanuel Mejías',
+    email: 'emmanuelmejias2616@gmail.com',
+    phone: '04127939128',
+    role: 'admin',
+    status: 'active',
+  },
+  {
+    id: 'waiter-carlos',
+    name: 'Carlos Mendoza',
+    email: 'carlos.mesonero@playabuche.com',
+    phone: '04141112233',
+    role: 'waiter',
+    zone: 'Playa VIP / Muelle',
+    status: 'active',
+  },
+  {
+    id: 'waiter-jose',
+    name: 'José Rodriguez',
+    email: 'jose.mesonero@playabuche.com',
+    phone: '04144445566',
+    role: 'waiter',
+    zone: 'Churuata Central',
+    status: 'active',
+  },
+  {
+    id: 'kitchen-chef',
+    name: 'Chef Principal Buche',
+    email: 'cocina@playabuche.com',
+    phone: '04123334455',
+    role: 'kitchen',
+    status: 'active',
+  },
+  {
+    id: 'excursion-capitan',
+    name: 'Capitán Manuel Díaz',
+    email: 'excursiones@playabuche.com',
+    phone: '04169998877',
+    boatName: 'El Gran Delfín III',
+    role: 'excursion',
+    status: 'active',
+  }
+];
 
+async function seed() {
+  console.log('🚀 Iniciando subida detallada a Firebase Firestore (playa-buche-pos)...');
+  
+  // 1. Estado Global Unificado
   const statePayload = {
     menuItems: INITIAL_MENU_ITEMS,
     spots: INITIAL_SPOTS,
@@ -238,26 +269,45 @@ async function seed() {
     bcvRate: INITIAL_BCV_RATE,
     updatedAt: serverTimestamp(),
   };
-
   await setDoc(doc(db, 'app_state', 'main'), statePayload, { merge: true });
-  console.log('✅ Documento `app_state/main` guardado exitosamente en Firestore.');
+  console.log('✅ Colección `app_state` (Doc: main) guardada.');
 
-  // Guardar usuario administrador por defecto
-  const adminUser = {
-    name: 'Administrador Playa Buche',
-    email: 'admin@playabuche.com',
-    role: 'admin',
-    status: 'active',
-    createdAt: serverTimestamp(),
-  };
-  await setDoc(doc(db, 'app_users', 'admin-default'), adminUser, { merge: true });
-  console.log('✅ Usuario Administrador inicial registrado en `app_users`.');
+  // 2. Colección de Menú Individual
+  for (const item of INITIAL_MENU_ITEMS) {
+    await setDoc(doc(db, 'menu_items', item.id), { ...item, updatedAt: serverTimestamp() }, { merge: true });
+  }
+  console.log(`✅ Colección \`menu_items\` (${INITIAL_MENU_ITEMS.length} platos) guardada.`);
 
-  console.log('🎉 ¡Migración a Firebase Firestore completada con éxito!');
+  // 3. Colección de Toldos y Spots
+  for (const spot of INITIAL_SPOTS) {
+    await setDoc(doc(db, 'spots', spot.id), { ...spot, updatedAt: serverTimestamp() }, { merge: true });
+  }
+  console.log(`✅ Colección \`spots\` (${INITIAL_SPOTS.length} ubicaciones) guardada.`);
+
+  // 4. Colección de Excursiones
+  await setDoc(doc(db, 'excursions', INITIAL_EXCURSION.id), { ...INITIAL_EXCURSION, updatedAt: serverTimestamp() }, { merge: true });
+  console.log('✅ Colección `excursions` guardada.');
+
+  // 5. Colección de Usuarios y Personal (Staff)
+  for (const staff of INITIAL_STAFF) {
+    await setDoc(doc(db, 'app_users', staff.id), { ...staff, updatedAt: serverTimestamp() }, { merge: true });
+  }
+  console.log(`✅ Colección \`app_users\` (${INITIAL_STAFF.length} cuentas) guardada.`);
+
+  // 6. Configuración Bancaria y Tasas
+  await setDoc(doc(db, 'settings', 'financial'), {
+    bcvRate: INITIAL_BCV_RATE,
+    bankConfig: INITIAL_BANK_CONFIG,
+    drawerBills: INITIAL_DRAWER_BILLS,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+  console.log('✅ Colección `settings` (Doc: financial) guardada.');
+
+  console.log('\n🎉 ¡TODAS LAS COLECCIONES SE ENCUENTRAN VISIBLES EN FIRESTORE!');
   process.exit(0);
 }
 
 seed().catch((err) => {
-  console.error('❌ Error durante la migración a Firestore:', err);
+  console.error('❌ Error durante la subida a Firestore:', err);
   process.exit(1);
 });
