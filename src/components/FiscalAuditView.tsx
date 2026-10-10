@@ -45,69 +45,7 @@ interface AuditRecord {
   syncTime: string;
 }
 
-const AUDIT_RECORDS: AuditRecord[] = [
-  {
-    id: 'rec-1',
-    category: 'pagomovil',
-    ref: 'Ref: #894320',
-    toldo: 'Toldo #09',
-    mesonero: 'Marcos A.',
-    amountUsd: 15.0,
-    amountBs: 817.5,
-    bank: 'Banesco Banco Universal',
-    clientPhone: '0414-***9211',
-    imageUrl:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuD1AwSsIl_9BviYdzg6xG5GjYqekrtFZGbI10mqk3-6KGbr0ZKjQlh-52I4VtKXMEPmIsNE8F6Q5BLANV4NsTY8b_LXBYmyXjBnKr-0cb8mZFRe8h-ZVlQeEpvTeKO_UvfpR-0wQmJDnhzprtlvaM5Syn_tKfnf-W-Mp_mUkUPwYNmFAb-iOtz9HEjeCspY-0lMX3-RNLw-FIpNV0XsogVmVuXzk5dib71B7rubKTCNcxYeAO5aa_ikSg',
-    ocrBadge: 'OCR Gemini Validado',
-    statusText: 'Conciliado',
-    shaHash: 'SHA: 7a8e...3b12',
-    syncTime: 'Sync Starlink 14:15 PM'
-  },
-  {
-    id: 'rec-2',
-    category: 'pagomovil',
-    ref: 'Ref: #774102',
-    toldo: 'Toldo VIP #14',
-    mesonero: 'Yender R.',
-    amountUsd: 42.0,
-    amountBs: 2289.0,
-    bank: 'Mercantil Banco',
-    details: 'Offline Mesh (13:48 PM)',
-    imageUrl:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuBtZhFvNdd6QFEZrUbvX7PohvDmgbf8ncIBdZtupF-xrx4AcV6cNiB4Sb7shtke8z-ydpB5TWvwkt5k85fS7tD-lQjk8X-thVxuFk5Zpwom8uyhGR3qF0n3YtEKwfesgDw18fQDRcjbBV6rl568RO9kFYH-2db0fLjyf544CvpIoIkuaJM1rQov78mAv9sjmXCutXOoGELHFzJnKbzp-wPM2B4Mz4vlAIQGNri2CXTYkB3nYuMxLd6dIw',
-    ocrBadge: 'BNC Extracto Cruzado',
-    statusText: 'Aprobado',
-    shaHash: 'SHA: c912...41ef',
-    syncTime: 'Acreditado en Cuenta C.A.'
-  },
-  {
-    id: 'rec-3',
-    category: 'efectivo',
-    ref: 'Efectivo Gaveta Bóveda',
-    toldo: 'Toldo #04',
-    mesonero: 'Carlos V.',
-    amountUsd: 60.0,
-    amountBs: 3270.0,
-    details: 'Gaveta Churuata Central (3 billetes de $20)',
-    serials: 'MB7284901 • KK1948202 • LL4482019',
-    statusText: 'Auditado',
-    shaHash: 'Físico Contado por Capitán de Muelle',
-    syncTime: 'Bóveda Muelle 14:30 PM'
-  },
-  {
-    id: 'rec-4',
-    category: 'alertas',
-    ref: 'Ref: #302194',
-    toldo: 'Toldo #22 • Orilla Este',
-    mesonero: 'Douglas M.',
-    amountUsd: 25.0,
-    amountBs: 1362.5,
-    details: 'Incidencia Satelital: Retardo de 8 min por nubosidad marítima. Pago validado manualmente contra terminal cliente.',
-    statusText: 'Resuelto por Auditor',
-    shaHash: 'Conciliado por Socio #1',
-    syncTime: 'Despejado 14:05 PM'
-  }
-];
+const AUDIT_RECORDS: AuditRecord[] = [];
 
 export const FiscalAuditView: React.FC<FiscalAuditViewProps> = ({
   bcvRate,
@@ -234,19 +172,19 @@ export const FiscalAuditView: React.FC<FiscalAuditViewProps> = ({
 
         <div className="flex items-baseline gap-2 mt-1.5">
           <span className="text-3xl sm:text-4xl font-extrabold tracking-tight font-mono text-white">
-            $3,180.00
+            $0.00
           </span>
           <span className="text-sm text-[#bbe9ff] font-bold">USD</span>
         </div>
         <span className="text-xs text-[#bbe9ff] font-semibold font-mono block mt-0.5">
-          ≈ {(3180.0 * bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs (En libros)
+          ≈ 0.00 Bs (En libros)
         </span>
 
         {/* Secondary summary badges */}
         <div className="grid grid-cols-2 gap-2 mt-3.5 pt-3 border-t border-white/15">
           <div className="flex flex-col">
             <span className="text-[10px] text-[#bbe9ff]">Comprobantes Offline</span>
-            <span className="text-sm font-bold text-white">34 Transacciones</span>
+            <span className="text-sm font-bold text-white">0 Transacciones</span>
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] text-[#bbe9ff]">Discrepancia / Descuadre</span>
@@ -270,18 +208,18 @@ export const FiscalAuditView: React.FC<FiscalAuditViewProps> = ({
                 <PhoneCall className="w-4 h-4 text-[#006782]" />
               </div>
               <span className="text-[10px] bg-[#bbe9ff] text-[#005870] px-2 py-0.5 rounded-full font-bold">
-                18 ops
+                0 ops
               </span>
             </div>
             <div className="mt-2">
               <span className="text-[11px] text-[#42474f] block">Pago Móvil P2P</span>
-              <span className="text-sm font-bold text-[#002546] font-mono">$1,520.00</span>
+              <span className="text-sm font-bold text-[#002546] font-mono">$0.00</span>
               <span className="text-[10px] text-[#42474f] block font-mono">
-                {(1520 * bcvRate).toFixed(2)} Bs
+                0.00 Bs
               </span>
             </div>
             <div className="w-full bg-[#eff4ff] h-1.5 rounded-full mt-2 overflow-hidden">
-              <div className="bg-[#006782] h-full rounded-full" style={{ width: '48%' }}></div>
+              <div className="bg-[#006782] h-full rounded-full" style={{ width: '0%' }}></div>
             </div>
           </div>
 
@@ -292,16 +230,16 @@ export const FiscalAuditView: React.FC<FiscalAuditViewProps> = ({
                 <Coins className="w-4 h-4" />
               </div>
               <span className="text-[10px] bg-[#ffdea5] text-[#4d3600] px-2 py-0.5 rounded-full font-bold">
-                10 ops
+                0 ops
               </span>
             </div>
             <div className="mt-2">
               <span className="text-[11px] text-[#42474f] block">Efectivo Muelle</span>
-              <span className="text-sm font-bold text-[#002546] font-mono">$1,050.00</span>
+              <span className="text-sm font-bold text-[#002546] font-mono">$0.00</span>
               <span className="text-[10px] text-[#42474f] block">Gaveta Churuata</span>
             </div>
             <div className="w-full bg-[#eff4ff] h-1.5 rounded-full mt-2 overflow-hidden">
-              <div className="bg-amber-500 h-full rounded-full" style={{ width: '33%' }}></div>
+              <div className="bg-amber-500 h-full rounded-full" style={{ width: '0%' }}></div>
             </div>
           </div>
 
@@ -312,16 +250,16 @@ export const FiscalAuditView: React.FC<FiscalAuditViewProps> = ({
                 <Building className="w-4 h-4 text-[#006782]" />
               </div>
               <span className="text-[10px] bg-[#eff4ff] text-[#002546] px-2 py-0.5 rounded-full font-bold">
-                4 ops
+                0 ops
               </span>
             </div>
             <div className="mt-2">
               <span className="text-[11px] text-[#42474f] block">Zelle / Wire</span>
-              <span className="text-sm font-bold text-[#002546] font-mono">$430.00</span>
+              <span className="text-sm font-bold text-[#002546] font-mono">$0.00</span>
               <span className="text-[10px] text-[#42474f] block">BOA Oficial</span>
             </div>
             <div className="w-full bg-[#eff4ff] h-1.5 rounded-full mt-2 overflow-hidden">
-              <div className="bg-[#002546] h-full rounded-full" style={{ width: '14%' }}></div>
+              <div className="bg-[#002546] h-full rounded-full" style={{ width: '0%' }}></div>
             </div>
           </div>
 
@@ -332,18 +270,18 @@ export const FiscalAuditView: React.FC<FiscalAuditViewProps> = ({
                 <CreditCard className="w-4 h-4 text-[#006782]" />
               </div>
               <span className="text-[10px] bg-[#eff4ff] text-[#002546] px-2 py-0.5 rounded-full font-bold">
-                2 ops
+                0 ops
               </span>
             </div>
             <div className="mt-2">
               <span className="text-[11px] text-[#42474f] block">POS Satelital</span>
-              <span className="text-sm font-bold text-[#002546] font-mono">$180.00</span>
+              <span className="text-sm font-bold text-[#002546] font-mono">$0.00</span>
               <span className="text-[10px] text-[#42474f] block font-mono">
-                {(180 * bcvRate).toFixed(2)} Bs (BNC)
+                0.00 Bs (BNC)
               </span>
             </div>
             <div className="w-full bg-[#eff4ff] h-1.5 rounded-full mt-2 overflow-hidden">
-              <div className="bg-[#006782] h-full rounded-full" style={{ width: '6%' }}></div>
+              <div className="bg-[#006782] h-full rounded-full" style={{ width: '0%' }}></div>
             </div>
           </div>
         </div>
@@ -360,7 +298,7 @@ export const FiscalAuditView: React.FC<FiscalAuditViewProps> = ({
                 : 'bg-white text-[#42474f] hover:bg-gray-100 border border-gray-200'
             }`}
           >
-            Todos (34)
+            Todos (0)
           </button>
           <button
             onClick={() => setActiveFilter('pagomovil')}
@@ -370,7 +308,7 @@ export const FiscalAuditView: React.FC<FiscalAuditViewProps> = ({
                 : 'bg-white text-[#42474f] hover:bg-gray-100 border border-gray-200'
             }`}
           >
-            Pago Móvil (18)
+            Pago Móvil (0)
           </button>
           <button
             onClick={() => setActiveFilter('efectivo')}
@@ -380,7 +318,7 @@ export const FiscalAuditView: React.FC<FiscalAuditViewProps> = ({
                 : 'bg-white text-[#42474f] hover:bg-gray-100 border border-gray-200'
             }`}
           >
-            Efectivo Bóveda (10)
+            Efectivo Bóveda (0)
           </button>
           <button
             onClick={() => setActiveFilter('alertas')}
@@ -390,7 +328,7 @@ export const FiscalAuditView: React.FC<FiscalAuditViewProps> = ({
                 : 'bg-white text-[#ba1a1a] hover:bg-red-50 border border-gray-200'
             }`}
           >
-            Observaciones (2)
+            Observaciones (0)
           </button>
         </div>
       </section>
@@ -501,77 +439,13 @@ export const FiscalAuditView: React.FC<FiscalAuditViewProps> = ({
             <span className="text-[11px] text-[#42474f]">Paz y Salvo Operativo de Muelle</span>
           </div>
           <span className="text-xs bg-[#bbe9ff] text-[#005870] px-2.5 py-0.5 rounded-full font-bold">
-            4/4 Solventes
+            0/0 Solventes
           </span>
         </div>
 
         <div className="flex flex-col gap-2">
-          {/* Mesonero 1 */}
-          <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#eff4ff] border border-[#d2e4ff]">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-[#002546] text-white flex items-center justify-center font-bold text-xs">
-                YR
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-[#002546]">Yender R.</span>
-                <span className="text-[10px] text-[#006782] font-semibold">Paz y Salvo #PZ-104</span>
-              </div>
-            </div>
-            <div className="text-right">
-              <span className="text-xs font-bold text-[#002546] font-mono">$840.00 USD</span>
-              <span className="text-[10px] text-[#42474f] block">Total Entregado</span>
-            </div>
-          </div>
-
-          {/* Mesonero 2 */}
-          <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#eff4ff] border border-[#d2e4ff]">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-[#002546] text-white flex items-center justify-center font-bold text-xs">
-                MA
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-[#002546]">Marcos A.</span>
-                <span className="text-[10px] text-[#006782] font-semibold">Paz y Salvo #PZ-105</span>
-              </div>
-            </div>
-            <div className="text-right">
-              <span className="text-xs font-bold text-[#002546] font-mono">$720.00 USD</span>
-              <span className="text-[10px] text-[#42474f] block">Total Entregado</span>
-            </div>
-          </div>
-
-          {/* Mesonero 3 */}
-          <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#eff4ff] border border-[#d2e4ff]">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-[#002546] text-white flex items-center justify-center font-bold text-xs">
-                CV
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-[#002546]">Carlos V.</span>
-                <span className="text-[10px] text-[#006782] font-semibold">Paz y Salvo #PZ-106</span>
-              </div>
-            </div>
-            <div className="text-right">
-              <span className="text-xs font-bold text-[#002546] font-mono">$690.00 USD</span>
-              <span className="text-[10px] text-[#42474f] block">Total Entregado</span>
-            </div>
-          </div>
-
-          {/* Mesonero 4 */}
-          <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#eff4ff] border border-[#d2e4ff]">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-[#002546] text-white flex items-center justify-center font-bold text-xs">
-                DM
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-[#002546]">Douglas M.</span>
-                <span className="text-[10px] text-[#006782] font-semibold">Paz y Salvo #PZ-107</span>
-              </div>
-            </div>
-            <div className="text-right">
-              <span className="text-xs font-bold text-[#002546] font-mono">$930.00 USD</span>
-              <span className="text-[10px] text-[#42474f] block">Total Entregado</span>
-            </div>
+          <div className="text-center py-6 text-sm text-gray-500 italic">
+            No hay mesoneros con liquidación pendiente.
           </div>
         </div>
       </section>
