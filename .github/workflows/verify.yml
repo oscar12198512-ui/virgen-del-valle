@@ -123,19 +123,21 @@ jobs:
           s = p.read_text()
           s = s.replace("versionCode 1", f"versionCode {run_number}", 1)
           s = s.replace('versionName "1.0"', f'versionName "1.{run_number}"', 1)
-          s = s.replace("buildTypes {", """signingConfigs {
+          signing_block = """    signingConfigs {
               release {
-                  storeFile file("../../signing/release.keystore")
+                  storeFile file("${rootDir}/../signing/release.keystore")
                   storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
                   keyAlias System.getenv("ANDROID_KEY_ALIAS")
                   keyPassword System.getenv("ANDROID_KEY_PASSWORD")
               }
           }
+      """
+          if "signingConfigs {" not in s:
+              s = s.replace("buildTypes {", signing_block + "\n    buildTypes {", 1)
 
-          buildTypes {""", 1)
-          marker = "release {"
-          i = s.index(marker, s.index("buildTypes {")) + len(marker)
-          s = s[:i] + "\n        signingConfig signingConfigs.release" + s[i:]
+          if "signingConfig signingConfigs.release" not in s:
+              s = s.replace("minifyEnabled false", "signingConfig signingConfigs.release\n            minifyEnabled false", 1)
+
           p.write_text(s)
           PY
 
@@ -144,7 +146,7 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew bundleRelease assembleRelease
+          ./gradlew bundleRelease assembleRelease --stacktrace
 
       - name: Verificar firma del paquete
         if: steps.signing.outputs.signed == 'true'
