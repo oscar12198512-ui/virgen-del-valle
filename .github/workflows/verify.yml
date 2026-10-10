@@ -10,24 +10,33 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
-      - run: npm ci
-      - run: npm run lint
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Type Check & Lint
+        run: npm run lint
+
       - name: Compilar Frontend Web
         run: npm run build
         env:
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || 'AIzaSyAnMvY9S2ZCRwaY-rCzMnSUGe6XSY7kl5k' }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || 'playa-buche-pos.firebaseapp.com' }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || 'playa-buche-pos' }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || 'playa-buche-pos.firebasestorage.app' }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || '637742279156' }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || '1:637742279156:web:daa2a086b0b82d6ecc31a1' }}
+          VITE_FIREBASE_API_KEY: "AIzaSyAnMvY9S2ZCRwaY-rCzMnSUGe6XSY7kl5k"
+          VITE_FIREBASE_AUTH_DOMAIN: "playa-buche-pos.firebaseapp.com"
+          VITE_FIREBASE_PROJECT_ID: "playa-buche-pos"
+          VITE_FIREBASE_STORAGE_BUCKET: "playa-buche-pos.firebasestorage.app"
+          VITE_FIREBASE_MESSAGING_SENDER_ID: "637742279156"
+          VITE_FIREBASE_APP_ID: "1:637742279156:web:daa2a086b0b82d6ecc31a1"
+
       - name: Sintaxis del servidor
         run: |
           node --check server/index.js
@@ -37,31 +46,47 @@ jobs:
   android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
-      - uses: actions/setup-java@v4
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-      - run: npm ci
-      - run: npm run lint
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Type Check
+        run: npm run lint
+
       - name: Compilar Assets y Bundle Android
         run: npm run build
         env:
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || 'AIzaSyAnMvY9S2ZCRwaY-rCzMnSUGe6XSY7kl5k' }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || 'playa-buche-pos.firebaseapp.com' }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || 'playa-buche-pos' }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || 'playa-buche-pos.firebasestorage.app' }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || '637742279156' }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || '1:637742279156:web:daa2a086b0b82d6ecc31a1' }}
-      - run: '[ -d "android" ] || npx cap add android'
-      - run: npx @capacitor/assets generate --android
-      - run: npx cap sync android
+          VITE_FIREBASE_API_KEY: "AIzaSyAnMvY9S2ZCRwaY-rCzMnSUGe6XSY7kl5k"
+          VITE_FIREBASE_AUTH_DOMAIN: "playa-buche-pos.firebaseapp.com"
+          VITE_FIREBASE_PROJECT_ID: "playa-buche-pos"
+          VITE_FIREBASE_STORAGE_BUCKET: "playa-buche-pos.firebasestorage.app"
+          VITE_FIREBASE_MESSAGING_SENDER_ID: "637742279156"
+          VITE_FIREBASE_APP_ID: "1:637742279156:web:daa2a086b0b82d6ecc31a1"
+
+      - name: Initialize Android Project
+        run: '[ -d "android" ] || npx cap add android'
+
+      - name: Generate Capacitor Assets
+        run: npx @capacitor/assets generate --android
+
+      - name: Sync Capacitor Android
+        run: npx cap sync android
 
       - name: Detectar clave de firma
         id: signing
@@ -70,7 +95,7 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          if [ -n "${ANDROID_KEYSTORE_BASE64}" ]; then
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
             mkdir -p signing
             echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > signing/release.keystore
             echo "signed=true" >> "$GITHUB_OUTPUT"
@@ -117,9 +142,11 @@ jobs:
         if: steps.signing.outputs.signed == 'true'
         working-directory: android
         run: ./gradlew bundleRelease assembleRelease
+
       - name: Verificar firma del paquete
         if: steps.signing.outputs.signed == 'true'
         run: jarsigner -verify android/app/build/outputs/bundle/release/app-release.aab
+
       - name: Empaquetar artefactos firmados
         if: steps.signing.outputs.signed == 'true'
         shell: bash
