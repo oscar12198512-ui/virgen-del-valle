@@ -130,6 +130,7 @@ export interface ExcursionPackage {
   totalUsd: number;
   isSettled: boolean;
   paymentPreference: 'cash_usd' | 'pago_movil' | 'transfer';
+  paymentStatus?: 'pending' | 'verified' | 'cash_waiter';
 }
 
 export interface WaiterComandaItem {
