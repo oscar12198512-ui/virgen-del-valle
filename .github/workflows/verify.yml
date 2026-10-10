@@ -110,36 +110,9 @@ jobs:
 
       - name: Configurar firma de release
         if: steps.signing.outputs.signed == 'true'
-        shell: bash
         env:
           RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-          run_number = int(os.environ.get("RUN_NUMBER", "1"))
-          p = Path("android/app/build.gradle")
-          s = p.read_text()
-          s = s.replace("versionCode 1", f"versionCode {run_number}", 1)
-          s = s.replace('versionName "1.0"', f'versionName "1.{run_number}"', 1)
-          signing_block = """    signingConfigs {
-              release {
-                  storeFile file("${rootDir}/../signing/release.keystore")
-                  storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                  keyAlias System.getenv("ANDROID_KEY_ALIAS")
-                  keyPassword System.getenv("ANDROID_KEY_PASSWORD")
-              }
-          }
-      """
-          if "signingConfigs {" not in s:
-              s = s.replace("buildTypes {", signing_block + "\n    buildTypes {", 1)
-
-          if "signingConfig signingConfigs.release" not in s:
-              s = s.replace("minifyEnabled false", "signingConfig signingConfigs.release\n            minifyEnabled false", 1)
-
-          p.write_text(s)
-          PY
+        run: node scripts/configure-android-signing.mjs
 
       - name: Compilar paquete firmado (.aab + .apk)
         if: steps.signing.outputs.signed == 'true'
