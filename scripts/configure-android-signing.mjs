@@ -13,6 +13,15 @@ if (!fs.existsSync(buildGradlePath)) {
   process.exit(0);
 }
 
+// Copy keystore directly into android/app/ for zero-ambiguity relative path
+const rootSigningKeystore = path.join(rootDir, 'signing', 'release.keystore');
+const appKeystore = path.join(rootDir, 'android', 'app', 'release.keystore');
+
+if (fs.existsSync(rootSigningKeystore)) {
+  fs.copyFileSync(rootSigningKeystore, appKeystore);
+  console.log('[CI Signing] Copied keystore to android/app/release.keystore');
+}
+
 let content = fs.readFileSync(buildGradlePath, 'utf8');
 const runNumber = process.env.RUN_NUMBER || '1';
 
@@ -24,14 +33,14 @@ const keyPassword = process.env.ANDROID_KEY_PASSWORD || storePassword;
 content = content.replace(/versionCode \d+/, `versionCode ${runNumber}`);
 content = content.replace(/versionName "[^"]+"/, `versionName "1.${runNumber}"`);
 
-// Remove any existing signingConfigs block to prevent duplicate definitions
+// Clean any old signingConfigs and signingConfig assignments
 content = content.replace(/signingConfigs\s*\{[\s\S]*?\}\s*\}\s*/g, '');
 content = content.replace(/signingConfig\s+signingConfigs\.release\s*/g, '');
 
-// Clean signing block with explicit rootDir path and credentials
+// Clean signing block with local file('release.keystore')
 const signingBlock = `    signingConfigs {
         release {
-            storeFile file("\${rootDir}/../signing/release.keystore")
+            storeFile file('release.keystore')
             storePassword "${storePassword}"
             keyAlias "${keyAlias}"
             keyPassword "${keyPassword}"
