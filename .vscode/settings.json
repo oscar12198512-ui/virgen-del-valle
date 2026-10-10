@@ -1,0 +1,5 @@
+{
+  "github-actions.workflows.suppressContextWarnings": true,
+  "github-actions.workflows.useBracketNotation": true,
+  "yaml.validate": true
+}
