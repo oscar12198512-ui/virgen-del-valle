@@ -17,6 +17,7 @@ class SoundService {
 
   // Ring bell for KDS / Kitchen pass
   playBell() {
+    this.buzzSmartBand();
     try {
       const ctx = this.getContext();
       if (!ctx) return;
@@ -40,6 +41,58 @@ class SoundService {
     } catch {
       // Audio autoplay might be blocked before first interaction
     }
+  }
+
+  // Alerta sonora cuando la cocina marca un pedido como Listo / Pase (ready_pass)
+  playReadyPassAlert() {
+    this.buzzSmartBand();
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+
+        gain.gain.setValueAtTime(0.25, now + idx * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.35);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + idx * 0.1);
+        osc.stop(now + idx * 0.1 + 0.35);
+      });
+    } catch {}
+  }
+
+  // Alerta sonora cuando entra un nuevo pedido a la cocina
+  playNewIncomingOrderAlert() {
+    this.buzzSmartBand();
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      [587.33, 880.00].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+
+        gain.gain.setValueAtTime(0.28, now + idx * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.4);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + idx * 0.12);
+        osc.stop(now + idx * 0.12 + 0.4);
+      });
+    } catch {}
   }
 
   // Fryer or fire alert sound

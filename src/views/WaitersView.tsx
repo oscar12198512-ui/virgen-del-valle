@@ -26,7 +26,8 @@ import {
   Receipt,
   Share2,
   Copy,
-  Zap
+  Zap,
+  QrCode
 } from 'lucide-react';
 import { ComandaEditorModal } from '../components/ComandaEditorModal';
 import { PreCuentaModal } from '../components/PreCuentaModal';
@@ -41,6 +42,7 @@ interface WaitersViewProps {
   onOpenPaymentModal: (order: Order) => void;
   onUpdateOrder?: (updatedOrder: Order) => void;
   onOpenCalculator?: (initialTotal?: number) => void;
+  onOpenToldoQrModal?: () => void;
 }
 
 export const WaitersView: React.FC<WaitersViewProps> = ({
@@ -53,6 +55,7 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
   onOpenPaymentModal,
   onUpdateOrder,
   onOpenCalculator,
+  onOpenToldoQrModal,
 }) => {
   const [selectedSpotId, setSelectedSpotId] = useState<string>(spots[0]?.id || 'spot-14');
   const [spotFilter, setSpotFilter] = useState<'all' | 'occupied' | 'free'>('all');
@@ -282,9 +285,21 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
               ))}
             </div>
           </div>
-          <span className="text-[#006782] font-semibold text-[11px]">
-            {spots.filter(s => s.status !== 'occupied').length} Libres
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[#006782] font-semibold text-[11px]">
+              {spots.filter(s => s.status !== 'occupied').length} Libres
+            </span>
+            {onOpenToldoQrModal && (
+              <button
+                onClick={onOpenToldoQrModal}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 border border-amber-500/40 text-[10px] font-bold transition-all cursor-pointer"
+                title="Generar e imprimir QRs para los toldos"
+              >
+                <QrCode className="w-3 h-3 text-amber-700" />
+                <span>QRs</span>
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           {spots

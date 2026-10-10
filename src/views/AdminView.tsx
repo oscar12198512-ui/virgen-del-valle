@@ -12,6 +12,7 @@ import {
   RbacRoleDefinition,
   Order,
   OrderStatus,
+  ToldoSpot,
 } from '../types';
 import {
   INITIAL_ARENA_SUPPLIES,
@@ -67,7 +68,8 @@ import {
   Volume2,
   Share2,
   Zap,
-  Download
+  Download,
+  QrCode
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -96,6 +98,8 @@ interface AdminViewProps {
   onUpdateOrderStatus?: (orderId: string, newStatus: OrderStatus) => void;
   onUpdateOrder?: (updated: Order) => void;
   approachingAlertCount?: number;
+  spots?: ToldoSpot[];
+  onOpenToldoQrModal?: () => void;
 }
 
 export const AdminView: React.FC<AdminViewProps> = ({
@@ -124,6 +128,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onUpdateOrderStatus,
   onUpdateOrder,
   approachingAlertCount = 0,
+  spots = [],
+  onOpenToldoQrModal,
 }) => {
   const [adminTab, setAdminTab] = useState<
     'closings' | 'staff_access' | 'menu' | 'fiscal_audit' | 'contingency' | 'order_sync' | 'logistics' | 'rbac' | 'dashboard'
@@ -773,6 +779,15 @@ export const AdminView: React.FC<AdminViewProps> = ({
           <TrendingUp className="w-3.5 h-3.5 text-[#57d1fd] shrink-0" />
           <span>Finanzas</span>
         </button>
+        {onOpenToldoQrModal && (
+          <button
+            onClick={onOpenToldoQrModal}
+            className="py-2 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all bg-amber-500/20 text-amber-900 border border-amber-500/40 hover:bg-amber-500/30"
+          >
+            <QrCode className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+            <span>QRs Toldos ({spots.length})</span>
+          </button>
+        )}
       </div>
 
       {adminTab === 'staff_access' ? (

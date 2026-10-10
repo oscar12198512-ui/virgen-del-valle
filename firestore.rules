@@ -2,12 +2,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Función de ayuda para verificar autenticación
+    // Funciones de ayuda de autenticación y roles
     function isAuthenticated() {
       return request.auth != null;
     }
     
-    // Función de ayuda para verificar rol del usuario
     function getUserRole() {
       return get(/databases/$(database)/documents/app_users/$(request.auth.uid)).data.role;
     }
@@ -22,27 +21,51 @@ service cloud.firestore {
       return isAuthenticated() && getUserRole() == 'admin';
     }
 
-    // Estado global de la aplicación (menú, spots, órdenes, excursión, tasas)
+    // 1. Estado Global Unificado (Menú, Spots, Excursión, Configuración)
+    // Lectura pública para que clientes vean menú digital por QR sin requerir login
     match /app_state/{docId} {
-      // Cualquier usuario puede leer para ver el menú y precios
       allow read: if true;
-      // Staff y clientes autenticados pueden actualizar órdenes / estado
-      allow write: if isAuthenticated();
+      allow write: if isAuthenticated() || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['orders', 'updatedAt', 'spots']);
     }
     
-    // Colección de Usuarios y Perfiles
+    // 2. Catálogo de Menú y Platos
+    match /menu_items/{itemId} {
+      allow read: if true;
+      allow write: if isStaff() || isAdmin();
+    }
+    
+    // 3. Ubicaciones, Toldos y Puntos de Playa
+    match /spots/{spotId} {
+      allow read: if true;
+      allow update: if true; // Permite actualización de ocupación al escanear/asignar
+      allow create, delete: if isStaff() || isAdmin();
+    }
+    
+    // 4. Excursiones y Grupos Turísticos
+    match /excursions/{excursionId} {
+      allow read: if true;
+      allow write: if isStaff() || isAdmin();
+    }
+    
+    // 5. Gestión de Personal, Mesoneros y Roles (Protegido)
     match /app_users/{userId} {
-      // El propio usuario puede leer y escribir su perfil; staff y admin pueden leer
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && (request.auth.uid == userId || isAdmin() || isStaff());
+      allow create, update: if isAuthenticated() && (request.auth.uid == userId || isStaff() || isAdmin());
       allow delete: if isAdmin();
     }
     
-    // Colección de Órdenes individuales (si se usan colecciones directas)
+    // 6. Tasas de Cambio y Parámetros Financieros
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isStaff() || isAdmin();
+    }
+    
+    // 7. Colección de Pedidos y Comandas (Órdenes en Tiempo Real)
     match /orders/{orderId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isStaff();
+      allow read: if true;
+      allow create: if true; // Clientes por QR y mesoneros
+      allow update: if isStaff() || isAdmin() || isAuthenticated();
+      allow delete: if isAdmin();
     }
   }
 }

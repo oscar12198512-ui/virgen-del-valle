@@ -38,6 +38,7 @@ import { ClientsView } from './views/ClientsView';
 import { soundService } from './services/soundService';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { AppInstallModal } from './components/AppInstallModal';
+import { ToldoQrGeneratorModal } from './components/ToldoQrGeneratorModal';
 import { LoginScreen } from './components/LoginScreen';
 import { isFirebaseConfigured } from './config/firebase';
 import {
@@ -92,7 +93,9 @@ export const App: React.FC = () => {
   const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isToldoQrModalOpen, setIsToldoQrModalOpen] = useState(false);
   const [viewRole, setViewRole] = useState<UserRole | null>(null);
+  const prevOrdersRef = useRef<Order[]>([]);
 
   const directLoginRequested = new URLSearchParams(window.location.search).get('login') === '1';
 
@@ -318,6 +321,31 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Alertas sonoras y hápticas en tiempo real al ingresar órdenes o pasar a ready_pass
+  useEffect(() => {
+    if (!dbHydratedRef.current || prevOrdersRef.current.length === 0) {
+      prevOrdersRef.current = orders;
+      return;
+    }
+
+    if (orders.length > prevOrdersRef.current.length) {
+      const prevIds = new Set(prevOrdersRef.current.map((o) => o.id));
+      const hasNew = orders.some((o) => !prevIds.has(o.id));
+      if (hasNew) {
+        soundService.playNewIncomingOrderAlert();
+      }
+    }
+
+    orders.forEach((ord) => {
+      const prev = prevOrdersRef.current.find((p) => p.id === ord.id);
+      if (prev && prev.status !== 'ready_pass' && ord.status === 'ready_pass') {
+        soundService.playReadyPassAlert();
+      }
+    });
+
+    prevOrdersRef.current = orders;
+  }, [orders]);
+
   const handleAuthenticated = (user: User) => {
     const token = (user as User & { sessionToken?: string }).sessionToken || '';
     if (token) {
@@ -369,10 +397,15 @@ export const App: React.FC = () => {
 
   const handleSendOrderToKitchen = (newOrder: Order) => {
     setOrders((previous) => [newOrder, ...previous]);
-    soundService.playBell();
+    soundService.playNewIncomingOrderAlert();
   };
 
   const handleUpdateOrderStatus = (orderId: string, newStatus: OrderStatus) => {
+    if (newStatus === 'ready_pass') {
+      soundService.playReadyPassAlert();
+    } else if (newStatus === 'in_fire') {
+      soundService.playFireAlert();
+    }
     setOrders((previous) =>
       previous.map((order) => {
         if (order.id !== orderId) return order;
@@ -518,6 +551,7 @@ export const App: React.FC = () => {
             onOpenPaymentModal={setActivePagoMovilOrder}
             onUpdateOrder={handleUpdateOrder}
             onOpenCalculator={handleOpenCalculator}
+            onOpenToldoQrModal={() => setIsToldoQrModalOpen(true)}
           />
         )}
 
@@ -569,6 +603,8 @@ export const App: React.FC = () => {
             onUpdateOrderStatus={handleUpdateOrderStatus}
             onUpdateOrder={handleUpdateOrder}
             approachingAlertCount={approachingAlertCount}
+            spots={spots}
+            onOpenToldoQrModal={() => setIsToldoQrModalOpen(true)}
           />
         )}
 
@@ -686,6 +722,12 @@ export const App: React.FC = () => {
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
         appUrl={typeof window !== 'undefined' ? window.location.origin : ''}
+      />
+
+      <ToldoQrGeneratorModal
+        isOpen={isToldoQrModalOpen}
+        onClose={() => setIsToldoQrModalOpen(false)}
+        spots={spots}
       />
     </div>
   );

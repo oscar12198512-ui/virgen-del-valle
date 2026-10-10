@@ -202,8 +202,7 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
   const handleStatusChange = (orderId: string, status: OrderStatus) => {
     const targetOrder = orders.find((o) => o.id === orderId);
     if (status === 'ready_pass') {
-      soundService.playBell();
-      soundService.buzzSmartBand();
+      soundService.playReadyPassAlert();
       
       // Calculate how long it took from receipt to ready
       let prepTime = 12;
