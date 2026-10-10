@@ -35,23 +35,33 @@ export const CaptainVhfModal: React.FC<CaptainVhfModalProps> = ({
 
   if (!isOpen) return null;
 
-  const totalUsd = excursion.items.reduce((acc, i) => acc + i.quantity * i.unitPriceUsd, 0);
+  const safeBoat = excursion?.boatName || 'Lancha Virgen del Valle';
+  const safeCaptain = excursion?.captainName || 'Capitán Manuel Díaz';
+  const safeItems = Array.isArray(excursion?.items) ? excursion.items : [];
+  const safePax = excursion?.passengersCount || 18;
+  const safeColor = excursion?.braceletsColor || 'Verde Neón VIP';
+  const safeServing = excursion?.estimatedServingTime || '01:45 PM';
+  const safeArrival = excursion?.arrivalTime || '01:15 PM';
+  const safeCode = excursion?.tourCode || 'TOUR-BUCHE-882';
+  const safeKds = excursion?.kdsStatus || 'En Fuego (Cocina)';
+
+  const totalUsd = safeItems.reduce((acc, i) => acc + (i.quantity || 0) * (i.unitPriceUsd || 0), 0);
   const totalBs = totalUsd * bcvRate;
 
   // Radio call phonetic script
   const vhfTranscript = `🎙️ [CANAL 72 MARINO / PUERTO CARENERO]\n` +
-    `"Aquí Capitanía Buche Central llamando a lancha ${excursion.boatName.toUpperCase()}... ¿Me copia, Capitán ${excursion.captainName.toUpperCase()}? Cambio.\n\n` +
-    `Le confirmamos comanda en fogones para sus ${excursion.passengersCount} pasajeros (Pulseras ${excursion.braceletsColor}).\n` +
-    `Hora estimada de servicio a mesa: ${excursion.estimatedServingTime}.\n` +
-    `Muelle Central libre y despejado para su atraque a ${excursion.arrivalTime}. Cambio y fuera."`;
+    `"Aquí Capitanía Buche Central llamando a lancha ${safeBoat.toUpperCase()}... ¿Me copia, Capitán ${safeCaptain.toUpperCase()}? Cambio.\n\n` +
+    `Le confirmamos comanda en fogones para sus ${safePax} pasajeros (Pulseras ${safeColor}).\n` +
+    `Hora estimada de servicio a mesa: ${safeServing}.\n` +
+    `Muelle Central libre y despejado para su atraque a ${safeArrival}. Cambio y fuera."`;
 
   const whatsappMessage = `🛥️ *RESTAURANTE BAHÍA DE BUCHE • COORDINACIÓN MARÍTIMA*\n` +
-    `⚓ *Tour:* ${excursion.tourCode} | Lancha: *${excursion.boatName}*\n` +
-    `👨‍✈️ *Capitán:* ${excursion.captainName}\n` +
-    `👥 *Pasajeros:* ${excursion.passengersCount} pax (Pulseras: ${excursion.braceletsColor})\n` +
-    `⏱️ *Arribo a Muelle:* ${excursion.arrivalTime}\n` +
-    `🍽️ *Hora de Almuerzo/Servicio:* ${excursion.estimatedServingTime}\n` +
-    `🔥 *Estado en Cocina:* ${excursion.kdsStatus}\n` +
+    `⚓ *Tour:* ${safeCode} | Lancha: *${safeBoat}*\n` +
+    `👨‍✈️ *Capitán:* ${safeCaptain}\n` +
+    `👥 *Pasajeros:* ${safePax} pax (Pulseras: ${safeColor})\n` +
+    `⏱️ *Arribo a Muelle:* ${safeArrival}\n` +
+    `🍽️ *Hora de Almuerzo/Servicio:* ${safeServing}\n` +
+    `🔥 *Estado en Cocina:* ${safeKds}\n` +
     `---------------------------------\n` +
     `💰 *Total Comanda:* ${formatUsd(totalUsd)} (${formatBsDirect(totalBs)} - Tasa BCV: ${bcvRate.toFixed(2)})\n` +
     `---------------------------------\n` +

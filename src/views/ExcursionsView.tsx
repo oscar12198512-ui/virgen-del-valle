@@ -35,8 +35,33 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
   onUpdateExcursion,
   onSendApproachingAlert,
 }) => {
-  const [paymentOption, setPaymentOption] = useState<'cash_usd' | 'pago_movil' | 'transfer'>('cash_usd');
-  const [alertSent, setAlertSent] = useState(excursion.isApproachingNotified);
+  const safeExcursion: ExcursionPackage = {
+    id: excursion?.id || 'exc-morrocoy-01',
+    tourCode: excursion?.tourCode || 'TOUR-BUCHE-882',
+    boatName: excursion?.boatName || 'Doña Delia VIP',
+    captainName: excursion?.captainName || 'Capitán Manuel Díaz',
+    passengersCount: excursion?.passengersCount || 18,
+    agencyName: excursion?.agencyName || 'Morrocoy & Buche Tours C.A.',
+    braceletsColor: excursion?.braceletsColor || 'Verde Neón VIP',
+    menuIncluded: excursion?.menuIncluded || 'Almuerzo Marinero Pargo + Bebida + Toldo',
+    departureTime: excursion?.departureTime || '10:30 AM',
+    arrivalTime: excursion?.arrivalTime || '01:15 PM',
+    estimatedServingTime: excursion?.estimatedServingTime || '01:45 PM',
+    orderNote: excursion?.orderNote || 'Atraque en Muelle Central Buche',
+    knotsSpeed: excursion?.knotsSpeed || 22,
+    isApproachingNotified: Boolean(excursion?.isApproachingNotified),
+    kdsStatus: excursion?.kdsStatus || 'En Fuego (Cocción Iniciada)',
+    items: Array.isArray(excursion?.items) && excursion.items.length > 0 ? excursion.items : [],
+    subtotalUsd: excursion?.subtotalUsd || 0,
+    tipPercent: 0,
+    totalUsd: excursion?.totalUsd || 0,
+    isSettled: Boolean(excursion?.isSettled),
+    paymentPreference: excursion?.paymentPreference || 'cash_usd',
+    paymentStatus: excursion?.paymentStatus || 'pending',
+  };
+
+  const [paymentOption, setPaymentOption] = useState<'cash_usd' | 'pago_movil' | 'transfer'>(safeExcursion.paymentPreference || 'cash_usd');
+  const [alertSent, setAlertSent] = useState(safeExcursion.isApproachingNotified);
   const [showAddDishModal, setShowAddDishModal] = useState(false);
   const [isEditingComandaModalOpen, setIsEditingComandaModalOpen] = useState(false);
   const [isCaptainVhfOpen, setIsCaptainVhfOpen] = useState(false);
@@ -46,7 +71,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
   const [activeCategory, setActiveCategory] = useState<string>('Todo');
   const [showVisualCatalog, setShowVisualCatalog] = useState<boolean>(true);
 
-  const safeItems = excursion.items || [];
+  const safeItems = safeExcursion.items;
   const subtotal = safeItems.reduce((acc, i) => acc + (i.quantity || 0) * (i.unitPriceUsd || 0), 0);
   // Las facturas de excursiones no cobran ningún porcentaje (0% propina / recargo)
   const totalUsd = subtotal;
@@ -54,12 +79,12 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
 
   // Convert excursion to Order for ComandaEditorModal (sin porcentajes)
   const excursionAsOrder: Order = {
-    id: excursion.id,
-    displayNumber: excursion.tourCode,
+    id: safeExcursion.id,
+    displayNumber: safeExcursion.tourCode,
     origin: 'excursion',
     spotId: 'dock-buche-central',
-    spotName: `Muelle Central • ${excursion.boatName} (${excursion.passengersCount} pax)`,
-    customerName: `${excursion.captainName} (${excursion.braceletsColor})`,
+    spotName: `Muelle Central • ${safeExcursion.boatName} (${safeExcursion.passengersCount} pax)`,
+    customerName: `${safeExcursion.captainName} (${safeExcursion.braceletsColor})`,
     waiterId: 'coord-maritima',
     waiterName: 'Capitanía Buche',
     items: safeItems,
@@ -69,21 +94,21 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
     totalUsd: totalUsd,
     totalBs: totalBs,
     status: 'in_fire',
-    paymentStatus: excursion.paymentStatus,
+    paymentStatus: safeExcursion.paymentStatus,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    estimatedDeliveryTime: excursion.estimatedServingTime,
-    orderNote: excursion.orderNote || 'Coordinar con atraque de lancha en muelle central',
+    estimatedDeliveryTime: safeExcursion.estimatedServingTime,
+    orderNote: safeExcursion.orderNote || 'Coordinar con atraque de lancha en muelle central',
     kitchenStep: 2,
     elapsedSeconds: 300,
   };
 
   const handleSaveFromEditor = (updatedOrder: Order) => {
     const updatedExcursion: ExcursionPackage = {
-      ...excursion,
+      ...safeExcursion,
       items: updatedOrder.items,
       subtotalUsd: updatedOrder.subtotalUsd,
-      estimatedServingTime: updatedOrder.estimatedDeliveryTime || excursion.estimatedServingTime,
+      estimatedServingTime: updatedOrder.estimatedDeliveryTime || safeExcursion.estimatedServingTime,
       orderNote: updatedOrder.orderNote,
       tipPercent: 0,
     };
@@ -99,26 +124,26 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
     setAlertSent(true);
     onSendApproachingAlert();
     onUpdateExcursion({
-      ...excursion,
+      ...safeExcursion,
       isApproachingNotified: true,
       kdsStatus: '¡APROXIMACIÓN ACTIVADA! A 10 minutos de muelle',
     });
   };
 
   const handleUpdateQty = (itemId: string, delta: number) => {
-    const updatedItems = excursion.items
+    const updatedItems = safeExcursion.items
       .map((item) => (item.id === itemId ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item))
       .filter((item) => item.quantity > 0);
 
     onUpdateExcursion({
-      ...excursion,
+      ...safeExcursion,
       items: updatedItems,
       subtotalUsd: updatedItems.reduce((acc, i) => acc + i.quantity * i.unitPriceUsd, 0),
     });
   };
 
   // Menú exclusivo filtrado para Excursiones (excluye platos exclusivos de mesoneros)
-  const excursionEligibleMenuItems = menuItems.filter(
+  const excursionEligibleMenuItems = (menuItems || []).filter(
     (item) => item.menuTarget !== 'waiters' && item.isAvailable
   );
 
@@ -133,9 +158,9 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
       imageUrl: menuItem.imageUrl,
       specialNote: 'Tarifa Excursión • Agregado en aproximación marítima',
     };
-    const updated = [...excursion.items, newItem];
+    const updated = [...safeExcursion.items, newItem];
     onUpdateExcursion({
-      ...excursion,
+      ...safeExcursion,
       items: updated,
       subtotalUsd: updated.reduce((acc, i) => acc + i.quantity * i.unitPriceUsd, 0),
     });
