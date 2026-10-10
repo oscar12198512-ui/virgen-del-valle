@@ -390,9 +390,6 @@ export const App: React.FC = () => {
     orders.forEach((ord) => {
       const prev = prevOrdersRef.current.find((p) => p.id === ord.id);
       if (prev && prev.status !== 'ready_pass' && ord.status === 'ready_pass') {
-        soundService.playReadyPassAlert();
-        soundService.buzzSmartBand();
-
         const targetRole: UserRole =
           ord.origin === 'client_qr'
             ? 'client'
@@ -400,33 +397,43 @@ export const App: React.FC = () => {
             ? 'excursion'
             : 'waiter';
 
-        const title =
-          ord.origin === 'client_qr'
-            ? '🎉 ¡Tu Pedido está LISTO!'
-            : ord.origin === 'excursion'
-            ? '⚓ ¡Excursión LISTA en Cocina!'
-            : '🍽️ ¡Comanda LISTA para Retirar!';
+        const isTargetUser =
+          currentRole === 'admin' ||
+          currentRole === 'kitchen' ||
+          currentRole === targetRole;
 
-        const message =
-          ord.origin === 'client_qr'
-            ? `Tu comanda ${ord.displayNumber} en ${ord.spotName} está lista en cocina para servir en tu toldo.`
-            : ord.origin === 'excursion'
-            ? `Comanda marítima ${ord.displayNumber} (${ord.spotName}) lista para despacho a lancha.`
-            : `Mesonero ${ord.waiterName || ''}: Retirar comanda ${ord.displayNumber} para ${ord.spotName}.`;
+        if (isTargetUser) {
+          soundService.playReadyPassAlert();
+          soundService.buzzSmartBand();
 
-        setRealtimeToast({
-          id: 'toast-' + ord.id + '-' + Date.now(),
-          title,
-          message,
-          targetRole,
-          spotName: ord.spotName,
-          displayNumber: ord.displayNumber,
-        });
+          const title =
+            ord.origin === 'client_qr'
+              ? '🎉 ¡Tu Pedido está LISTO!'
+              : ord.origin === 'excursion'
+              ? '⚓ ¡Excursión LISTA en Cocina!'
+              : '🍽️ ¡Comanda LISTA para Retirar!';
+
+          const message =
+            ord.origin === 'client_qr'
+              ? `Tu comanda ${ord.displayNumber} en ${ord.spotName} está lista en cocina para servir en tu toldo.`
+              : ord.origin === 'excursion'
+              ? `Comanda marítima ${ord.displayNumber} (${ord.spotName}) lista para despacho a lancha.`
+              : `Mesonero ${ord.waiterName || ''}: Retirar comanda ${ord.displayNumber} para ${ord.spotName}.`;
+
+          setRealtimeToast({
+            id: 'toast-' + ord.id + '-' + Date.now(),
+            title,
+            message,
+            targetRole,
+            spotName: ord.spotName,
+            displayNumber: ord.displayNumber,
+          });
+        }
       }
     });
 
     prevOrdersRef.current = orders;
-  }, [orders]);
+  }, [orders, currentRole]);
 
   const handleAuthenticated = (user: User) => {
     const token = (user as User & { sessionToken?: string }).sessionToken || `token-${user.id}-${Date.now()}`;
@@ -472,12 +479,29 @@ export const App: React.FC = () => {
   };
 
   const now = new Date();
+  const isKitchenOrAdmin = currentRole === 'admin' || currentRole === 'kitchen';
   const alertOrdersCount = orders.filter((order) => {
-    if (order.status === 'delivered' || order.status === 'cancelled' || order.status === 'ready_pass') return false;
-    const timing = getOrderDeliveryTiming(order, now);
-    return timing.minutesRemaining <= 30 && timing.minutesRemaining > 0;
+    if (isKitchenOrAdmin) {
+      if (order.status === 'delivered' || order.status === 'cancelled') return false;
+      if (order.status === 'ready_pass') return true;
+      const timing = getOrderDeliveryTiming(order, now);
+      return timing.minutesRemaining <= 30 && timing.minutesRemaining > 0;
+    }
+    // Clientes solo reciben notificación si su orden está lista
+    if (currentRole === 'client') {
+      return order.status === 'ready_pass' && (order.origin === 'client_qr' || order.spotId === selectedSpotId);
+    }
+    // Mesoneros solo reciben notificación si la comanda está lista en cocina
+    if (currentRole === 'waiter') {
+      return order.status === 'ready_pass' && order.origin !== 'excursion';
+    }
+    // Excursiones solo reciben notificación si su orden marítima está lista
+    if (currentRole === 'excursion') {
+      return order.status === 'ready_pass' && order.origin === 'excursion';
+    }
+    return false;
   }).length;
-  const totalNotificationCount = alertOrdersCount + approachingAlertCount;
+  const totalNotificationCount = alertOrdersCount + (isKitchenOrAdmin ? approachingAlertCount : 0);
 
   const handleSendOrderToKitchen = (newOrder: Order) => {
     setOrders((previous) => [newOrder, ...previous]);
@@ -819,6 +843,8 @@ export const App: React.FC = () => {
         isOpen={isNotificationCenterOpen}
         onClose={() => setIsNotificationCenterOpen(false)}
         orders={orders}
+        currentRole={currentRole}
+        currentUser={currentUser}
         approachingAlertCount={approachingAlertCount}
         onNavigateToView={(role) => {
           setIsNotificationCenterOpen(false);

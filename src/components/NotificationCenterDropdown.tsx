@@ -12,10 +12,11 @@ import {
   Play,
   Check,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Utensils
 } from 'lucide-react';
 import { soundService } from '../services/soundService';
-import { UserRole, Order } from '../types';
+import { UserRole, Order, User } from '../types';
 import { getOrderDeliveryTiming } from '../utils/deliveryTiming';
 
 export interface AppNotification {
@@ -33,6 +34,8 @@ interface NotificationCenterDropdownProps {
   isOpen: boolean;
   onClose: () => void;
   orders: Order[];
+  currentRole: UserRole;
+  currentUser?: User | null;
   onSelectOrder?: (orderId: string) => void;
   onNavigateToView?: (role: UserRole) => void;
   approachingAlertCount?: number;
@@ -42,6 +45,8 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
   isOpen,
   onClose,
   orders,
+  currentRole,
+  currentUser,
   onSelectOrder,
   onNavigateToView,
   approachingAlertCount = 0,
@@ -51,12 +56,13 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
   if (!isOpen) return null;
 
   const now = new Date();
+  const isKitchenOrAdmin = currentRole === 'admin' || currentRole === 'kitchen';
 
   // Generate dynamic live notifications based on actual orders & boat events
   const dynamicNotifications: AppNotification[] = [];
 
-  // 1. Boat approaching alerts
-  if (approachingAlertCount > 0) {
+  // 1. Boat approaching alerts (SOLO para Dueño y Cocina)
+  if (isKitchenOrAdmin && approachingAlertCount > 0) {
     dynamicNotifications.push({
       id: 'boat-notif',
       type: 'boat_approaching',
@@ -68,82 +74,93 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
     });
   }
 
-  // 2. Urgent 10 min alerts
-  orders.forEach((o) => {
-    if (o.status !== 'delivered' && o.status !== 'ready_pass' && o.status !== 'cancelled') {
-      const timing = getOrderDeliveryTiming(o, now);
-      if (timing.minutesRemaining <= 10 && timing.minutesRemaining > 0) {
+  // 2. Urgent 10 min & 30 min preparation alerts (SOLO para Dueño y Cocina)
+  if (isKitchenOrAdmin) {
+    orders.forEach((o) => {
+      if (o.status !== 'delivered' && o.status !== 'ready_pass' && o.status !== 'cancelled') {
+        const timing = getOrderDeliveryTiming(o, now);
+        if (timing.minutesRemaining <= 10 && timing.minutesRemaining > 0) {
+          dynamicNotifications.push({
+            id: 'urgent-10-' + o.id,
+            type: 'urgent_10',
+            title: `🚨 Pase Inminente: Comanda ${o.displayNumber}`,
+            message: `${o.spotName} • Restan solo ${timing.minutesRemaining} min para entrega`,
+            timestamp: timing.formattedTargetTime,
+            orderId: o.id,
+            isRead: false,
+            targetRole: 'kitchen',
+          });
+        } else if (timing.minutesRemaining <= 30 && timing.minutesRemaining > 10) {
+          dynamicNotifications.push({
+            id: 'alert-30-' + o.id,
+            type: 'alert_30',
+            title: `⏰ Montar en Cocina: Comanda ${o.displayNumber}`,
+            message: `${o.spotName} • Faltan ${timing.minutesRemaining} min. Iniciar montaje de platos`,
+            timestamp: timing.formattedTargetTime,
+            orderId: o.id,
+            isRead: false,
+            targetRole: 'kitchen',
+          });
+        }
+      }
+    });
+
+    // 3. New / In-fire orders (SOLO para Dueño y Cocina)
+    orders.slice(0, 3).forEach((o) => {
+      if (o.status === 'in_fire') {
         dynamicNotifications.push({
-          id: 'urgent-10-' + o.id,
-          type: 'urgent_10',
-          title: `🚨 Pase Inminente: Comanda ${o.displayNumber}`,
-          message: `${o.spotName} • Restan solo ${timing.minutesRemaining} min para entrega`,
-          timestamp: timing.formattedTargetTime,
+          id: 'new-ord-' + o.id,
+          type: 'new_order',
+          title: `🔥 Comanda en Fuego: ${o.displayNumber}`,
+          message: `${o.spotName} • ${o.items.length} platos en preparación`,
+          timestamp: o.createdAt ? new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Reciente',
           orderId: o.id,
-          isRead: false,
-          targetRole: 'kitchen',
-        });
-      } else if (timing.minutesRemaining <= 30 && timing.minutesRemaining > 10) {
-        dynamicNotifications.push({
-          id: 'alert-30-' + o.id,
-          type: 'alert_30',
-          title: `⏰ Montar en Cocina: Comanda ${o.displayNumber}`,
-          message: `${o.spotName} • Faltan ${timing.minutesRemaining} min. Iniciar montaje de platos`,
-          timestamp: timing.formattedTargetTime,
-          orderId: o.id,
-          isRead: false,
+          isRead: true,
           targetRole: 'kitchen',
         });
       }
-    }
-  });
+    });
+  }
 
-  // 3. New / In-fire orders
-  orders.slice(0, 3).forEach((o) => {
-    if (o.status === 'in_fire') {
-      dynamicNotifications.push({
-        id: 'new-ord-' + o.id,
-        type: 'new_order',
-        title: `🔥 Comanda en Fuego: ${o.displayNumber}`,
-        message: `${o.spotName} • ${o.items.length} platos en preparación`,
-        timestamp: o.createdAt ? new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Reciente',
-        orderId: o.id,
-        isRead: true,
-        targetRole: 'kitchen',
-      });
-    }
-  });
-
-  // 4. Ready orders for clients, waiters, and excursions
+  // 4. Ready orders: Filtradas estrictamente por rol destinatario
   orders.forEach((o) => {
     if (o.status === 'ready_pass') {
-      const targetRole: UserRole =
-        o.origin === 'client_qr'
-          ? 'client'
-          : o.origin === 'excursion'
-          ? 'excursion'
-          : 'waiter';
+      const isClientOrder = o.origin === 'client_qr';
+      const isExcursionOrder = o.origin === 'excursion';
+      const isWaiterOrder = !isClientOrder && !isExcursionOrder;
 
-      dynamicNotifications.push({
-        id: 'ready-pass-' + o.id,
-        type: 'ready_order',
-        title:
-          o.origin === 'client_qr'
-            ? `🎉 ¡Tu Pedido está LISTO!: ${o.displayNumber}`
-            : o.origin === 'excursion'
-            ? `⚓ Excursión LISTA en Cocina: ${o.displayNumber}`
-            : `🍽️ Comanda LISTA para Retirar: ${o.displayNumber}`,
-        message:
-          o.origin === 'client_qr'
-            ? `Servicio para ${o.spotName} listo en cocina para llevar a tu toldo.`
-            : o.origin === 'excursion'
-            ? `Raciones listas para despacho en muelle (${o.spotName}).`
-            : `${o.spotName} • Mesonero ${o.waiterName || ''}: Retirar plato en pase de cocina.`,
-        timestamp: o.readyAt ? new Date(o.readyAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Listo',
-        orderId: o.id,
-        isRead: false,
-        targetRole,
-      });
+      // Si es Dueño o Cocina, ve todas las listas
+      // Si es Cliente, ve SOLO las listas de clientes
+      // Si es Mesonero, ve SOLO las listas de mesoneros
+      // Si es Excursión, ve SOLO las listas de excursión
+      const shouldInclude =
+        isKitchenOrAdmin ||
+        (currentRole === 'client' && isClientOrder) ||
+        (currentRole === 'waiter' && isWaiterOrder) ||
+        (currentRole === 'excursion' && isExcursionOrder);
+
+      if (shouldInclude) {
+        dynamicNotifications.push({
+          id: 'ready-pass-' + o.id,
+          type: 'ready_order',
+          title:
+            isClientOrder
+              ? `🎉 ¡Tu Pedido está LISTO!: ${o.displayNumber}`
+              : isExcursionOrder
+              ? `⚓ Excursión LISTA en Cocina: ${o.displayNumber}`
+              : `🍽️ Comanda LISTA para Retirar: ${o.displayNumber}`,
+          message:
+            isClientOrder
+              ? `Servicio para ${o.spotName} listo en cocina para llevar a tu toldo.`
+              : isExcursionOrder
+              ? `Raciones listas para despacho en muelle (${o.spotName}).`
+              : `${o.spotName} • Mesonero ${o.waiterName || ''}: Retirar plato en pase de cocina.`,
+          timestamp: o.readyAt ? new Date(o.readyAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Listo',
+          orderId: o.id,
+          isRead: false,
+          targetRole: isClientOrder ? 'client' : isExcursionOrder ? 'excursion' : 'waiter',
+        });
+      }
     }
   });
 
@@ -157,36 +174,37 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
   };
 
   const handleClickNotification = (notif: AppNotification) => {
-    if (notif.targetRole && onNavigateToView) {
-      onNavigateToView(notif.targetRole);
-    }
     if (notif.orderId && onSelectOrder) {
       onSelectOrder(notif.orderId);
+      onClose();
     }
-    onClose();
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-start justify-end p-3 sm:p-4 pt-16 animate-fade-in"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-start justify-end p-3 sm:p-4 bg-black/40 backdrop-blur-xs animate-fade-in">
       <div
-        className="bg-white rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl border border-[#d2e4ff] animate-scale-up"
+        className="w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden mt-14 sm:mt-16 animate-scale-up"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-[#002546] text-white p-3.5 flex items-center justify-between">
+        <div className="p-4 bg-[#002546] text-white flex items-center justify-between border-b border-[#003b5f]">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-[#0d3b66] text-[#57d1fd] flex items-center justify-center">
               <Bell className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                Centro de Notificaciones
+                {currentRole === 'client'
+                  ? 'Mis Notificaciones'
+                  : currentRole === 'waiter'
+                  ? 'Avisos de Cocina & Pase'
+                  : currentRole === 'excursion'
+                  ? 'Avisos de Despacho'
+                  : 'Centro de Notificaciones'}
               </h3>
-              <span className="text-[11px] text-[#bbe9ff]">
-                {dynamicNotifications.length} alertas registradas
+              <span className="text-[10px] text-[#bbe9ff]">
+                {dynamicNotifications.length}{' '}
+                {dynamicNotifications.length === 1 ? 'aviso disponible' : 'avisos disponibles'}
               </span>
             </div>
           </div>
@@ -218,9 +236,23 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
           {dynamicNotifications.length === 0 ? (
             <div className="p-8 text-center">
               <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-              <p className="text-xs font-bold text-[#002546]">Todo al día en la operación</p>
+              <p className="text-xs font-bold text-[#002546]">
+                {currentRole === 'client'
+                  ? 'Sin avisos pendientes'
+                  : currentRole === 'waiter'
+                  ? 'Todo entregado'
+                  : currentRole === 'excursion'
+                  ? 'Sin despachos pendientes'
+                  : 'Todo al día en la operación'}
+              </p>
               <p className="text-[11px] text-gray-500 mt-0.5">
-                No hay alertas activas de demora ni emergencias de cocina.
+                {currentRole === 'client'
+                  ? 'Te notificaremos aquí en cuanto tu comanda esté lista en cocina.'
+                  : currentRole === 'waiter'
+                  ? 'Te avisaremos tan pronto haya platos listos para retirar en el pase.'
+                  : currentRole === 'excursion'
+                  ? 'Te avisaremos cuando el almuerzo de tu lancha esté listo en muelle.'
+                  : 'No hay alertas activas de demora ni emergencias de cocina.'}
               </p>
             </div>
           ) : (
@@ -259,53 +291,52 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
                     ) : notif.type === 'alert_30' ? (
                       <Clock className="w-3.5 h-3.5" />
                     ) : notif.type === 'ready_order' ? (
-                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <Check className="w-3.5 h-3.5" />
                     ) : notif.type === 'boat_approaching' ? (
                       <Ship className="w-3.5 h-3.5" />
                     ) : (
-                      <Flame className="w-3.5 h-3.5" />
+                      <Flame className="w-3.5 h-3.5 text-amber-400" />
                     )}
                   </div>
-
                   <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-[#002546] leading-tight">
-                        {notif.title}
-                      </span>
-                      <span className="text-[10px] text-gray-400 font-mono">
-                        {notif.timestamp}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-gray-600 mt-0.5 leading-snug">
-                      {notif.message}
-                    </p>
+                    <h4 className="text-xs font-bold text-[#002546] leading-tight">{notif.title}</h4>
+                    <p className="text-[11px] text-gray-600 mt-0.5">{notif.message}</p>
+                    <span className="text-[10px] text-gray-400 block mt-1 font-mono">
+                      {notif.timestamp}
+                    </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() => handlePlaySound(notif.type)}
-                    title="Escuchar tono de alerta"
-                    className="p-1 rounded-lg bg-white/80 hover:bg-white text-gray-600 shadow-2xs transition-colors"
-                  >
-                    <Play className="w-3 h-3" />
-                  </button>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                <div className="flex flex-col items-end gap-1">
+                  {!soundMuted && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePlaySound(notif.type);
+                      }}
+                      title="Probar sonido"
+                      className="p-1 rounded-md text-gray-400 hover:text-[#002546] transition-colors"
+                    >
+                      <Play className="w-3 h-3" />
+                    </button>
+                  )}
+                  <ChevronRight className="w-3.5 h-3.5 text-gray-400 mt-1" />
                 </div>
               </div>
             ))
           )}
         </div>
 
-        {/* Quick Audio Test Strip & Footer */}
-        <div className="p-2.5 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-xs">
-          <span className="text-[11px] text-gray-500 font-semibold">Tocar para ir a la comanda</span>
+        {/* Footer */}
+        <div className="p-3 bg-[#eff4ff] border-t border-gray-100 flex items-center justify-between text-xs text-gray-600">
+          <span className="text-[11px] text-[#006782] font-semibold">
+            {isKitchenOrAdmin
+              ? 'Alertas sincronizadas con KDS Fogones'
+              : 'Alertas en tiempo real vía Mesh'}
+          </span>
           <button
-            onClick={() => {
-              soundService.playSuccess();
-              onClose();
-            }}
-            className="text-[11px] font-bold text-[#006782] hover:underline"
+            onClick={onClose}
+            className="text-[11px] font-bold text-[#002546] hover:underline"
           >
             Cerrar
           </button>
