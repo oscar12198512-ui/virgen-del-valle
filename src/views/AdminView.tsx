@@ -453,12 +453,144 @@ export const AdminView: React.FC<AdminViewProps> = ({
     drawerBills.d5 * 5 +
     drawerBills.d1 * 1;
 
-  const totalCollectedPending = waitersClosings.reduce(
+  // Dynamic aggregation of waiters closings from orders & staffUsers
+  const effectiveWaitersClosings = React.useMemo(() => {
+    const waiterStaff = staffUsers.filter((u) => u.role === 'waiter' && u.status !== 'rejected');
+    const waiterMap = new Map<string, WaiterClosingSummary>();
+
+    // Seed from waitersClosings prop
+    waitersClosings.forEach((wc) => {
+      waiterMap.set(wc.waiterId || wc.id, { ...wc });
+    });
+
+    // Ensure all active waiter staff users exist
+    waiterStaff.forEach((ws, idx) => {
+      const id = ws.id || `waiter-${idx}`;
+      if (!waiterMap.has(id)) {
+        const initials = ws.name
+          .split(' ')
+          .map((n) => n[0])
+          .slice(0, 2)
+          .join('')
+          .toUpperCase() || 'M';
+        waiterMap.set(id, {
+          id: `close-${id}`,
+          waiterId: id,
+          waiterName: ws.name,
+          waiterZone: ws.zone || 'Playa Buche • Toldos',
+          waiterRoleNumber: `M-${String(idx + 1).padStart(2, '0')}`,
+          avatarInitials: initials,
+          toldosAttendedCount: 0,
+          ordersClosedCount: 0,
+          totalCollectedUsd: 0,
+          digitalReportedUsd: 0,
+          commissionWaiterUsd: 0,
+          cashToDeliverUsd: 0,
+          status: 'pending',
+          comandas: [],
+        });
+      }
+    });
+
+    // If still empty or additional waiters exist in orders
+    orders.forEach((o) => {
+      const wId = o.waiterId || (o.waiterName ? `waiter-${o.waiterName.toLowerCase().replace(/\s+/g, '-')}` : null);
+      if (wId && !waiterMap.has(wId)) {
+        const wName = o.waiterName || 'Mesonero';
+        const initials = wName.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase() || 'M';
+        waiterMap.set(wId, {
+          id: `close-${wId}`,
+          waiterId: wId,
+          waiterName: wName,
+          waiterZone: 'Playa Buche • Toldos',
+          waiterRoleNumber: 'M-01',
+          avatarInitials: initials,
+          toldosAttendedCount: 0,
+          ordersClosedCount: 0,
+          totalCollectedUsd: 0,
+          digitalReportedUsd: 0,
+          commissionWaiterUsd: 0,
+          cashToDeliverUsd: 0,
+          status: 'pending',
+          comandas: [],
+        });
+      }
+    });
+
+    // Recalculate live order totals for each closing
+    const result: WaiterClosingSummary[] = [];
+    waiterMap.forEach((wc) => {
+      if (wc.status === 'settled') {
+        result.push(wc);
+        return;
+      }
+
+      const waiterOrders = orders.filter((o) =>
+        o.waiterId === wc.waiterId ||
+        (o.waiterName && o.waiterName.toLowerCase() === wc.waiterName.toLowerCase())
+      );
+
+      const closedOrders = waiterOrders.filter((o) => o.paymentStatus === 'verified' || o.isSettled);
+      const spotsSet = new Set(waiterOrders.map((o) => o.spotName || o.spotId).filter(Boolean));
+
+      const totalGross = closedOrders.reduce((sum, o) => sum + (o.totalUsd || 0), 0);
+      const digitalSum = closedOrders
+        .filter((o) => ['pago_movil', 'zelle', 'card_pos'].includes(o.paymentMethod || ''))
+        .reduce((sum, o) => sum + (o.totalUsd || 0), 0);
+      const cashSum = closedOrders
+        .filter((o) => ['cash_usd', 'cash_bs'].includes(o.paymentMethod || ''))
+        .reduce((sum, o) => sum + (o.totalUsd || 0), 0);
+      const tipSum = closedOrders.reduce(
+        (sum, o) => sum + (o.tipUsd || (o.totalUsd * (o.tipPercent || 0)) / 100),
+        0
+      );
+
+      const comandas: WaiterComandaItem[] = waiterOrders.map((o) => ({
+        id: o.id,
+        toldo: o.spotName || 'Toldo',
+        description: o.items.map((i) => `${i.quantity}x ${i.name}`).join(', ') || 'Consumo',
+        method: o.paymentMethod
+          ? o.paymentMethod === 'cash_usd'
+            ? 'Efectivo $'
+            : o.paymentMethod === 'cash_bs'
+            ? 'Efectivo Bs'
+            : o.paymentMethod === 'pago_movil'
+            ? 'Pago Móvil'
+            : o.paymentMethod === 'zelle'
+            ? 'Zelle'
+            : 'Punto POS'
+          : o.paymentStatus === 'verified'
+          ? 'Pagado'
+          : 'Por Cobrar',
+        amountUsd: o.totalUsd,
+        isCash: o.paymentMethod === 'cash_usd' || o.paymentMethod === 'cash_bs',
+      }));
+
+      result.push({
+        ...wc,
+        toldosAttendedCount: Math.max(wc.toldosAttendedCount, spotsSet.size),
+        ordersClosedCount: closedOrders.length,
+        totalCollectedUsd: totalGross > 0 ? totalGross : wc.totalCollectedUsd,
+        digitalReportedUsd: digitalSum > 0 ? digitalSum : wc.digitalReportedUsd,
+        commissionWaiterUsd: tipSum > 0 ? tipSum : wc.commissionWaiterUsd,
+        cashToDeliverUsd: Math.max(
+          0,
+          (cashSum > 0 ? cashSum : wc.totalCollectedUsd - digitalSum) -
+            (tipSum > 0 ? tipSum : wc.commissionWaiterUsd)
+        ),
+        comandas: comandas.length > 0 ? comandas : wc.comandas,
+      });
+    });
+
+    return result;
+  }, [waitersClosings, staffUsers, orders]);
+
+  const totalCollectedPending = effectiveWaitersClosings.reduce(
     (acc, w) => acc + (w.status === 'pending' ? w.cashToDeliverUsd : 0),
     0
   );
 
-  const totalGlobalGross = waitersClosings.reduce((acc, w) => acc + w.totalCollectedUsd, 0);
+  const totalGlobalGross = effectiveWaitersClosings.reduce((acc, w) => acc + w.totalCollectedUsd, 0);
   const paidOrders = orders.filter((order) => order.paymentStatus === 'verified');
   const totalVerified = paidOrders.reduce((acc, order) => acc + order.totalUsd, 0);
   const averageTicket = paidOrders.length ? totalVerified / paidOrders.length : 0;
@@ -478,8 +610,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
       })
       .catch(() => undefined);
   }, [adminStateHydrated, apiBase, authHeaders]);
-  const totalDigitalVerified = waitersClosings.reduce((acc, w) => acc + w.digitalReportedUsd, 0);
-  const totalTips = waitersClosings.reduce((acc, w) => acc + w.commissionWaiterUsd, 0);
+  const totalDigitalVerified = effectiveWaitersClosings.reduce((acc, w) => acc + w.digitalReportedUsd, 0);
+  const totalTips = effectiveWaitersClosings.reduce((acc, w) => acc + w.commissionWaiterUsd, 0);
   const diffCash = totalPhysicalCash - totalCollectedPending;
 
   const handleBillDelta = (denom: keyof BillDenominationCount, delta: number) => {
@@ -525,7 +657,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setTimeout(() => setShowActaZSuccess(false), 5000);
   };
 
-  const filteredClosings = waitersClosings.filter((w) => {
+  const filteredClosings = effectiveWaitersClosings.filter((w) => {
     if (closingsFilter === 'pending') return w.status === 'pending';
     if (closingsFilter === 'settled') return w.status === 'settled';
     return true;
@@ -860,13 +992,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 Liquidación Individual por Mesonero
               </span>
               <span className="text-[11px] font-medium text-gray-500">
-                {waitersClosings.length} activos hoy
+                {effectiveWaitersClosings.length} activos hoy
               </span>
             </div>
 
             {/* Mesonero Navigation Tabs Bar */}
             <div className="flex gap-2 overflow-x-auto pb-1.5 px-0.5 no-scrollbar" id="mesonero-nav-tabs">
-              {waitersClosings.map((closing) => {
+              {effectiveWaitersClosings.map((closing) => {
                 const isSelected = selectedMesoneroId === closing.id;
                 const isPending = closing.status === 'pending';
                 return (
@@ -917,8 +1049,16 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
           {/* ACTIVE MESONERO DETAILED LIQUIDATION CARD */}
           {(() => {
-            const active = waitersClosings.find((w) => w.id === selectedMesoneroId) || waitersClosings[0];
-            if (!active) return null;
+            const active =
+              effectiveWaitersClosings.find((w) => w.id === selectedMesoneroId) ||
+              effectiveWaitersClosings[0];
+            if (!active) {
+              return (
+                <div className="bg-white rounded-2xl border border-gray-200 p-6 text-center text-gray-500 text-xs">
+                  No hay comandas ni mesoneros asignados para liquidar en este momento.
+                </div>
+              );
+            }
             const ded = getClosingDeduction(active);
             const isPending = active.status === 'pending';
             const envelopeTotal = getEnvelopeTotal(active.id, ded.netCash);

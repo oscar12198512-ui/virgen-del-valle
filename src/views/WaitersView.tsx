@@ -220,7 +220,7 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
   const recentOrders = orders.filter((o) => o.waiterId === waiterUser.id || o.origin === 'waiter_pos').slice(0, 4);
 
   return (
-    <div className="flex flex-col gap-4 max-w-lg mx-auto pb-28 pt-2 px-3">
+    <div className="flex flex-col gap-4 w-full max-w-lg mx-auto pb-28 pt-2 px-3 overflow-x-hidden">
       {/* Waiter Profile & Shift Strip */}
       <div className="bg-[#002546] text-white rounded-2xl p-4 shadow-sm relative overflow-hidden">
         <div className="flex justify-between items-center relative z-10">
@@ -942,88 +942,131 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
           </span>
         </div>
 
-        <div className="space-y-2">
-          {recentOrders.map((ord) => (
-            <div
-              key={ord.id}
-              className="bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between shadow-xs hover:border-[#006782] transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span className="w-9 h-9 rounded-full bg-[#eff4ff] text-[#002546] font-extrabold text-xs flex items-center justify-center">
-                  {ord.displayNumber}
-                </span>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-xs text-[#002546]">{ord.spotName}</span>
-                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                      ord.status === 'in_fire'
-                        ? 'bg-amber-100 text-amber-800'
-                        : ord.status === 'ready_pass'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-sky-100 text-sky-800'
-                    }`}>
-                      {ord.status === 'in_fire' ? 'En Fuego' : ord.status === 'ready_pass' ? 'Listo Retirar' : 'En Cola'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-gray-500 mt-0.5">
-                    {ord.items.map(i => `${i.quantity}x ${i.name}`).slice(0, 2).join(', ')}
-                  </p>
-                </div>
-              </div>
+        <div className="space-y-2.5">
+          {recentOrders.length === 0 ? (
+            <p className="text-xs text-gray-400 italic text-center py-4 bg-white rounded-2xl border border-gray-200">
+              No hay comandas recientes registradas en tu turno.
+            </p>
+          ) : (
+            recentOrders.map((ord) => {
+              const isPaid = ord.paymentStatus === 'verified' || ord.paymentStatus === 'paid';
+              return (
+                <div
+                  key={ord.id}
+                  className={`bg-white border rounded-2xl p-3.5 space-y-2.5 shadow-xs transition-all ${
+                    isPaid ? 'border-emerald-300 bg-emerald-50/20' : 'border-gray-200 hover:border-[#006782]'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-9 h-9 rounded-xl bg-[#002546] text-[#57d1fd] font-extrabold text-xs flex items-center justify-center shrink-0 shadow-xs">
+                        {ord.displayNumber}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-xs text-[#002546] truncate">{ord.spotName}</span>
+                          <span
+                            className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                              isPaid
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : ord.status === 'ready_pass'
+                                ? 'bg-emerald-100 text-emerald-800 animate-pulse'
+                                : ord.status === 'in_fire'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-sky-100 text-sky-800'
+                            }`}
+                          >
+                            {isPaid
+                              ? '✓ Cobrada (Pagada)'
+                              : ord.status === 'ready_pass'
+                              ? 'Listo en Pase'
+                              : ord.status === 'in_fire'
+                              ? 'En Fuego'
+                              : 'En Proceso'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                          {ord.items.map((i) => `${i.quantity}x ${i.name}`).join(', ')}
+                        </p>
+                      </div>
+                    </div>
 
-              <div className="flex items-center gap-1.5">
-                <div className="text-right mr-1">
-                  <span className="text-xs font-extrabold text-[#002546] block">
-                    {formatUsd(ord.totalUsd)}
-                  </span>
-                  <span className="text-[10px] text-gray-500">
-                    {formatBsDirect(ord.totalUsd * bcvRate)}
-                  </span>
+                    <div className="text-right shrink-0">
+                      <span className="text-sm font-black text-[#002546] block font-mono">
+                        {formatUsd(ord.totalUsd)}
+                      </span>
+                      <span className="text-[10px] text-gray-500 font-mono">
+                        {formatBsDirect(ord.totalUsd * bcvRate)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions Grid full-width */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => setPreCuentaModalOrder(ord)}
+                      className="h-9 px-2 bg-[#eff4ff] hover:bg-[#dce9ff] text-[#006782] rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <Receipt className="w-3.5 h-3.5 text-[#006782]" />
+                      <span>Pre-Cuenta</span>
+                    </button>
+
+                    {!isPaid ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setEditingOrder(ord)}
+                          className="h-9 px-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-[#006782]" />
+                          <span>Editar</span>
+                        </button>
+
+                        {ord.status === 'ready_pass' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onUpdateOrder) {
+                                onUpdateOrder({
+                                  ...ord,
+                                  status: 'delivered',
+                                  updatedAt: new Date().toISOString(),
+                                });
+                                soundService.playSuccess();
+                              }
+                            }}
+                            className="h-9 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-xs animate-pulse transition-colors cursor-pointer"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            <span>Entregar</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => onOpenPaymentModal(ord)}
+                          className={`h-9 px-2 bg-[#006782] hover:bg-[#005870] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-xs transition-colors cursor-pointer ${
+                            ord.status === 'ready_pass' ? 'col-span-1' : 'col-span-1'
+                          }`}
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#57d1fd]" />
+                          <span>Cobrar</span>
+                        </button>
+                      </>
+                    ) : (
+                      <div className="col-span-3 flex items-center justify-end">
+                        <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1.5 rounded-xl flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          Cuenta Cerrada & Paz y Salvo
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setPreCuentaModalOrder(ord)}
-                  title="Ver pre-cuenta o compartir por WhatsApp"
-                  className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold transition-colors"
-                >
-                  <Receipt className="w-3.5 h-3.5 text-[#006782]" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditingOrder(ord)}
-                  title="Editar comanda (anexar, quitar, cambiar hora o nota)"
-                  className="px-2 py-1.5 bg-[#eff4ff] hover:bg-[#dce9ff] text-[#006782] rounded-lg text-xs font-bold flex items-center gap-1 border border-[#a4c9fc] shadow-xs transition-colors"
-                >
-                  <Edit3 className="w-3.5 h-3.5" /> Editar
-                </button>
-                {ord.status === 'ready_pass' && (
-                  <button
-                    onClick={() => {
-                      if (onUpdateOrder) {
-                        onUpdateOrder({
-                          ...ord,
-                          status: 'delivered',
-                          updatedAt: new Date().toISOString(),
-                        });
-                        soundService.playSuccess();
-                      }
-                    }}
-                    title="Marcar comanda como entregada a la mesa"
-                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs animate-pulse"
-                  >
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-200" /> Entregar
-                  </button>
-                )}
-                <button
-                  onClick={() => onOpenPaymentModal(ord)}
-                  title="Cobrar comanda"
-                  className="px-2.5 py-1.5 bg-[#006782] hover:bg-[#005870] text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs"
-                >
-                  <CheckCircle className="w-3.5 h-3.5" /> Cobrar
-                </button>
-              </div>
-            </div>
-          ))}
+              );
+            })
+          )}
         </div>
       </div>
 

@@ -22,7 +22,7 @@ import {
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
 import { AccountPanel } from './components/AccountPanel';
-import { PagoMovilModal } from './components/PagoMovilModal';
+import { PagoMovilModal, PaymentMethodKey } from './components/PagoMovilModal';
 import { PazYSalvoModal } from './components/PazYSalvoModal';
 import { FiscalInvoiceModal } from './components/FiscalInvoiceModal';
 import { CurrencyCalculatorModal } from './components/CurrencyCalculatorModal';
@@ -614,13 +614,35 @@ export const App: React.FC = () => {
     }
   };
 
-  const handlePaymentSuccess = (orderId: string, reference: string, method: 'pago_movil' | 'zelle') => {
-    const applyPayment = (order: Order) =>
-      order.id === orderId
-        ? { ...order, paymentStatus: 'verified' as const, paymentMethod: method, paymentReference: reference }
-        : order;
-    setOrders((previous) => previous.map(applyPayment));
+  const handlePaymentSuccess = (
+    orderId: string,
+    reference: string,
+    method: PaymentMethodKey,
+    details?: { receivedAmount?: number; changeAmount?: number }
+  ) => {
+    const applyPayment = (order: Order): Order => {
+      if (order.id !== orderId) return order;
+      return {
+        ...order,
+        paymentStatus: 'verified' as const,
+        paymentMethod: method,
+        paymentReference: reference,
+        isSettled: true,
+      };
+    };
+
+    setOrders((previous) => {
+      const nextOrders = previous.map(applyPayment);
+      if (isFirebaseConfigured()) {
+        saveAppState({ orders: nextOrders }).catch((error) => {
+          console.warn('Error al sincronizar orden cobrada en Firestore:', error);
+        });
+      }
+      return nextOrders;
+    });
+
     setClientActiveOrder((previous) => (previous ? applyPayment(previous) : previous));
+    soundService.playCashChime();
   };
 
   if (!API_BASE && !isFirebaseConfigured()) {
