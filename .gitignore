@@ -11,4 +11,6 @@ signing/
 *.jks
 *.keystore
 .env*
+!-DESKTOP-*
+*-DESKTOP-*
 !.env.example
