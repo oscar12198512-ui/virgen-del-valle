@@ -45,6 +45,10 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -108,9 +112,6 @@ jobs:
         if: steps.signing.outputs.signed == 'true'
         shell: bash
         env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
@@ -141,7 +142,9 @@ jobs:
       - name: Compilar paquete firmado (.aab + .apk)
         if: steps.signing.outputs.signed == 'true'
         working-directory: android
-        run: ./gradlew bundleRelease assembleRelease
+        run: |
+          chmod +x gradlew
+          ./gradlew bundleRelease assembleRelease
 
       - name: Verificar firma del paquete
         if: steps.signing.outputs.signed == 'true'
@@ -159,7 +162,9 @@ jobs:
       - name: Compilar APK de depuracion
         if: steps.signing.outputs.signed != 'true'
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
       - name: Subir artefactos
         uses: actions/upload-artifact@v4
