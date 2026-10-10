@@ -250,9 +250,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             <button
               onClick={() => {
                 soundService.playBell();
-                setExtraNotice('Chapa de bronce escaneada exitosamente: Toldo VIP #14 asignado.');
-                setTimeout(() => setExtraNotice(null), 4000);
-                onSelectSpot('spot-14');
+                const target = spots.find((s) => s.status !== 'occupied') || spots[0];
+                if (target) {
+                  onSelectSpot(target.id);
+                  setExtraNotice(`Ubicación asignada: ${target.name} (${target.number})`);
+                  setTimeout(() => setExtraNotice(null), 4000);
+                }
               }}
               className="px-3.5 py-2 bg-[#006782] hover:bg-[#005870] text-white rounded-xl text-xs font-bold shadow-xs transition-colors shrink-0"
             >
@@ -267,7 +270,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 Selecciona tu Zona
               </span>
               <span className="text-[#006782] font-semibold text-[11px]">
-                18 Libres Ahora
+                {spots.filter((s) => s.zone === activeZone && s.status !== 'occupied').length} Libres Ahora
               </span>
             </div>
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
