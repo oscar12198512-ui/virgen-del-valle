@@ -63,7 +63,7 @@ export const CaptainVhfModal: React.FC<CaptainVhfModalProps> = ({
     `🍽️ *Hora de Almuerzo/Servicio:* ${safeServing}\n` +
     `🔥 *Estado en Cocina:* ${safeKds}\n` +
     `---------------------------------\n` +
-    `💰 *Total Comanda:* ${formatUsd(totalUsd)} (${formatBsDirect(totalBs)} - Tasa BCV: ${bcvRate.toFixed(2)})\n` +
+    `💰 *Total Comanda:* ${formatUsd(totalUsd)} (${formatBsDirect(totalBs)} - Tasa del día: ${bcvRate.toFixed(2)})\n` +
     `---------------------------------\n` +
     `Muelle Buche listo para el desembarque y mesas asignadas. ¡Buen viento y buena mar! 🌊☀️`;
 

@@ -104,7 +104,7 @@ export const SatelliteMeshContingency: React.FC<SatelliteMeshContingencyProps> =
           </div>
           <div className="flex flex-col items-end shrink-0 pl-2">
             <span className="text-[10px] uppercase text-gray-500 font-bold tracking-wider">
-              Tasa BCV Caché
+              Tasa del día Caché
             </span>
             <span className="text-base text-[#002546] font-extrabold font-mono">
               {bcvRate.toFixed(2)} <span className="text-xs text-[#006782] font-semibold">Bs/$</span>

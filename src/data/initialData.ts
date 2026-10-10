@@ -397,7 +397,7 @@ export const RBAC_ROLE_DEFINITIONS: RbacRoleDefinition[] = [
     authMethod: 'Correo Corporativo + Clave Maestra + 2FA Satelital',
     permissions: [
       'Universal Full Access (CRUD en todos los módulos)',
-      'Cambio Tasa Oficial BCV con propagación Starlink',
+      'Cambio Tasa del día con propagación Starlink',
       'Configuración Cuentas Bancarias y Pasarelas',
       'Cierre y Liquidación de Mesoneros',
       'Emisión de Paz y Salvo Fiscal SHA-256',

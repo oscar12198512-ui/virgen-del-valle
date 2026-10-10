@@ -112,8 +112,6 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          <PWAInstallButton onClick={onOpenInstall} />
-
           {onOpenWeather && (
             <button
               onClick={onOpenWeather}
@@ -152,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           <div className="hidden sm:flex items-center gap-1.5 bg-[#dce9ff]/70 px-2.5 py-1 rounded-full text-xs font-semibold text-[#002546]">
-            <span className="text-[10px] text-[#006782] font-bold">BCV</span>
+            <span className="text-[10px] text-[#006782] font-bold">Tasa del día:</span>
             <span>{bcvRate.toFixed(2)} Bs/$</span>
           </div>
 

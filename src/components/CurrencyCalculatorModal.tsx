@@ -114,7 +114,7 @@ export const CurrencyCalculatorModal: React.FC<CurrencyCalculatorModalProps> = (
                 Calculadora Playa & Divisas
               </h3>
               <p className="text-xs text-[#bbe9ff]">
-                Tasa Oficial BCV: <strong className="text-white font-mono">{bcvRate.toFixed(2)} Bs/$</strong>
+                Tasa del día: <strong className="text-white font-mono">{bcvRate.toFixed(2)} Bs/$</strong>
               </p>
             </div>
           </div>

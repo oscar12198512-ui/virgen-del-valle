@@ -41,7 +41,7 @@ export const FiscalInvoiceModal: React.FC<FiscalInvoiceModalProps> = ({
       `Cliente: Carlos E. Mendoza (V-14.892.304)\n` +
       `Ubicación: Toldo VIP #14 (Orilla Este - Bahía de Buche)\n` +
       `Total Liquidado: Bs. 3.161,00 ($58.00 USD)\n` +
-      `Tasa Oficial BCV: ${bcvRate.toFixed(2)} Bs/$\n` +
+      `Tasa del día: ${bcvRate.toFixed(2)} Bs/$\n` +
       `Pago: Pago Móvil Banesco Ref #849201\n` +
       `Verificación SENIAT: SNAT/2024 Válido Fiscalmente`;
     
@@ -417,7 +417,7 @@ export const FiscalInvoiceModal: React.FC<FiscalInvoiceModalProps> = ({
               </div>
               <div className="flex flex-col items-end text-right">
                 <span className="text-[10px] text-[#d2e4ff] uppercase tracking-wider">
-                  Tasa Oficial BCV
+                  Tasa del día
                 </span>
                 <span className="text-sm font-bold text-[#57d1fd]">
                   {bcvRate.toFixed(2)} Bs/$

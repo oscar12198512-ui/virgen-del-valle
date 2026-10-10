@@ -200,7 +200,7 @@ export const FiscalAuditView: React.FC<FiscalAuditViewProps> = ({
               <Coins className="w-4 h-4" />
             </div>
             <div className="flex flex-col">
-              <span className="text-[10px] text-[#42474f] font-semibold">Tasa BCV Fijada</span>
+              <span className="text-[10px] text-[#42474f] font-semibold">Tasa del día Fijada</span>
               <span className="text-xs text-[#002546] font-extrabold font-mono">
                 {bcvRate.toFixed(2)} Bs/$
               </span>

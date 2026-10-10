@@ -129,7 +129,7 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
             <div className="flex justify-between items-start">
               <span className="text-xs text-[#a4c9fc] uppercase font-bold tracking-wider">Total a Cancelar</span>
               <span className="text-[11px] bg-[#57d1fd]/20 text-[#bbe9ff] px-2 py-0.5 rounded font-mono">
-                Tasa BCV: {bcvRate.toFixed(2)} Bs/$
+                Tasa del día: {bcvRate.toFixed(2)} Bs/$
               </span>
             </div>
             <div className="flex justify-between items-baseline mt-1">

@@ -96,13 +96,13 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
   },
   {
     id: 'cat-cash',
-    title: 'Caja, Tasa BCV y Paz y Salvo Fiscal',
+    title: 'Caja, Tasa del día y Paz y Salvo Fiscal',
     subtitle: 'Auditoría cambiaria y liquidación de personal',
     icon: <Wallet className="w-5 h-5 text-[#006782]" />,
     items: [
       {
         id: 'p3_1',
-        label: 'Modificar Tasa BCV y cuentas Pago Móvil',
+        label: 'Modificar Tasa del día y cuentas Pago Móvil',
         description: 'Candado exclusivo Dueños y Directores Financieros.',
         hasLock: true
       },
@@ -350,7 +350,7 @@ export const RbacSecurityMatrix: React.FC<RbacSecurityMatrixProps> = ({
         <div className="flex items-center justify-between pt-1.5 bg-white/70 rounded-xl px-3 py-1.5 border border-white/80">
           <div className="flex items-center gap-1.5 text-gray-600 text-xs font-medium">
             <Coins className="w-4 h-4 text-[#006782]" />
-            <span>Tasa Oficial BCV:</span>
+            <span>Tasa del día:</span>
           </div>
           <span className="text-base text-[#002546] font-extrabold tracking-tight font-mono">
             {bcvRate.toFixed(2)} Bs/$

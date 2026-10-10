@@ -824,7 +824,7 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
             </span>
           </div>
           <div className="flex justify-between items-center text-xs text-gray-700 pt-0.5">
-            <span className="text-[11px] text-gray-500">Tasa Buche: {bcvRate.toFixed(2)} Bs/$</span>
+            <span className="text-[11px] text-gray-500">Tasa del día: {bcvRate.toFixed(2)} Bs/$</span>
             <span className="font-bold text-[#006782]">{formatBsDirect(totalBs)}</span>
           </div>
 

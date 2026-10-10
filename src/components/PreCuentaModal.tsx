@@ -69,7 +69,7 @@ export const PreCuentaModal: React.FC<PreCuentaModalProps> = ({
       `Subtotal: ${formatUsd(subtotal)}\n` +
       `Propina sugerida (${selectedTip}%): ${formatUsd(tipUsd)}\n` +
       `*TOTAL USD: ${formatUsd(totalUsd)}*\n` +
-      `*TOTAL BS (Tasa BCV ${bcvRate.toFixed(2)}): ${formatBsDirect(totalBs)}*\n` +
+      `*TOTAL BS (Tasa del día ${bcvRate.toFixed(2)}): ${formatBsDirect(totalBs)}*\n` +
       (splitCount > 1 ? `👥 *Dividido entre ${splitCount} personas:* ${formatUsd(perPersonUsd)} (${formatBsDirect(perPersonBs)}) c/u\n` : '') +
       `\n💳 Métodos de Pago: Efectivo $, Pago Móvil, Punto POS o Zelle.\n` +
       `¡Gracias por visitarnos en Bahía de Buche! ☀️🌊`;
@@ -195,7 +195,7 @@ export const PreCuentaModal: React.FC<PreCuentaModalProps> = ({
                 </div>
               </div>
               <div className="text-[10px] text-gray-500 text-right">
-                Tasa Oficial BCV: {bcvRate.toFixed(2)} Bs/$
+                Tasa del día: {bcvRate.toFixed(2)} Bs/$
               </div>
             </div>
           </div>

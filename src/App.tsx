@@ -87,7 +87,15 @@ export const App: React.FC = () => {
   const [isDbHydrated, setIsDbHydrated] = useState(false);
   const dbHydratedRef = useRef(false);
 
-  const [bcvRate, setBcvRate] = useState<number>(54.5);
+  const [bcvRate, setBcvRate] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('playa_buche_bcv_rate');
+      const parsed = saved ? parseFloat(saved) : NaN;
+      return !isNaN(parsed) && parsed > 0 ? parsed : 54.5;
+    } catch {
+      return 54.5;
+    }
+  });
   const [menuItems, setMenuItems] = useState<MenuItem[]>(INITIAL_MENU_ITEMS);
   const [spots, setSpots] = useState<ToldoSpot[]>(INITIAL_SPOTS);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -214,7 +222,12 @@ export const App: React.FC = () => {
           if (state.bankConfig) setBankConfig(state.bankConfig);
           if (Array.isArray(state.waitersClosings)) setWaitersClosings(state.waitersClosings);
           if (state.drawerBills) setDrawerBills(state.drawerBills);
-          if (typeof state.bcvRate === 'number') setBcvRate(state.bcvRate);
+          if (typeof state.bcvRate === 'number' && !isNaN(state.bcvRate) && state.bcvRate > 0) {
+            setBcvRate(state.bcvRate);
+            try {
+              localStorage.setItem('playa_buche_bcv_rate', String(state.bcvRate));
+            } catch {}
+          }
 
           setIsDbHydrated(true);
           dbHydratedRef.current = true;
@@ -247,7 +260,12 @@ export const App: React.FC = () => {
         if (Array.isArray(data.state.menuItems)) setMenuItems(data.state.menuItems);
         if (Array.isArray(data.state.spots)) setSpots(data.state.spots);
         if (data.state.excursion && data.state.excursion.id) setExcursion(data.state.excursion);
-        if (typeof data.state.bcvRate === 'number') setBcvRate(data.state.bcvRate);
+        if (typeof data.state.bcvRate === 'number' && !isNaN(data.state.bcvRate) && data.state.bcvRate > 0) {
+          setBcvRate(data.state.bcvRate);
+          try {
+            localStorage.setItem('playa_buche_bcv_rate', String(data.state.bcvRate));
+          } catch {}
+        }
       } catch (error) {
         console.warn('Catálogo público no disponible; se usan los valores locales.', error);
       }
@@ -498,6 +516,20 @@ export const App: React.FC = () => {
     if (clientActiveOrder?.id === updatedOrder.id) setClientActiveOrder(updatedOrder);
   };
 
+  const handleUpdateBcvRate = useCallback((newRate: number) => {
+    const validRate = Number(newRate);
+    if (isNaN(validRate) || validRate <= 0) return;
+    setBcvRate(validRate);
+    try {
+      localStorage.setItem('playa_buche_bcv_rate', String(validRate));
+    } catch {}
+    if (isFirebaseConfigured()) {
+      saveAppState({ bcvRate: validRate }).catch((error) => {
+        console.warn('Error al guardar tasa en Firestore:', error);
+      });
+    }
+  }, []);
+
   const handleClientPlaceOrder = async (items: OrderItem[], spot: ToldoSpot, requestedTime?: string) => {
     const subtotal = items.reduce((total, item) => total + item.quantity * item.unitPriceUsd, 0);
     const nowIso = new Date().toISOString();
@@ -682,7 +714,7 @@ export const App: React.FC = () => {
             currentUserId={currentUser.id}
             onUsersChanged={setUsers}
             bcvRate={bcvRate}
-            onUpdateBcvRate={setBcvRate}
+            onUpdateBcvRate={handleUpdateBcvRate}
             bankConfig={bankConfig}
             onUpdateBankConfig={setBankConfig}
             menuItems={menuItems}

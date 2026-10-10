@@ -224,7 +224,7 @@ export const OrderSyncEditor: React.FC<OrderSyncEditorProps> = ({
           </div>
 
           <div className="flex flex-col items-end">
-            <span className="text-[10px] uppercase text-gray-500 font-bold">Tasa BCV</span>
+            <span className="text-[10px] uppercase text-gray-500 font-bold">Tasa del día</span>
             <span className="text-sm font-extrabold text-[#002546] font-mono">
               {bcvRate.toFixed(2)} Bs/$
             </span>

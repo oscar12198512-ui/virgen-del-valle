@@ -639,7 +639,7 @@ export const OwnerMenuManager: React.FC<OwnerMenuManagerProps> = ({
                         </div>
                       </div>
                       <span className="text-[10px] text-white/90 font-mono block drop-shadow-sm mt-0.5">
-                        Tasa BCV: {bcvRate.toFixed(2)} Bs/$
+                        Tasa del día: {bcvRate.toFixed(2)} Bs/$
                       </span>
                     </div>
 
@@ -1114,7 +1114,7 @@ export const OwnerMenuManager: React.FC<OwnerMenuManagerProps> = ({
                         {formatBs(parseFloat(formPriceUsd) || 0)}
                       </div>
                       <span className="text-[10px] text-gray-500 block mt-0.5">
-                        Tasa BCV: {bcvRate.toFixed(2)} Bs/$
+                        Tasa del día: {bcvRate.toFixed(2)} Bs/$
                       </span>
                     </div>
                   </div>
@@ -1252,7 +1252,7 @@ export const OwnerMenuManager: React.FC<OwnerMenuManagerProps> = ({
                         {formatBs(parseFloat(formPriceExcursionUsd) || 0)}
                       </div>
                       <span className="text-[10px] text-sky-600 block mt-0.5">
-                        Tasa BCV: {bcvRate.toFixed(2)} Bs/$
+                        Tasa del día: {bcvRate.toFixed(2)} Bs/$
                       </span>
                     </div>
                   </div>

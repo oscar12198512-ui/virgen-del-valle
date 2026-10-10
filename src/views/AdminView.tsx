@@ -136,6 +136,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
   >('closings');
   const [kdsSubView, setKdsSubView] = useState<'monitor' | 'editor'>('monitor');
   const [rateInput, setRateInput] = useState<string>(bcvRate.toString());
+
+  useEffect(() => {
+    setRateInput(bcvRate.toString());
+  }, [bcvRate]);
   const [closingsFilter, setClosingsFilter] = useState<'pending' | 'settled' | 'all'>('pending');
   const [showActaZSuccess, setShowActaZSuccess] = useState(false);
   const [rateNotice, setRateNotice] = useState<string | null>(null);
@@ -395,7 +399,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     if (!isNaN(val) && val > 0) {
       onUpdateBcvRate(val);
       soundService.playCashChime();
-      setRateNotice(`Tasa BCV actualizada a ${val.toFixed(2)} Bs/$ y propagada a toda la playa.`);
+      setRateNotice(`Tasa del día actualizada a ${val.toFixed(2)} Bs/$ y propagada a toda la playa.`);
       setTimeout(() => setRateNotice(null), 4000);
     }
   };
@@ -405,7 +409,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setRateInput(next.toString());
     onUpdateBcvRate(next);
     soundService.playCashChime();
-    setRateNotice(`Tasa BCV ajustada a ${next.toFixed(2)} Bs/$`);
+    setRateNotice(`Tasa del día ajustada a ${next.toFixed(2)} Bs/$`);
     setTimeout(() => setRateNotice(null), 3500);
   };
 
@@ -414,7 +418,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     const text =
       `📊 *RESUMEN DE OPERACIÓN & CIERRE - BAHÍA BUCHE*\n` +
       `📅 Fecha: ${new Date().toLocaleDateString()} - ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}\n` +
-      `💵 Tasa BCV Oficial: ${bcvRate.toFixed(2)} Bs/$\n\n` +
+      `💵 Tasa del día: ${bcvRate.toFixed(2)} Bs/$\n\n` +
       `💰 *Total Recaudado:* $${totalGlobalGross.toFixed(2)} (${formatBsDirect(totalGlobalGross * bcvRate)})\n` +
       `💵 Efectivo Físico en Caja: $${totalPhysicalCash.toFixed(2)}\n` +
       `📱 Pagos Digitales: $${totalDigitalVerified.toFixed(2)}\n` +
@@ -570,7 +574,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-1 bg-[#0d3b66] px-2.5 py-0.5 rounded-full text-[#bbe9ff]">
-            <span className="font-bold text-[10px]">Tasa BCV:</span>
+            <span className="font-bold text-[10px]">Tasa del día:</span>
             <span className="text-white font-mono font-bold text-xs">{bcvRate.toFixed(2)} Bs/$</span>
           </div>
         </div>
@@ -640,26 +644,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
           </div>
         </div>
       )}
-
-      {/* Quick Prototype & Download Banner for Owners */}
-      <div className="bg-gradient-to-r from-[#002546] via-[#003c66] to-[#006782] text-white rounded-2xl p-3.5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-white/15 animate-fade-in">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
-            <Download className="w-5 h-5 text-[#57d1fd]" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-sm text-white">Prototipo Instalable de Playa Buche</span>
-              <span className="bg-emerald-400 text-[#002546] text-[9px] font-black px-1.5 py-0.2 rounded-full">
-                DESCARGA DIRECTA
-              </span>
-            </div>
-            <p className="text-[11px] text-[#bbe9ff] leading-tight mt-0.5">
-              Paquete ZIP completo, lanzador .HTML sin conexión, código QR para celulares y simulador de toldos.
-            </p>
-          </div>
-        </div>
-      </div>
 
       {/* Top Toggle Navigation Bar */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none bg-[#eff4ff] p-1.5 rounded-2xl border border-[#d2e4ff]">
@@ -808,7 +792,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 MÓDULO SOCIOS • AUDITORÍA
               </span>
               <span className="text-xs font-bold bg-[#dce9ff] text-[#002546] px-2.5 py-0.5 rounded-full">
-                BCV: {bcvRate.toFixed(2)} Bs/$
+                Tasa del día: {bcvRate.toFixed(2)} Bs/$
               </span>
             </div>
             <h1 className="text-xl font-bold text-[#002546] mt-0.5">
@@ -2103,7 +2087,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       ) : (
         /* ========== VIEW 4: PANEL EJECUTIVO & FINANZAS & TASA ========== */
         <div className="space-y-4">
-          {/* Tasa Oficial Buche Card */}
+          {/* Tasa del día Card */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
@@ -2111,12 +2095,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   <RefreshCw className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-[#002546]">Tasa Oficial Buche</h3>
+                  <h3 className="text-sm font-bold text-[#002546]">Tasa del día</h3>
                   <p className="text-[11px] text-gray-500">Control monetario y conversión de turno</p>
                 </div>
               </div>
               <span className="bg-[#002546] text-white text-[10px] font-bold px-2 py-0.5 rounded">
-                OFICIAL BCV
+                TASA DEL DÍA
               </span>
             </div>
 

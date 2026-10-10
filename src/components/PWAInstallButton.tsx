@@ -33,8 +33,8 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ className = 
         } ${className}`}
       >
         <Download className="w-3.5 h-3.5 text-white" />
-        <span className="hidden md:inline">Descargar Prototipo</span>
-        <span className="md:hidden">Prototipo</span>
+        <span className="hidden md:inline">Instalar App</span>
+        <span className="md:hidden">Instalar</span>
         <span className="hidden sm:inline-block px-1 py-0.2 rounded bg-white/20 text-[9px] font-extrabold uppercase tracking-tight text-white ml-0.5">
           ZIP & QR
         </span>

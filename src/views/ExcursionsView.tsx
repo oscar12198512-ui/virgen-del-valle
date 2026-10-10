@@ -659,7 +659,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
           </div>
           <div className="flex justify-between items-center text-xs pt-1 border-t border-[#d2e4ff]">
             <span className="text-[11px] text-gray-500">
-              Tasa Oficial: {bcvRate.toFixed(2)} Bs/$
+              Tasa del día: {bcvRate.toFixed(2)} Bs/$
             </span>
             <span className="font-bold text-[#006782]">
               {formatBsDirect(totalBs)}

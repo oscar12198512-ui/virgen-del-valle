@@ -132,7 +132,7 @@ class HardwareDriversService {
             <span>TOTAL A PAGAR:</span><span>$48.40 USD</span>
           </div>
           <div style="text-align:right; font-weight:bold; font-size:11px;">
-            Bs. 2,623.28 (Tasa BCV)
+            Bs. 2,623.28 (Tasa del día)
           </div>
         </div>
         <div style="text-align:center; margin-top:10px; font-size:9px;">
