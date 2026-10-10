@@ -544,69 +544,75 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
         </div>
 
         <div className="space-y-3">
-          {safeExcursion.items.map((item) => {
-            const menuItem = menuItems.find(
-              (m) => m.id === item.menuItemId || m.name.toLowerCase() === item.name.toLowerCase()
-            );
-            const photoUrl = item.imageUrl || menuItem?.imageUrl;
-            return (
-              <div
-                key={item.id}
-                className="bg-[#f8f9ff] border border-gray-200 rounded-xl p-3 flex flex-col gap-2"
-              >
-                <div className="flex justify-between items-center gap-2.5">
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    {photoUrl ? (
-                      <img
-                        src={photoUrl}
-                        alt={item.name}
-                        onClick={() => menuItem && setZoomedDish(menuItem)}
-                        className="w-12 h-12 rounded-xl object-cover border border-gray-200 shrink-0 shadow-2xs cursor-pointer hover:opacity-90 transition-opacity"
-                        title="Toca para ver foto ampliada"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center text-[10px] text-gray-400 shrink-0">
-                        🚤
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <h4 className="text-xs font-bold text-[#002546] truncate">{item.name}</h4>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-xs font-extrabold text-sky-800">
-                          {formatUsd(item.unitPriceUsd)} c/u
-                        </span>
-                        <span className="text-[10px] text-gray-400 font-mono">
-                          ({(item.unitPriceUsd * bcvRate).toFixed(0)} Bs.)
-                        </span>
+          {safeExcursion.items.length === 0 ? (
+            <p className="text-gray-400 italic text-center py-4 text-xs">
+              Aún no hay platos agregados para esta excursión. Usa el botón "+ Añadir Plato" o selecciona del catálogo arriba.
+            </p>
+          ) : (
+            safeExcursion.items.map((item) => {
+              const menuItem = menuItems.find(
+                (m) => m.id === item.menuItemId || m.name.toLowerCase() === item.name.toLowerCase()
+              );
+              const photoUrl = item.imageUrl || menuItem?.imageUrl;
+              return (
+                <div
+                  key={item.id}
+                  className="bg-[#f8f9ff] border border-gray-200 rounded-xl p-3 flex flex-col gap-2"
+                >
+                  <div className="flex justify-between items-center gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      {photoUrl ? (
+                        <img
+                          src={photoUrl}
+                          alt={item.name}
+                          onClick={() => menuItem && setZoomedDish(menuItem)}
+                          className="w-12 h-12 rounded-xl object-cover border border-gray-200 shrink-0 shadow-2xs cursor-pointer hover:opacity-90 transition-opacity"
+                          title="Toca para ver foto ampliada"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center text-[10px] text-gray-400 shrink-0">
+                          🚤
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-[#002546] truncate">{item.name}</h4>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-xs font-extrabold text-sky-800">
+                            {formatUsd(item.unitPriceUsd)} c/u
+                          </span>
+                          <span className="text-[10px] text-gray-400 font-mono">
+                            ({(item.unitPriceUsd * bcvRate).toFixed(0)} Bs.)
+                          </span>
+                        </div>
                       </div>
                     </div>
+                    <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-2 py-0.5 shrink-0">
+                      <button
+                        onClick={() => handleUpdateQty(item.id, -1)}
+                        className="p-1 hover:text-rose-600"
+                      >
+                        <Minus className="w-3 h-3" />
+                      </button>
+                      <span className="text-xs font-bold min-w-4 text-center">{item.quantity}</span>
+                      <button
+                        onClick={() => handleUpdateQty(item.id, 1)}
+                        className="p-1 hover:text-[#006782]"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-2 py-0.5 shrink-0">
-                    <button
-                      onClick={() => handleUpdateQty(item.id, -1)}
-                      className="p-1 hover:text-rose-600"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="text-xs font-bold min-w-4 text-center">{item.quantity}</span>
-                    <button
-                      onClick={() => handleUpdateQty(item.id, 1)}
-                      className="p-1 hover:text-[#006782]"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
 
-                {item.specialNote && (
-                  <div className="text-[11px] bg-white border border-gray-200 rounded-lg p-2 text-gray-700">
-                    <span className="font-bold text-[#006782]">Instrucción Capitán: </span>
-                    {item.specialNote}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  {item.specialNote && (
+                    <div className="text-[11px] bg-white border border-gray-200 rounded-lg p-2 text-gray-700">
+                      <span className="font-bold text-[#006782]">Instrucción Capitán: </span>
+                      {item.specialNote}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 

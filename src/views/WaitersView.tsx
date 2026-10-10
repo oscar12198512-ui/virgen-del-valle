@@ -65,25 +65,8 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('Todo');
-  const [orderItems, setOrderItems] = useState<OrderItem[]>([
-    {
-      id: 'waiter-draft-1',
-      menuItemId: 'm-pargo-crispy',
-      name: 'Pargo Rojo Frito (800g)',
-      quantity: 1,
-      unitPriceUsd: 28.00,
-      specialNote: 'Pargo bien dorado, sin sal en los tostones.',
-    },
-    {
-      id: 'waiter-draft-2',
-      menuItemId: 'm-tostones',
-      name: 'Tostones Playeros Virgen del Valle',
-      quantity: 2,
-      unitPriceUsd: 12.50,
-      specialNote: 'Extra salsa tártara aparte, queso de año bien rallado.',
-    }
-  ]);
-  const [allergyNote, setAllergyNote] = useState('Mesa con comensal alérgico al maní y frutos secos');
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+  const [allergyNote, setAllergyNote] = useState('');
   const [tipPercent, setTipPercent] = useState<number>(10);
   const [sendSuccessNotice, setSendSuccessNotice] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);

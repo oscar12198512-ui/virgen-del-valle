@@ -60,11 +60,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<'spots' | 'menu' | 'tracking'>('menu');
   const [orderDeliveryTime, setOrderDeliveryTime] = useState<string>('Ahora (~20 min)');
   const [isEditingActiveComanda, setIsEditingActiveComanda] = useState<boolean>(false);
-  const [cart, setCart] = useState<Record<string, number>>({
-    'm-pargo-crispy': 1,
-    'm-ceviche': 1,
-    'm-coco-loco': 1,
-  });
+  const [cart, setCart] = useState<Record<string, number>>({});
   const [searchMenu, setSearchMenu] = useState('');
   const [favorites, setFavorites] = useState<Record<string, boolean>>({});
   const [menuCategoryFilter, setMenuCategoryFilter] = useState<string>('all');
@@ -663,77 +659,106 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       {/* ========== SUBTAB 3: RASTREO EN VIVO & CUENTA DIGITAL ========== */}
       {activeSubTab === 'tracking' && (
         <div className="space-y-4">
-          {/* Order Live Badge & Location */}
-          <div className="bg-[#002546] text-white rounded-2xl p-4 shadow-sm relative overflow-hidden space-y-3">
-            <div className="flex justify-between items-start">
+          {!activeOrder ? (
+            <div className="text-center py-12 px-4 bg-white rounded-2xl border border-gray-200 shadow-sm space-y-4">
+              <div className="w-14 h-14 rounded-full bg-[#eff4ff] text-[#006782] flex items-center justify-center mx-auto">
+                <Clock className="w-7 h-7 text-[#006782]" />
+              </div>
               <div>
-                <span className="text-[10px] text-[#a4c9fc] font-bold uppercase tracking-wider">
-                  Sector Orilla Este • Carenero
-                </span>
-                <h2 className="text-xl font-bold mt-0.5">
-                  {activeOrder?.spotName || selectedSpot.name}
-                </h2>
-                <p className="text-xs text-gray-300">{activeOrder?.customerName || clientName}</p>
+                <h3 className="text-base font-bold text-[#002546]">No tienes pedidos activos</h3>
+                <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">
+                  Agrega platos desde la pestaña <b>Menú</b> y confirma tu comanda para ver el estado de preparación y tu cuenta aquí.
+                </p>
               </div>
-              <div className="inline-flex items-center gap-1.5 bg-amber-400/20 text-amber-300 border border-amber-300/30 px-2.5 py-1 rounded-full text-xs font-bold">
-                <Flame className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                <span>En Fuego & Cocina</span>
-              </div>
-            </div>
-
-            <div className="bg-white/10 rounded-xl p-3 flex justify-between items-center backdrop-blur-xs">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-[#006782] flex items-center justify-center text-white">
-                  <Clock className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase text-sky-300 font-bold block">
-                    Tiempo Estimado Restante
-                  </span>
-                  <span className="text-base font-extrabold text-white">12 - 15 min</span>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-gray-300 block">Hora Entrega</span>
-                <span className="text-xs font-bold text-[#57d1fd]">1:15 PM</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Toggle between Stepper Tracking and Live Comanda KDS Editor */}
-          <div className="flex bg-[#eff4ff] p-1 rounded-xl border border-[#d2e4ff]">
-            <button
-              onClick={() => setShowKdsSyncEditor(false)}
-              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                !showKdsSyncEditor ? 'bg-white text-[#002546] shadow-xs' : 'text-[#42474f] hover:text-[#002546]'
-              }`}
-            >
-              Rastreo & Estado de Entrega
-            </button>
-            <button
-              onClick={() => setShowKdsSyncEditor(true)}
-              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                showKdsSyncEditor ? 'bg-[#002546] text-white shadow-xs' : 'text-[#42474f] hover:text-[#002546]'
-              }`}
-            >
-              <Flame className="w-3.5 h-3.5 text-[#57d1fd]" />
-              <span>Editar Comanda (#1048)</span>
-            </button>
-          </div>
-
-          {showKdsSyncEditor ? (
-            <OrderSyncEditor bcvRate={bcvRate} />
-          ) : (
-            <>
-              {/* Direct Comanda Quick Action Button */}
               <button
                 type="button"
-                onClick={() => setIsEditingActiveComanda(true)}
-                className="w-full py-2.5 px-3.5 bg-white hover:bg-[#eff4ff] border-2 border-[#006782] text-[#006782] rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all active:scale-[0.99]"
+                onClick={() => setActiveSubTab('menu')}
+                className="px-5 py-2.5 bg-[#006782] hover:bg-[#005870] text-white rounded-xl text-xs font-bold shadow-sm transition-all"
               >
-                <Edit3 className="w-4 h-4 text-[#006782]" />
-                <span>Modificar Mi Comanda (Anexar, quitar platos, cambiar hora o nota)</span>
+                Ver Menú y Ordenar
               </button>
+            </div>
+          ) : (
+            <>
+              {/* Order Live Badge & Location */}
+              <div className="bg-[#002546] text-white rounded-2xl p-4 shadow-sm relative overflow-hidden space-y-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-[10px] text-[#a4c9fc] font-bold uppercase tracking-wider">
+                      Sector Orilla Este • Carenero
+                    </span>
+                    <h2 className="text-xl font-bold mt-0.5">
+                      {activeOrder.spotName || selectedSpot.name}
+                    </h2>
+                    <p className="text-xs text-gray-300">{activeOrder.customerName || clientName}</p>
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 bg-amber-400/20 text-amber-300 border border-amber-300/30 px-2.5 py-1 rounded-full text-xs font-bold">
+                    <Flame className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                    <span>
+                      {activeOrder.status === 'ready_pass'
+                        ? 'Listo en Pase'
+                        : activeOrder.status === 'delivered'
+                        ? 'Entregado en Mesa'
+                        : 'En Fuego & Cocina'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-white/10 rounded-xl p-3 flex justify-between items-center backdrop-blur-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-[#006782] flex items-center justify-center text-white">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase text-sky-300 font-bold block">
+                        Comanda
+                      </span>
+                      <span className="text-base font-extrabold text-white">{activeOrder.displayNumber}</span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-gray-300 block">Hora Solicitada</span>
+                    <span className="text-xs font-bold text-[#57d1fd]">
+                      {activeOrder.estimatedDeliveryTime || 'Ahora (~20 min)'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Toggle between Stepper Tracking and Live Comanda KDS Editor */}
+              <div className="flex bg-[#eff4ff] p-1 rounded-xl border border-[#d2e4ff]">
+                <button
+                  onClick={() => setShowKdsSyncEditor(false)}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                    !showKdsSyncEditor ? 'bg-white text-[#002546] shadow-xs' : 'text-[#42474f] hover:text-[#002546]'
+                  }`}
+                >
+                  Rastreo & Estado de Entrega
+                </button>
+                <button
+                  onClick={() => setShowKdsSyncEditor(true)}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    showKdsSyncEditor ? 'bg-[#002546] text-white shadow-xs' : 'text-[#42474f] hover:text-[#002546]'
+                  }`}
+                >
+                  <Flame className="w-3.5 h-3.5 text-[#57d1fd]" />
+                  <span>Editar Comanda ({activeOrder.displayNumber})</span>
+                </button>
+              </div>
+
+              {showKdsSyncEditor ? (
+                <OrderSyncEditor bcvRate={bcvRate} />
+              ) : (
+                <>
+                  {/* Direct Comanda Quick Action Button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingActiveComanda(true)}
+                    className="w-full py-2.5 px-3.5 bg-white hover:bg-[#eff4ff] border-2 border-[#006782] text-[#006782] rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all active:scale-[0.99]"
+                  >
+                    <Edit3 className="w-4 h-4 text-[#006782]" />
+                    <span>Modificar Mi Comanda (Anexar, quitar platos, cambiar hora o nota)</span>
+                  </button>
 
               {/* Stepper Timeline (Vertical) */}
           <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm space-y-3">
@@ -863,16 +888,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             </div>
 
             <div className="space-y-2 text-xs text-gray-700">
-              {(activeOrder?.items || [
-                { id: '1', name: 'Pargo Rojo Crispy Buche (~600g)', quantity: 1, unitPriceUsd: 24 },
-                { id: '2', name: 'Ceviche Virgen del Valle', quantity: 1, unitPriceUsd: 18.5 },
-                { id: '3', name: 'Coco Loco Especial Buche', quantity: 1, unitPriceUsd: 9.5 },
-              ]).map((it) => (
-                <div key={it.id} className="flex justify-between items-center">
-                  <span>{it.quantity}x {it.name}</span>
-                  <span className="font-bold">{formatUsd(it.quantity * it.unitPriceUsd)}</span>
-                </div>
-              ))}
+              {activeOrder?.items && activeOrder.items.length > 0 ? (
+                activeOrder.items.map((it) => (
+                  <div key={it.id} className="flex justify-between items-center">
+                    <span>{it.quantity}x {it.name}</span>
+                    <span className="font-bold">{formatUsd(it.quantity * it.unitPriceUsd)}</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-400 italic text-center py-2">Sin platos añadidos aún</p>
+              )}
             </div>
 
             <div className="bg-[#eff4ff] border border-[#a4c9fc] rounded-xl p-3.5 space-y-1">
@@ -881,13 +906,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   Total a Pagar Bimonetario:
                 </span>
                 <span className="text-2xl font-extrabold text-[#002546]">
-                  {formatUsd(activeOrder?.totalUsd || 57.20)} <span className="text-xs font-semibold text-[#006782]">USD</span>
+                  {formatUsd(activeOrder?.totalUsd || 0)} <span className="text-xs font-semibold text-[#006782]">USD</span>
                 </span>
               </div>
               <div className="flex justify-between items-center text-xs pt-1 border-t border-[#d2e4ff]">
                 <span className="text-[11px] text-gray-500">Tasa del día: {bcvRate.toFixed(2)} Bs/$</span>
                 <span className="font-bold text-[#006782]">
-                  {formatBsDirect((activeOrder?.totalUsd || 57.20) * bcvRate)}
+                  {formatBsDirect((activeOrder?.totalUsd || 0) * bcvRate)}
                 </span>
               </div>
             </div>
@@ -919,64 +944,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               </button>
             )}
           </div>
+                </>
+              )}
             </>
           )}
         </div>
       )}
 
       {/* Comanda Editor Modal for Client */}
-      {isEditingActiveComanda && (
+      {isEditingActiveComanda && activeOrder && (
         <ComandaEditorModal
           isOpen={isEditingActiveComanda}
-          order={
-            activeOrder || {
-              id: 'ord-client-' + Date.now(),
-              displayNumber: '#1048',
-              origin: 'client_qr',
-              spotId: selectedSpot.id,
-              spotName: `${selectedSpot.name} • ${selectedSpot.typeDesc}`,
-              customerName: 'Comensal ' + selectedSpot.number,
-              items: [
-                {
-                  id: 'ci-1',
-                  menuItemId: 'm-pargo-crispy',
-                  name: 'Pargo Rojo Crispy Buche (~600g)',
-                  quantity: 1,
-                  unitPriceUsd: 24,
-                  specialNote: 'Bien dorado, limón en rodajas',
-                },
-                {
-                  id: 'ci-2',
-                  menuItemId: 'm-ceviche',
-                  name: 'Ceviche Virgen del Valle',
-                  quantity: 1,
-                  unitPriceUsd: 18.5,
-                  specialNote: 'Picante moderado',
-                },
-                {
-                  id: 'ci-3',
-                  menuItemId: 'm-coco-loco',
-                  name: 'Coco Loco Especial Buche',
-                  quantity: 1,
-                  unitPriceUsd: 9.5,
-                  specialNote: 'Con sombrilla playera',
-                },
-              ],
-              subtotalUsd: 52,
-              tipPercent: 10,
-              tipUsd: 5.2,
-              totalUsd: 57.2,
-              totalBs: 57.2 * bcvRate,
-              status: 'in_fire',
-              paymentStatus: 'pending',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              estimatedDeliveryTime: orderDeliveryTime,
-              orderNote: 'Servir en toldo frente a la orilla',
-              kitchenStep: 2,
-              elapsedSeconds: 300,
-            }
-          }
+          order={activeOrder}
           menuItems={menuItems}
           bcvRate={bcvRate}
           userRoleTitle="Cliente (Toldo)"
