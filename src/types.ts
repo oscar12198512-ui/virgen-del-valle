@@ -94,9 +94,10 @@ export interface Order {
   totalBs: number;
   status: OrderStatus;
   paymentStatus: 'pending' | 'verified' | 'cash_waiter';
-  paymentMethod?: 'cash_usd' | 'pago_movil' | 'zelle' | 'pos_card';
+  paymentMethod?: 'cash_usd' | 'cash_bs' | 'pago_movil' | 'zelle' | 'pos_card' | 'card_pos';
   paymentReference?: string;
   paymentScreenshot?: string;
+  isSettled?: boolean;
   createdAt: string; // ISO string
   updatedAt: string;
   estimatedDeliveryTime?: string;

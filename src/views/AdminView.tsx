@@ -13,6 +13,7 @@ import {
   Order,
   OrderStatus,
   ToldoSpot,
+  WaiterComandaItem,
 } from '../types';
 import {
   INITIAL_ARENA_SUPPLIES,
