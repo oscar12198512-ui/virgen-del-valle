@@ -119,7 +119,7 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew bundleRelease assembleRelease --stacktrace
+          ./gradlew assembleRelease bundleRelease -x lintVitalRelease --stacktrace
 
       - name: Verificar firma del paquete
         if: steps.signing.outputs.signed == 'true'

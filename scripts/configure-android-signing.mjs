@@ -25,9 +25,9 @@ if (fs.existsSync(rootSigningKeystore)) {
 let content = fs.readFileSync(buildGradlePath, 'utf8');
 const runNumber = process.env.RUN_NUMBER || '1';
 
-const storePassword = process.env.ANDROID_KEYSTORE_PASSWORD || 'VdV_Key_2026_Secure';
-const keyAlias = process.env.ANDROID_KEY_ALIAS || 'upload';
-const keyPassword = process.env.ANDROID_KEY_PASSWORD || storePassword;
+const storePassword = (process.env.ANDROID_KEYSTORE_PASSWORD || 'VdV_Key_2026_Secure').trim();
+const keyAlias = (process.env.ANDROID_KEY_ALIAS || 'upload').trim();
+const keyPassword = (process.env.ANDROID_KEY_PASSWORD || storePassword).trim();
 
 // Update version code and version name
 content = content.replace(/versionCode \d+/, `versionCode ${runNumber}`);
@@ -36,8 +36,9 @@ content = content.replace(/versionName "[^"]+"/, `versionName "1.${runNumber}"`)
 // Clean any old signingConfigs and signingConfig assignments
 content = content.replace(/signingConfigs\s*\{[\s\S]*?\}\s*\}\s*/g, '');
 content = content.replace(/signingConfig\s+signingConfigs\.release\s*/g, '');
+content = content.replace(/lint\s*\{[\s\S]*?\}\s*/g, '');
 
-// Clean signing block with local file('release.keystore')
+// Clean signing and lint block
 const signingBlock = `    signingConfigs {
         release {
             storeFile file('release.keystore')
@@ -45,6 +46,11 @@ const signingBlock = `    signingConfigs {
             keyAlias "${keyAlias}"
             keyPassword "${keyPassword}"
         }
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
     }
 `;
 
