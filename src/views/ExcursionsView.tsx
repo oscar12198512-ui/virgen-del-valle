@@ -194,18 +194,18 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
         <div className="flex justify-between items-start">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold">{excursion.tourCode}</h2>
+              <h2 className="text-lg font-bold">{safeExcursion.tourCode}</h2>
               <span className="bg-[#57d1fd]/20 text-[#bbe9ff] text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                <Users className="w-3 h-3" /> {excursion.passengersCount} pax
+                <Users className="w-3 h-3" /> {safeExcursion.passengersCount} pax
               </span>
             </div>
             <div className="flex items-center gap-2 text-xs text-gray-300 mt-1">
               <Ship className="w-3.5 h-3.5 text-[#57d1fd]" />
-              <span>Lancha: <b>{excursion.boatName}</b></span>
-              <span>• {excursion.captainName}</span>
+              <span>Lancha: <b>{safeExcursion.boatName}</b></span>
+              <span>• {safeExcursion.captainName}</span>
             </div>
             <div className="text-[11px] text-sky-200 mt-0.5">
-              Pulseras: <b>{excursion.braceletsColor}</b>
+              Pulseras: <b>{safeExcursion.braceletsColor}</b>
             </div>
           </div>
           <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-[#57d1fd]">
@@ -219,10 +219,10 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
             <div className="flex justify-between items-center text-[10px] text-sky-300 font-bold uppercase">
               <span>Arribo a Muelle</span>
               <span className="bg-[#57d1fd]/20 text-[#bbe9ff] px-1.5 py-0.2 rounded">
-                {excursion.knotsSpeed} nudos
+                {safeExcursion.knotsSpeed} nudos
               </span>
             </div>
-            <div className="text-base font-extrabold mt-0.5">{excursion.arrivalTime}</div>
+            <div className="text-base font-extrabold mt-0.5">{safeExcursion.arrivalTime}</div>
             <span className="text-[10px] text-gray-300 block">Aproximándose a Muelle Buche</span>
           </div>
 
@@ -233,7 +233,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
                 22 min
               </span>
             </div>
-            <div className="text-base font-extrabold text-amber-100 mt-0.5">{excursion.estimatedServingTime}</div>
+            <div className="text-base font-extrabold text-amber-100 mt-0.5">{safeExcursion.estimatedServingTime}</div>
             <span className="text-[10px] text-amber-200 block">Faltan aprox. 22 min para servir</span>
           </div>
         </div>
@@ -245,7 +245,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
               <Clock className="w-3.5 h-3.5 text-[#57d1fd]" /> Hora de Servicio / Almuerzo (Libre):
             </span>
             <span className="text-[#57d1fd] font-extrabold bg-white/10 px-2.5 py-0.5 rounded-full">
-              {excursion.estimatedServingTime}
+              {safeExcursion.estimatedServingTime}
             </span>
           </div>
 
@@ -256,14 +256,14 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
                 type="button"
                 onClick={() => {
                   onUpdateExcursion({
-                    ...excursion,
+                    ...safeExcursion,
                     estimatedServingTime: preset,
                   });
                   setNoticeMessage(`Hora de servicio actualizada a ${preset}`);
                   setTimeout(() => setNoticeMessage(null), 3500);
                 }}
                 className={`py-1 rounded-lg border text-center transition-all ${
-                  excursion.estimatedServingTime === preset
+                  safeExcursion.estimatedServingTime === preset
                     ? 'bg-[#57d1fd] text-[#002546] border-[#57d1fd] font-black'
                     : 'bg-white/10 text-white border-white/10 hover:bg-white/20'
                 }`}
@@ -277,16 +277,16 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
             <input
               type="time"
               value={
-                excursion.estimatedServingTime.includes(':') &&
-                !excursion.estimatedServingTime.includes('PM') &&
-                !excursion.estimatedServingTime.includes('AM')
-                  ? excursion.estimatedServingTime
+                safeExcursion.estimatedServingTime.includes(':') &&
+                !safeExcursion.estimatedServingTime.includes('PM') &&
+                !safeExcursion.estimatedServingTime.includes('AM')
+                  ? safeExcursion.estimatedServingTime
                   : ''
               }
               onChange={(e) => {
                 if (e.target.value) {
                   onUpdateExcursion({
-                    ...excursion,
+                    ...safeExcursion,
                     estimatedServingTime: e.target.value,
                   });
                 }
@@ -295,10 +295,10 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
             />
             <input
               type="text"
-              value={excursion.estimatedServingTime}
+              value={safeExcursion.estimatedServingTime}
               onChange={(e) => {
                 onUpdateExcursion({
-                  ...excursion,
+                  ...safeExcursion,
                   estimatedServingTime: e.target.value,
                 });
               }}
@@ -324,7 +324,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
             <span className="text-gray-300 flex items-center gap-1">
               <Flame className="w-3.5 h-3.5 text-amber-400" /> Estado en Cocina KDS:
             </span>
-            <span className="font-bold text-[#57d1fd]">{excursion.kdsStatus}</span>
+            <span className="font-bold text-[#57d1fd]">{safeExcursion.kdsStatus}</span>
           </div>
           <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
             <div className="bg-gradient-to-r from-amber-400 to-[#57d1fd] h-full rounded-full w-2/3 transition-all duration-500"></div>
@@ -495,7 +495,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
         </div>
 
         <div className="space-y-3">
-          {excursion.items.map((item) => {
+          {safeExcursion.items.map((item) => {
             const menuItem = menuItems.find(
               (m) => m.id === item.menuItemId || m.name.toLowerCase() === item.name.toLowerCase()
             );
@@ -569,7 +569,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
               Facturación & Liquidación del Grupo
             </h3>
             <p className="text-[11px] text-gray-500">
-              {excursion.tourCode} • {excursion.passengersCount} Pasajeros
+              {safeExcursion.tourCode} • {safeExcursion.passengersCount} Pasajeros
             </p>
           </div>
           <span className="bg-sky-100 text-sky-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
@@ -579,7 +579,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
 
         <div className="space-y-2 text-xs text-gray-700">
           <div className="flex justify-between">
-            <span>Subtotal consumo ({excursion.items.reduce((a, b) => a + b.quantity, 0)} platos/bebidas):</span>
+            <span>Subtotal consumo ({safeExcursion.items.reduce((a, b) => a + (b.quantity || 0), 0)} platos/bebidas):</span>
             <span className="font-bold">{formatUsd(subtotal)}</span>
           </div>
           <div className="flex justify-between text-emerald-700">
@@ -670,7 +670,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
           </button>
           <button
             onClick={() => {
-              setNoticeMessage(`Comanda digital enviada al Capitán ${excursion.captainName || 'de la embarcación'}.`);
+              setNoticeMessage(`Comanda digital enviada al Capitán ${safeExcursion.captainName || 'de la embarcación'}.`);
               setTimeout(() => setNoticeMessage(null), 3500);
             }}
             className="h-10 bg-white hover:bg-gray-100 text-[#002546] border border-gray-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
@@ -697,13 +697,13 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
         <CaptainVhfModal
           isOpen={isCaptainVhfOpen}
           onClose={() => setIsCaptainVhfOpen(false)}
-          excursion={excursion}
+          excursion={safeExcursion}
           bcvRate={bcvRate}
           onAdjustTime={(delta) => {
             const match = delta.match(/^([+-])(\d+)\s*min$/i);
             if (!match) return;
             const amount = Number(match[2]) * (match[1] === '-' ? -1 : 1);
-            const timeMatch = excursion.arrivalTime.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+            const timeMatch = (safeExcursion.arrivalTime || '01:15 PM').match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
             if (!timeMatch) {
               setNoticeMessage(`Ajuste solicitado: ${delta}. La hora actual no tiene formato ajustable.`);
               return;
@@ -713,7 +713,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
             const hour = Math.floor(totalMinutes / 60) || 12;
             const minute = totalMinutes % 60;
             const nextTime = `${hour}:${String(minute).padStart(2, '0')} ${timeMatch[3].toUpperCase()}`;
-            onUpdateExcursion({ ...excursion, arrivalTime: nextTime });
+            onUpdateExcursion({ ...safeExcursion, arrivalTime: nextTime });
             setNoticeMessage(`Hora de arribo ajustada a ${nextTime}.`);
             setTimeout(() => setNoticeMessage(null), 3500);
           }}
