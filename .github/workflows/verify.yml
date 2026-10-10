@@ -161,3 +161,77 @@ jobs:
             signing/playa-buche-release.apk
             signing/playa-buche-release.aab
           generate_release_notes: true
+
+  ios:
+    name: Compilar iOS (iPhone)
+    runs-on: macos-14
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+
+      - name: Install Dependencies
+        run: |
+          npm ci
+          npm install --no-save @capacitor/ios
+
+      - name: Compilar Frontend Web
+        run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: "AIzaSyAnMvY9S2ZCRwaY-rCzMnSUGe6XSY7kl5k"
+          VITE_FIREBASE_AUTH_DOMAIN: "playa-buche-pos.firebaseapp.com"
+          VITE_FIREBASE_PROJECT_ID: "playa-buche-pos"
+          VITE_FIREBASE_STORAGE_BUCKET: "playa-buche-pos.firebasestorage.app"
+          VITE_FIREBASE_MESSAGING_SENDER_ID: "637742279156"
+          VITE_FIREBASE_APP_ID: "1:637742279156:web:daa2a086b0b82d6ecc31a1"
+
+      - name: Initialize & Sync iOS Project
+        run: |
+          [ -d "ios" ] || npx cap add ios
+          npx cap sync ios
+
+      - name: Configure iOS Permissions in Info.plist
+        run: |
+          PLIST="ios/App/App/Info.plist"
+          if [ -f "$PLIST" ]; then
+            /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Playa Buche requiere acceso a la camara para escanear codigos QR de toldos y comprobantes de pago.'" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Playa Buche requiere acceso a sus fotos para adjuntar comprobantes de Pago Movil o Zelle.'" "$PLIST" 2>/dev/null || true
+          fi
+
+      - name: Build iOS App (.app / Xcode)
+        working-directory: ios/App
+        run: |
+          xcodebuild -workspace App.xcworkspace \
+            -scheme App \
+            -destination "generic/platform=iOS" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build
+
+      - name: Archive iOS Build
+        run: |
+          mkdir -p build-ios
+          if [ -d "ios/App/build/Debug-iphoneos" ]; then
+            tar -czf build-ios/playa-buche-ios-app.tar.gz -C ios/App/build/Debug-iphoneos App.app
+          elif [ -d "ios/App/DerivedData" ]; then
+            tar -czf build-ios/playa-buche-ios-app.tar.gz -C ios/App/DerivedData .
+          else
+            tar -czf build-ios/playa-buche-ios-project.tar.gz ios/
+          fi
+
+      - name: Subir artefacto iOS
+        uses: actions/upload-artifact@v4
+        with:
+          name: playa-buche-ios
+          path: build-ios/
+          if-no-files-found: warn
+          retention-days: 90

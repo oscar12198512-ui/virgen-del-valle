@@ -7,6 +7,11 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: false,
   },
+  ios: {
+    contentInset: 'always',
+    preferredContentMode: 'mobile',
+    scheme: 'Playa Buche',
+  },
   server: {
     androidScheme: 'https',
   },
