@@ -13,7 +13,7 @@ export default defineConfig(() => ({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg', 'pwa-192x192.png', 'pwa-512x512.png', 'pwa-maskable-512x512.png'],
       manifest: {
-        id: '/',
+        id: './',
         name: 'Playa Buche · Inversiones Virgen del Valle',
         short_name: 'Playa Buche',
         description: 'Comandera de mesoneros, cocina KDS, excursiones, caja y menu digital de Playa Buche.',
@@ -23,18 +23,18 @@ export default defineConfig(() => ({
         background_color: '#002546',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
-        scope: '/',
+        start_url: './',
+        scope: './',
         categories: ['business', 'productivity', 'food'],
         icons: [
-          { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-          { src: '/pwa-maskable-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-          { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }
+          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-maskable-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }
         ],
         shortcuts: [
-          { name: 'Comandera', short_name: 'Mesonero', url: '/', icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }] },
-          { name: 'Cocina KDS', short_name: 'Cocina', url: '/', icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }] }
+          { name: 'Comandera', short_name: 'Mesonero', url: './', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] },
+          { name: 'Cocina KDS', short_name: 'Cocina', url: './', icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }] }
         ]
       },
       workbox: {
