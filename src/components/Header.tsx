@@ -68,8 +68,15 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="fixed top-0 w-full z-50 pt-[env(safe-area-inset-top,0px)] bg-[#f8f9ff]/90 backdrop-blur-xl shadow-[0_1px_12px_rgba(0,37,70,0.06)] border-b border-[#002546]/5">
       <div className="max-w-7xl mx-auto h-16 px-3 sm:px-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-[#eff4ff] border border-[#d2e4ff] flex items-center justify-center shadow-xs shrink-0">
-            <Ship className="w-5 h-5 text-[#006782]" />
+          <div className="w-10 h-10 rounded-full bg-transparent flex items-center justify-center shrink-0">
+            <img
+              src="/logo.png"
+              alt="Playa Buche"
+              className="w-10 h-10 object-contain drop-shadow-xs"
+              onError={(e) => {
+                (e.currentTarget as HTMLElement).style.display = 'none';
+              }}
+            />
           </div>
           <div className="flex flex-col min-w-0">
             <span className="text-[10px] uppercase tracking-wider text-[#006782] font-bold truncate">
