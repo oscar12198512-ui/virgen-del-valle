@@ -59,9 +59,11 @@ export async function registerWithEmail(
   pass: string,
   name: string,
   phone?: string,
-  role: UserRole = 'client'
+  role: UserRole = 'client',
+  extra?: { zone?: string; boatName?: string; status?: 'active' | 'suspended' | 'pending_approval' }
 ): Promise<User> {
   const cleanEmail = email.trim().toLowerCase();
+  const initialStatus = extra?.status || (role === 'excursion' || role === 'waiter' ? 'pending_approval' : 'active');
   try {
     const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
     await updateProfile(cred.user, { displayName: name });
@@ -72,7 +74,9 @@ export async function registerWithEmail(
       email: cred.user.email || cleanEmail,
       phone: phone || null,
       role,
-      status: 'active',
+      zone: extra?.zone || null,
+      boatName: extra?.boatName || null,
+      status: initialStatus,
       sessionToken: `token-${cred.user.uid}`
     };
 
@@ -88,7 +92,9 @@ export async function registerWithEmail(
       email: cleanEmail,
       phone: phone || null,
       role,
-      status: 'active',
+      zone: extra?.zone || null,
+      boatName: extra?.boatName || null,
+      status: initialStatus,
       sessionToken: `token-${Date.now()}`
     };
     try {

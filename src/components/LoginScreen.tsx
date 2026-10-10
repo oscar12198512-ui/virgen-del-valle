@@ -1,6 +1,19 @@
 import React, { useState } from 'react';
-import { LogIn, UserPlus, KeyRound, Shield, Utensils, Flame, Ship, UserCheck, Sparkles, ArrowRight } from 'lucide-react';
-import { User, UserRole } from '../types';
+import {
+  LogIn,
+  UserPlus,
+  KeyRound,
+  Shield,
+  Utensils,
+  Ship,
+  Sparkles,
+  CheckCircle2,
+  Clock,
+  ArrowLeft,
+  ShieldAlert,
+  Info
+} from 'lucide-react';
+import { User, UserRole, ROLE_LABELS } from '../types';
 import { isFirebaseConfigured } from '../config/firebase';
 import { loginWithEmail, registerWithEmail, sendResetPassword } from '../services/firebaseAuth';
 
@@ -10,75 +23,18 @@ interface LoginScreenProps {
 
 const API = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
-const PRECONFIGURED_STAFF: Array<{
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  role: UserRole;
-  roleTitle: string;
-  badgeColor: string;
-  icon: React.ElementType;
-}> = [
-  {
-    id: 'admin-emmanuel',
-    name: 'Emmanuel Mejías',
-    email: 'emmanuelmejias2616@gmail.com',
-    phone: '04127939128',
-    role: 'admin',
-    roleTitle: 'Dueño / Administrador General',
-    badgeColor: 'from-amber-500 to-amber-600 text-slate-950',
-    icon: Shield,
-  },
-  {
-    id: 'waiter-carlos',
-    name: 'Carlos Mendoza',
-    email: 'carlos.mesonero@playabuche.com',
-    phone: '04141112233',
-    role: 'waiter',
-    roleTitle: 'Mesonero • Playa VIP & Muelle',
-    badgeColor: 'from-sky-500 to-blue-600 text-white',
-    icon: Utensils,
-  },
-  {
-    id: 'kitchen-chef',
-    name: 'Chef Principal Buche',
-    email: 'cocina@playabuche.com',
-    phone: '04123334455',
-    role: 'kitchen',
-    roleTitle: 'Jefe de Cocina • KDS & Fuego',
-    badgeColor: 'from-rose-500 to-red-600 text-white',
-    icon: Flame,
-  },
-  {
-    id: 'excursion-capitan',
-    name: 'Capitán Manuel Díaz',
-    email: 'excursiones@playabuche.com',
-    phone: '04169998877',
-    role: 'excursion',
-    roleTitle: 'Capitán • Lancha & Full Day',
-    badgeColor: 'from-teal-500 to-emerald-600 text-white',
-    icon: Ship,
-  },
-  {
-    id: 'client-guest',
-    name: 'Cliente Playero',
-    email: 'cliente@playabuche.com',
-    phone: '04140000000',
-    role: 'client',
-    roleTitle: 'Turista • Menú Digital & Pedidos',
-    badgeColor: 'from-indigo-500 to-purple-600 text-white',
-    icon: Sparkles,
-  },
-];
-
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
-  const [mode, setMode] = useState<'quick' | 'login' | 'register'>('quick');
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [selectedRole, setSelectedRole] = useState<UserRole>('client');
+  const [boatName, setBoatName] = useState('');
+  const [zone, setZone] = useState('');
   const [message, setMessage] = useState('');
+  const [statusNotice, setStatusNotice] = useState<{ type: 'pending' | 'suspended' | 'error'; title: string; text: string } | null>(null);
+  const [registrationSuccess, setRegistrationSuccess] = useState<{ role: UserRole; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
@@ -89,22 +45,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
   const [newPassword, setNewPassword] = useState('');
   const [resetMessage, setResetMessage] = useState('');
 
-  const handleQuickLogin = (staff: (typeof PRECONFIGURED_STAFF)[0]) => {
-    const user: User = {
-      id: staff.id,
-      name: staff.name,
-      email: staff.email,
-      phone: staff.phone,
-      role: staff.role,
-      status: 'active',
-      sessionToken: `token-${staff.id}-${Date.now()}`,
-    };
-    onAuthenticated(user);
-  };
-
   const submitLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     setMessage('');
+    setStatusNotice(null);
+
     if (!email.trim() || !password) {
       setMessage('Escribe tu correo y tu clave.');
       return;
@@ -113,9 +58,30 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
     try {
       if (isFirebaseConfigured()) {
         const user = await loginWithEmail(email, password);
+        
+        // Validar estado de la cuenta
+        if (user.status === 'pending_approval') {
+          setStatusNotice({
+            type: 'pending',
+            title: 'Cuenta en Espera de Aprobación',
+            text: `Hola ${user.name || ''}, tu cuenta como ${ROLE_LABELS[user.role] || 'Personal'} fue registrada correctamente pero aún está pendiente de aprobación por el Dueño / Administrador de Playa Buche. Podrás ingresar tan pronto sea autorizada.`
+          });
+          return;
+        }
+
+        if (user.status === 'suspended') {
+          setStatusNotice({
+            type: 'suspended',
+            title: 'Cuenta Suspendida',
+            text: 'Esta cuenta se encuentra temporalmente suspendida por la administración de Playa Buche. Por favor comunícate con el dueño.'
+          });
+          return;
+        }
+
         onAuthenticated(user);
         return;
       }
+
       if (API) {
         const response = await fetch(API + '/api/auth/login', {
           method: 'POST',
@@ -124,11 +90,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
         });
         const data = await response.json().catch(() => ({}));
         if (response.ok && data.user) {
-          onAuthenticated(data.user);
+          const user: User = data.user;
+          if (user.status === 'pending_approval') {
+            setStatusNotice({
+              type: 'pending',
+              title: 'Cuenta en Espera de Aprobación',
+              text: `Hola ${user.name}, tu cuenta como ${ROLE_LABELS[user.role]} está pendiente de aprobación por el Dueño / Administrador.`
+            });
+            return;
+          }
+          if (user.status === 'suspended') {
+            setStatusNotice({
+              type: 'suspended',
+              title: 'Cuenta Suspendida',
+              text: 'Esta cuenta ha sido suspendida.'
+            });
+            return;
+          }
+          onAuthenticated(user);
           return;
         }
       }
-      // Fallback inmediato
+
+      // Fallback seguro inmediato
       const clean = email.trim().toLowerCase();
       const fallback: User = {
         id: `usr-${clean.replace(/[^a-z0-9]/g, '_')}`,
@@ -141,16 +125,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
       onAuthenticated(fallback);
     } catch (err: any) {
       console.error(err);
-      const clean = email.trim().toLowerCase();
-      const fallback: User = {
-        id: `usr-${clean.replace(/[^a-z0-9]/g, '_')}`,
-        name: clean.split('@')[0],
-        email: clean,
-        role: clean.includes('admin') || clean.includes('emmanuel') ? 'admin' : 'client',
-        status: 'active',
-        sessionToken: `token-${Date.now()}`
-      };
-      onAuthenticated(fallback);
+      setMessage(err?.message || 'Error al iniciar sesión. Verifica tu correo y contraseña.');
     } finally {
       setBusy(false);
     }
@@ -159,17 +134,49 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
   const submitRegister = async (event: React.FormEvent) => {
     event.preventDefault();
     setMessage('');
+    setStatusNotice(null);
+
     if (!name.trim() || !email.trim()) {
-      setMessage('Nombre y correo son obligatorios.');
+      setMessage('Nombre completo y correo electrónico son obligatorios.');
       return;
     }
+    if (password.length < 8) {
+      setMessage('La contraseña debe tener al menos 8 caracteres.');
+      return;
+    }
+
+    if (selectedRole === 'excursion' && !boatName.trim()) {
+      setMessage('Por favor indica el nombre de tu lancha o agencia de excursión.');
+      return;
+    }
+
     setBusy(true);
     try {
+      const initialStatus = selectedRole === 'client' ? 'active' : 'pending_approval';
+
       if (isFirebaseConfigured()) {
-        const user = await registerWithEmail(email, password || 'buche12345', name, phone, 'client');
+        const user = await registerWithEmail(
+          email,
+          password,
+          name,
+          phone,
+          selectedRole,
+          {
+            boatName: selectedRole === 'excursion' ? boatName.trim() : undefined,
+            zone: selectedRole === 'waiter' ? zone.trim() : undefined,
+            status: initialStatus
+          }
+        );
+
+        if (initialStatus === 'pending_approval') {
+          setRegistrationSuccess({ role: selectedRole, name: user.name });
+          return;
+        }
+
         onAuthenticated(user);
         return;
       }
+
       if (API) {
         const response = await fetch(API + '/api/auth/register', {
           method: 'POST',
@@ -178,40 +185,47 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
             name: name.trim(),
             email: email.trim().toLowerCase(),
             phone: phone.trim(),
-            password: password || 'buche12345',
+            password: password,
+            role: selectedRole,
+            boatName: selectedRole === 'excursion' ? boatName.trim() : undefined,
+            zone: selectedRole === 'waiter' ? zone.trim() : undefined,
+            status: initialStatus
           }),
         });
         const data = await response.json().catch(() => ({}));
         if (response.ok && data.user) {
+          if (initialStatus === 'pending_approval') {
+            setRegistrationSuccess({ role: selectedRole, name: data.user.name });
+            return;
+          }
           onAuthenticated(data.user);
           return;
         }
       }
-      // Fallback seguro inmediato
+
+      // Fallback seguro
       const clean = email.trim().toLowerCase();
       const directUser: User = {
         id: `usr-${Date.now()}`,
         name: name.trim() || clean.split('@')[0],
         email: clean,
         phone: phone.trim() || null,
-        role: 'client',
-        status: 'active',
+        role: selectedRole,
+        boatName: selectedRole === 'excursion' ? boatName.trim() : null,
+        zone: selectedRole === 'waiter' ? zone.trim() : null,
+        status: initialStatus,
         sessionToken: `token-${Date.now()}`
       };
+
+      if (initialStatus === 'pending_approval') {
+        setRegistrationSuccess({ role: selectedRole, name: directUser.name });
+        return;
+      }
+
       onAuthenticated(directUser);
     } catch (err: any) {
       console.error(err);
-      const clean = email.trim().toLowerCase();
-      const directUser: User = {
-        id: `usr-${Date.now()}`,
-        name: name.trim() || clean.split('@')[0],
-        email: clean,
-        phone: phone.trim() || null,
-        role: 'client',
-        status: 'active',
-        sessionToken: `token-${Date.now()}`
-      };
-      onAuthenticated(directUser);
+      setMessage(err?.message || 'No se pudo completar el registro. Intenta de nuevo.');
     } finally {
       setBusy(false);
     }
@@ -291,125 +305,159 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
     );
   }
 
+  // Pantalla de éxito de registro pendiente para Excursión / Mesonero
+  if (registrationSuccess) {
+    return (
+      <Shell>
+        <div className="text-center py-4 space-y-4 animate-fade-in">
+          <div className="w-16 h-16 rounded-full bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center mx-auto shadow-sm">
+            <Clock className="w-8 h-8 text-amber-600 animate-pulse" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-[#002546]">¡Solicitud de Registro Enviada!</h3>
+            <p className="text-xs font-semibold text-[#006782] mt-0.5">
+              Cuenta de {ROLE_LABELS[registrationSuccess.role]} • {registrationSuccess.name}
+            </p>
+            <div className="bg-[#eff4ff] border border-[#a4c9fc] rounded-2xl p-4 text-xs text-gray-700 mt-3 text-left space-y-2">
+              <p className="flex items-start gap-2">
+                <Shield className="w-4 h-4 text-[#006782] shrink-0 mt-0.5" />
+                <span>
+                  Por seguridad de Playa Buche, las cuentas de <b>{ROLE_LABELS[registrationSuccess.role]}</b> requieren la aprobación del <b>Dueño / Administrador</b> antes de poder operar.
+                </span>
+              </p>
+              <p className="text-[11px] text-gray-500 pt-1 border-t border-[#d2e4ff]">
+                Una vez que el dueño apruebe tu cuenta, podrás ingresar inmediatamente colocando tu <b>correo electrónico</b> y tu <b>clave de acceso</b> en la pantalla de inicio.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setRegistrationSuccess(null);
+              setMode('login');
+              setMessage('');
+              setStatusNotice(null);
+            }}
+            className="w-full h-11 bg-[#002546] hover:bg-[#0d3b66] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Volver a Iniciar Sesión</span>
+          </button>
+        </div>
+      </Shell>
+    );
+  }
+
   return (
     <Shell>
       {/* Navigation tabs */}
-      <div className="grid grid-cols-3 gap-1 p-1 bg-[#eff4ff] rounded-2xl mb-4 border border-[#d2e4ff]">
-        <button
-          onClick={() => {
-            setMode('quick');
-            setMessage('');
-          }}
-          className={`rounded-xl py-2 text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
-            mode === 'quick' ? 'bg-[#002546] text-white shadow-xs' : 'text-gray-600 hover:text-[#002546]'
-          }`}
-        >
-          <UserCheck className="w-3.5 h-3.5" /> Acceso Rápido
-        </button>
+      <div className="grid grid-cols-2 gap-1 p-1 bg-[#eff4ff] rounded-2xl mb-4 border border-[#d2e4ff]">
         <button
           onClick={() => {
             setMode('login');
             setMessage('');
+            setStatusNotice(null);
           }}
-          className={`rounded-xl py-2 text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
+          className={`rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
             mode === 'login' ? 'bg-[#002546] text-white shadow-xs' : 'text-gray-600 hover:text-[#002546]'
           }`}
         >
-          <LogIn className="w-3.5 h-3.5" /> Con Clave
+          <LogIn className="w-4 h-4" /> Iniciar Sesión
         </button>
         <button
           onClick={() => {
             setMode('register');
             setMessage('');
+            setStatusNotice(null);
           }}
-          className={`rounded-xl py-2 text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
+          className={`rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
             mode === 'register' ? 'bg-[#002546] text-white shadow-xs' : 'text-gray-600 hover:text-[#002546]'
           }`}
         >
-          <UserPlus className="w-3.5 h-3.5" /> Registro
+          <UserPlus className="w-4 h-4" /> Registrar Cuenta
         </button>
       </div>
 
-      {/* QUICK ACCESS PROFILES */}
-      {mode === 'quick' && (
-        <div className="space-y-2.5">
-          <div className="text-left mb-2">
-            <h3 className="text-sm font-extrabold text-[#002546]">Selecciona tu Perfil de Operación</h3>
-            <p className="text-[11px] text-gray-500">
-              Ingreso directo optimizado para el equipo en playa y turistas.
-            </p>
+      {/* AVISOS DE ESTADO (Cuenta pendiente o suspendida) */}
+      {statusNotice && (
+        <div
+          className={`mb-4 rounded-2xl p-4 border text-xs space-y-1.5 animate-fade-in ${
+            statusNotice.type === 'pending'
+              ? 'bg-amber-50 border-amber-300 text-amber-900'
+              : statusNotice.type === 'suspended'
+              ? 'bg-rose-50 border-rose-300 text-rose-900'
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}
+        >
+          <div className="flex items-center gap-2 font-bold text-sm">
+            {statusNotice.type === 'pending' ? (
+              <Clock className="w-4 h-4 text-amber-700" />
+            ) : (
+              <ShieldAlert className="w-4 h-4 text-rose-700" />
+            )}
+            <span>{statusNotice.title}</span>
           </div>
-
-          <div className="space-y-2">
-            {PRECONFIGURED_STAFF.map((staff) => {
-              const IconComp = staff.icon;
-              return (
-                <button
-                  key={staff.id}
-                  onClick={() => handleQuickLogin(staff)}
-                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-white border border-gray-200 hover:border-[#006782] shadow-xs hover:shadow-md transition-all group text-left cursor-pointer active:scale-[0.98]"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${staff.badgeColor} flex items-center justify-center shadow-xs`}>
-                      <IconComp className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-[#002546] group-hover:text-[#006782]">
-                        {staff.name}
-                      </h4>
-                      <p className="text-[10px] text-gray-500">{staff.roleTitle}</p>
-                    </div>
-                  </div>
-                  <div className="w-7 h-7 rounded-full bg-gray-50 group-hover:bg-[#eff4ff] flex items-center justify-center text-gray-400 group-hover:text-[#006782] transition-colors">
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          <p className="leading-relaxed">{statusNotice.text}</p>
         </div>
       )}
 
       {/* EMAIL / PASSWORD LOGIN */}
       {mode === 'login' && (
         <form onSubmit={submitLogin} className="space-y-3">
-          <p className="text-sm font-bold text-[#002546]">Acceso con Correo & Clave</p>
-          <input
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            type="email"
-            autoComplete="username"
-            placeholder="Correo electrónico"
-            className={INPUT}
-          />
-          <div className="relative">
+          <div>
+            <label className="block text-xs font-bold text-[#002546] mb-1">Correo Electrónico</label>
             <input
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              type={showSecret ? 'text' : 'password'}
-              autoComplete="current-password"
-              placeholder="Tu clave"
-              className={`${INPUT} pr-20`}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              type="email"
+              autoComplete="username"
+              placeholder="ejemplo@correo.com"
+              className={INPUT}
             />
-            <button type="button" onClick={() => setShowSecret((value) => !value)} className="absolute right-2 top-2.5 text-xs font-bold text-[#006782]">
-              {showSecret ? 'Ocultar' : 'Ver'}
-            </button>
           </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#002546] mb-1">Contraseña</label>
+            <div className="relative">
+              <input
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                type={showSecret ? 'text' : 'password'}
+                autoComplete="current-password"
+                placeholder="Tu clave de acceso"
+                className={`${INPUT} pr-20`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowSecret((value) => !value)}
+                className="absolute right-3 top-2.5 text-xs font-bold text-[#006782] hover:text-[#002546]"
+              >
+                {showSecret ? 'Ocultar' : 'Ver'}
+              </button>
+            </div>
+          </div>
+
           <button disabled={busy} className={PRIMARY}>
-            {busy ? 'Verificando…' : 'Entrar'}
+            {busy ? 'Verificando…' : 'Ingresar'}
           </button>
+
           <button
             type="button"
             onClick={() => {
               setRecoveryOpen((value) => !value);
               setRecoveryMessage('');
             }}
-            className="w-full text-xs text-[#006782] font-bold hover:underline flex items-center justify-center gap-1.5"
+            className="w-full text-xs text-[#006782] font-bold hover:underline flex items-center justify-center gap-1.5 pt-1"
           >
-            <KeyRound className="w-3.5 h-3.5" /> ¿Olvidaste tu clave?
+            <KeyRound className="w-3.5 h-3.5" /> ¿Olvidaste tu contraseña?
           </button>
+
           {recoveryOpen && (
-            <div className="rounded-xl bg-sky-50 border border-sky-200 p-3 space-y-2">
+            <div className="rounded-xl bg-sky-50 border border-sky-200 p-3 space-y-2 mt-2">
+              <p className="text-[11px] text-[#002546] font-medium">
+                Ingresa tu correo para recibir un enlace seguro de restablecimiento:
+              </p>
               <input
                 value={recoveryEmail}
                 onChange={(event) => setRecoveryEmail(event.target.value)}
@@ -420,46 +468,186 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
               <button type="button" onClick={() => void requestRecovery()} className={SECONDARY}>
                 Enviar enlace de recuperación
               </button>
-              {recoveryMessage && <p className="text-[11px] text-[#002546]">{recoveryMessage}</p>}
+              {recoveryMessage && <p className="text-[11px] text-[#002546] font-bold">{recoveryMessage}</p>}
             </div>
           )}
         </form>
       )}
 
-      {/* REGISTRATION */}
+      {/* REGISTRATION WITH ROLE SELECTION */}
       {mode === 'register' && (
         <form onSubmit={submitRegister} className="space-y-3">
-          <p className="text-sm font-bold text-[#002546]">Crear cuenta de cliente</p>
-          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Nombre completo" className={INPUT} />
-          <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="username" placeholder="Correo electrónico" className={INPUT} />
-          <input value={phone} onChange={(event) => setPhone(event.target.value)} type="tel" placeholder="Teléfono" className={INPUT} />
-          <div className="relative">
-            <input
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              type={showSecret ? 'text' : 'password'}
-              autoComplete="new-password"
-              placeholder="Crea tu clave (mínimo 8 caracteres)"
-              className={`${INPUT} pr-20`}
-            />
-            <button type="button" onClick={() => setShowSecret((value) => !value)} className="absolute right-2 top-2.5 text-xs font-bold text-[#006782]">
-              {showSecret ? 'Ocultar' : 'Ver'}
-            </button>
+          <div>
+            <label className="block text-xs font-bold text-[#002546] mb-1.5">
+              Tipo de Cuenta / Rol:
+            </label>
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSelectedRole('client')}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col items-center justify-center text-center ${
+                  selectedRole === 'client'
+                    ? 'bg-[#002546] text-white border-[#002546] shadow-xs'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-[#006782]'
+                }`}
+              >
+                <Sparkles className={`w-4 h-4 mb-1 ${selectedRole === 'client' ? 'text-[#57d1fd]' : 'text-purple-600'}`} />
+                <span className="text-[11px] font-bold block">Cliente</span>
+                <span className={`text-[9px] block ${selectedRole === 'client' ? 'text-sky-200' : 'text-gray-400'}`}>
+                  Directo
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedRole('excursion')}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col items-center justify-center text-center ${
+                  selectedRole === 'excursion'
+                    ? 'bg-[#002546] text-white border-[#002546] shadow-xs'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-[#006782]'
+                }`}
+              >
+                <Ship className={`w-4 h-4 mb-1 ${selectedRole === 'excursion' ? 'text-[#57d1fd]' : 'text-teal-600'}`} />
+                <span className="text-[11px] font-bold block">Excursión</span>
+                <span className={`text-[9px] block ${selectedRole === 'excursion' ? 'text-sky-200' : 'text-gray-400'}`}>
+                  Capitán / Tour
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedRole('waiter')}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col items-center justify-center text-center ${
+                  selectedRole === 'waiter'
+                    ? 'bg-[#002546] text-white border-[#002546] shadow-xs'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-[#006782]'
+                }`}
+              >
+                <Utensils className={`w-4 h-4 mb-1 ${selectedRole === 'waiter' ? 'text-[#57d1fd]' : 'text-blue-600'}`} />
+                <span className="text-[11px] font-bold block">Mesonero</span>
+                <span className={`text-[9px] block ${selectedRole === 'waiter' ? 'text-sky-200' : 'text-gray-400'}`}>
+                  Staff Playa
+                </span>
+              </button>
+            </div>
           </div>
+
+          {/* Información según el rol seleccionado */}
+          {selectedRole !== 'client' && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-900 flex items-start gap-2">
+              <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <span>
+                Las cuentas de <b>{ROLE_LABELS[selectedRole]}</b> requieren ser aprobadas por el Dueño de Playa Buche antes de habilitar el acceso.
+              </span>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-bold text-[#002546] mb-1">Nombre Completo</label>
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Ej: Capitán Manuel Díaz / Yender Rodríguez"
+              className={INPUT}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#002546] mb-1">Correo Electrónico</label>
+            <input
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              type="email"
+              autoComplete="username"
+              placeholder="correo@ejemplo.com"
+              className={INPUT}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#002546] mb-1">Teléfono / WhatsApp</label>
+            <input
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              type="tel"
+              placeholder="0414-1234567"
+              className={INPUT}
+            />
+          </div>
+
+          {/* Campo adicional para Excursión */}
+          {selectedRole === 'excursion' && (
+            <div>
+              <label className="block text-xs font-bold text-[#002546] mb-1">
+                Nombre de la Lancha / Agencia de Excursión
+              </label>
+              <input
+                value={boatName}
+                onChange={(event) => setBoatName(event.target.value)}
+                placeholder="Ej: Doña Delia VIP / Morrocoy Tours"
+                className={INPUT}
+              />
+            </div>
+          )}
+
+          {/* Campo adicional para Mesonero */}
+          {selectedRole === 'waiter' && (
+            <div>
+              <label className="block text-xs font-bold text-[#002546] mb-1">
+                Sector / Zona de Playa (Opcional)
+              </label>
+              <input
+                value={zone}
+                onChange={(event) => setZone(event.target.value)}
+                placeholder="Ej: Orilla Este, Churuatas, Muelle"
+                className={INPUT}
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-bold text-[#002546] mb-1">Contraseña</label>
+            <div className="relative">
+              <input
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                type={showSecret ? 'text' : 'password'}
+                autoComplete="new-password"
+                placeholder="Crea tu clave (mínimo 8 caracteres)"
+                className={`${INPUT} pr-20`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowSecret((value) => !value)}
+                className="absolute right-3 top-2.5 text-xs font-bold text-[#006782] hover:text-[#002546]"
+              >
+                {showSecret ? 'Ocultar' : 'Ver'}
+              </button>
+            </div>
+          </div>
+
           <button disabled={busy} className={PRIMARY}>
-            {busy ? 'Creando cuenta…' : 'Crear cuenta y entrar'}
+            {busy
+              ? 'Procesando…'
+              : selectedRole === 'client'
+              ? 'Crear Cuenta y Entrar'
+              : `Registrar y Solicitar Aprobación de ${ROLE_LABELS[selectedRole]}`}
           </button>
         </form>
       )}
 
-      {message && <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 p-3 text-xs font-medium">{message}</div>}
+      {message && (
+        <div className="mt-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 p-3 text-xs font-semibold">
+          {message}
+        </div>
+      )}
     </Shell>
   );
 };
 
-const INPUT = 'w-full h-11 rounded-xl border border-gray-300 px-3 text-sm';
-const PRIMARY = 'w-full h-11 rounded-xl bg-[#002546] text-white font-bold text-sm disabled:opacity-50 cursor-pointer';
-const SECONDARY = 'w-full h-10 rounded-xl bg-[#006782] text-white text-xs font-bold cursor-pointer';
+const INPUT = 'w-full h-11 rounded-xl border border-gray-300 px-3 text-xs text-[#002546] focus:outline-none focus:ring-2 focus:ring-[#006782] bg-white';
+const PRIMARY = 'w-full h-12 rounded-xl bg-[#002546] hover:bg-[#0d3b66] text-white font-bold text-xs disabled:opacity-50 cursor-pointer shadow-md transition-all active:scale-[0.99] mt-2';
+const SECONDARY = 'w-full h-10 rounded-xl bg-[#006782] hover:bg-[#005870] text-white text-xs font-bold cursor-pointer transition-colors';
 const NOTE = 'rounded-xl bg-sky-50 border border-sky-200 p-3 text-xs text-[#002546]';
 
 const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (

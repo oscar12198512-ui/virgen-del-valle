@@ -18,7 +18,7 @@ export interface User {
   activeOrdersCount?: number;
   phone?: string | null;
   avatar?: string | null;
-  status?: 'active' | 'suspended';
+  status?: 'active' | 'suspended' | 'pending_approval';
   assignedToldoIds?: string[];
   boatName?: string | null;
   createdAt?: string;

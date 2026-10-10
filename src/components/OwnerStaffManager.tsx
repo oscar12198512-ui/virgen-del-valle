@@ -1,5 +1,20 @@
 import React, { useMemo, useState } from 'react';
-import { RefreshCw, ShieldCheck, UserPlus, Trash2, KeyRound, Ban, CheckCircle2 } from 'lucide-react';
+import {
+  RefreshCw,
+  ShieldCheck,
+  UserPlus,
+  Trash2,
+  KeyRound,
+  Ban,
+  CheckCircle2,
+  Clock,
+  Check,
+  X,
+  Ship,
+  Utensils,
+  Sparkles,
+  Phone
+} from 'lucide-react';
 import { ROLE_LABELS, User, UserRole } from '../types';
 import { isFirebaseConfigured } from '../config/firebase';
 import {
@@ -42,8 +57,18 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
 
+  // Solicitudes pendientes de aprobación (Excursión, Mesoneros, etc.)
+  const pendingUsers = useMemo(
+    () => users.filter((user) => user.status === 'pending_approval'),
+    [users]
+  );
+
+  // Cuentas activas o suspendidas de staff
   const roster = useMemo(
-    () => users.filter((user) => user.role !== 'client').sort((a, b) => a.role.localeCompare(b.role)),
+    () =>
+      users
+        .filter((user) => user.role !== 'client' && user.status !== 'pending_approval')
+        .sort((a, b) => a.role.localeCompare(b.role)),
     [users]
   );
 
@@ -67,6 +92,26 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
     }
     const data = await request('GET', '/api/staff');
     onUsersChanged(data.users || []);
+  };
+
+  const approveUser = async (user: User) => {
+    setError('');
+    setMessage('');
+    setBusy(true);
+    try {
+      if (isFirebaseConfigured()) {
+        await saveUserToFirestore({ ...user, status: 'active' });
+        setMessage(`¡Cuenta de ${user.name} (${ROLE_LABELS[user.role]}) aprobada exitosamente! Ya puede iniciar sesión.`);
+      } else {
+        await request('PATCH', `/api/staff/${user.id}`, { status: 'active' });
+        setMessage(`¡Cuenta de ${user.name} (${ROLE_LABELS[user.role]}) aprobada exitosamente!`);
+      }
+      await reload();
+    } catch (requestError) {
+      setError((requestError as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const submit = async (event: React.FormEvent) => {
@@ -172,25 +217,102 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
       <div className="flex items-start justify-between gap-2">
         <div>
           <span className="text-[10px] font-bold uppercase tracking-wider text-[#006782]">Acceso y personal</span>
-          <h2 className="text-xl font-bold text-[#002546]">Cuentas autorizadas</h2>
+          <h2 className="text-xl font-bold text-[#002546]">Cuentas y Aprobaciones</h2>
           <p className="text-xs text-gray-500">
-            Las claves se guardan cifradas en PostgreSQL. Los clientes se registran solos desde la pantalla de acceso.
+            Gestiona los accesos del equipo de playa, capitanes de excursión y aprueba nuevas solicitudes.
           </p>
         </div>
         <button
           type="button"
           onClick={() => void reload()}
-          className="p-2 rounded-xl bg-[#eff4ff] text-[#006782] border border-[#d2e4ff]"
+          className="p-2 rounded-xl bg-[#eff4ff] text-[#006782] border border-[#d2e4ff] hover:bg-[#dce9ff] transition-colors"
           title="Recargar cuentas"
         >
           <RefreshCw className="w-4 h-4" />
         </button>
       </div>
 
+      {error && <p className="rounded-xl bg-rose-50 border border-rose-200 p-2.5 text-xs text-rose-800 font-semibold">{error}</p>}
+      {message && <p className="rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-900 font-semibold">{message}</p>}
+
+      {/* SOLICITUDES PENDIENTES DE APROBACIÓN */}
+      {pendingUsers.length > 0 && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 space-y-3 shadow-sm animate-fade-in">
+          <div className="flex items-center justify-between pb-2 border-b border-amber-200">
+            <div className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-amber-600 animate-pulse" />
+              <div>
+                <h3 className="text-xs font-bold text-[#002546] uppercase tracking-wider">
+                  Solicitudes Pendientes de Aprobación ({pendingUsers.length})
+                </h3>
+                <p className="text-[11px] text-amber-900">
+                  Nuevas cuentas registradas que esperan tu autorización para ingresar.
+                </p>
+              </div>
+            </div>
+            <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">
+              Requiere Acción
+            </span>
+          </div>
+
+          <div className="space-y-2.5">
+            {pendingUsers.map((pending) => (
+              <div
+                key={pending.id}
+                className="p-3.5 rounded-xl bg-white border border-amber-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    {pending.role === 'excursion' ? (
+                      <Ship className="w-4 h-4 text-teal-600 shrink-0" />
+                    ) : (
+                      <Utensils className="w-4 h-4 text-sky-600 shrink-0" />
+                    )}
+                    <h4 className="text-sm font-bold text-[#002546]">{pending.name}</h4>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#eff4ff] text-[#006782]">
+                      {ROLE_LABELS[pending.role]}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-600 space-y-0.5">
+                    <p><b>Correo:</b> {pending.email}</p>
+                    {pending.phone && <p className="flex items-center gap-1"><Phone className="w-3 h-3 text-gray-400" /> {pending.phone}</p>}
+                    {pending.boatName && <p><b>Lancha / Agencia:</b> <span className="text-teal-700 font-bold">{pending.boatName}</span></p>}
+                    {pending.zone && <p><b>Sector sugerido:</b> {pending.zone}</p>}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => void approveUser(pending)}
+                    disabled={busy}
+                    className="flex-1 sm:flex-initial h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Aprobar Acceso</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void remove(pending)}
+                    disabled={busy}
+                    className="h-9 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                    title="Rechazar y eliminar solicitud"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>Rechazar</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* FORMULARIO DE CREACIÓN MANUAL */}
       <form onSubmit={submit} className="space-y-3 p-4 rounded-2xl bg-white border border-gray-200 shadow-2xs">
         <div className="flex items-center gap-2 text-xs font-bold text-[#002546]">
           <UserPlus className="w-4 h-4 text-[#006782]" />
-          {form.id ? 'Editar cuenta' : 'Crear cuenta de personal'}
+          {form.id ? 'Editar cuenta' : 'Crear cuenta de personal manualmente'}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -253,28 +375,29 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button type="submit" disabled={busy} className="h-11 px-4 rounded-xl bg-[#002546] text-white text-xs font-bold disabled:opacity-50">
+          <button type="submit" disabled={busy} className="h-11 px-4 rounded-xl bg-[#002546] hover:bg-[#0d3b66] text-white text-xs font-bold disabled:opacity-50 cursor-pointer shadow-xs transition-colors">
             {busy ? 'Guardando…' : form.id ? 'Guardar cambios' : 'Crear cuenta'}
           </button>
           {form.id && (
             <button
               type="button"
               onClick={() => setForm(emptyForm())}
-              className="h-11 px-4 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold"
+              className="h-11 px-4 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200 transition-colors"
             >
               Cancelar
             </button>
           )}
         </div>
-
-        {error && <p className="rounded-xl bg-rose-50 border border-rose-200 p-2.5 text-xs text-rose-800">{error}</p>}
-        {message && <p className="rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-900">{message}</p>}
       </form>
 
+      {/* LISTA DE CUENTAS DE PERSONAL AUTORIZADAS */}
       <div className="space-y-2">
+        <h3 className="text-xs font-bold text-[#002546] uppercase tracking-wider pt-2">
+          Personal y Capitanes Autorizados ({roster.length})
+        </h3>
         {roster.length === 0 && (
           <p className="text-xs text-gray-500 p-4 rounded-2xl bg-white border border-dashed border-gray-300">
-            Todavía no hay cuentas de personal registradas.
+            Todavía no hay cuentas de personal autorizadas.
           </p>
         )}
         {roster.map((user) => (
@@ -309,7 +432,7 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
                   password: '',
                 })
               }
-              className="p-2 rounded-xl bg-[#eff4ff] text-[#006782] border border-[#d2e4ff]"
+              className="p-2 rounded-xl bg-[#eff4ff] text-[#006782] border border-[#d2e4ff] hover:bg-[#dce9ff] transition-colors"
               title="Editar cuenta"
             >
               <ShieldCheck className="w-4 h-4" />
@@ -317,7 +440,7 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
             <button
               type="button"
               onClick={() => void toggleStatus(user)}
-              className="p-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200"
+              className="p-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
               title={user.status === 'suspended' ? 'Reactivar' : 'Suspender'}
             >
               {user.status === 'suspended' ? <CheckCircle2 className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
@@ -326,7 +449,7 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
               <button
                 type="button"
                 onClick={() => void remove(user)}
-                className="p-2 rounded-xl bg-rose-50 text-rose-700 border border-rose-200"
+                className="p-2 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-colors"
                 title="Eliminar cuenta"
               >
                 <Trash2 className="w-4 h-4" />
@@ -337,10 +460,10 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
       </div>
 
       <p className="text-[10px] text-gray-400" data-reload-key={reloadKey}>
-        Contraseñas cifradas con bcrypt. Nunca se guardan ni se muestran en texto plano.
+        Las credenciales se validan con autenticación segura en la nube.
       </p>
     </div>
   );
 };
 
-const INPUT = 'w-full h-11 rounded-xl border border-gray-300 px-3 text-sm';
+const INPUT = 'w-full h-11 rounded-xl border border-gray-300 px-3 text-xs text-[#002546] bg-white focus:outline-none focus:ring-2 focus:ring-[#006782]';
