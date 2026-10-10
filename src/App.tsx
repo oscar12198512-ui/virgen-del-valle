@@ -501,17 +501,13 @@ export const App: React.FC = () => {
     setClientActiveOrder((previous) => (previous ? applyPayment(previous) : previous));
   };
 
-  if (!API_BASE) {
+  if (!API_BASE && !isFirebaseConfigured()) {
     return (
-      <Splash label="Falta configurar VITE_API_URL con la dirección de la API de producción." />
+      <Splash label="Falta configurar Firebase o VITE_API_URL con la dirección de la API." />
     );
   }
 
-  if (directLoginRequested) {
-    return <LoginScreen onAuthenticated={handleAuthenticated} />;
-  }
-
-  if (!sessionToken) {
+  if (directLoginRequested || (!sessionToken && !currentUser)) {
     return <LoginScreen onAuthenticated={handleAuthenticated} />;
   }
 

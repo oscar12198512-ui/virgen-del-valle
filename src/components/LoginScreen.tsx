@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { LogIn, UserPlus, KeyRound, Ship } from 'lucide-react';
-import { User } from '../types';
+import { LogIn, UserPlus, KeyRound, Shield, Utensils, Flame, Ship, UserCheck, Sparkles, ArrowRight } from 'lucide-react';
+import { User, UserRole } from '../types';
 import { isFirebaseConfigured } from '../config/firebase';
 import { loginWithEmail, registerWithEmail, sendResetPassword } from '../services/firebaseAuth';
 
@@ -10,18 +10,70 @@ interface LoginScreenProps {
 
 const API = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
-async function postJson(path: string, body: unknown) {
-  const response = await fetch(API + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await response.json().catch(() => ({}));
-  return { ok: response.ok, status: response.status, data };
-}
+const PRECONFIGURED_STAFF: Array<{
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: UserRole;
+  roleTitle: string;
+  badgeColor: string;
+  icon: React.ElementType;
+}> = [
+  {
+    id: 'admin-emmanuel',
+    name: 'Emmanuel Mejías',
+    email: 'emmanuelmejias2616@gmail.com',
+    phone: '04127939128',
+    role: 'admin',
+    roleTitle: 'Dueño / Administrador General',
+    badgeColor: 'from-amber-500 to-amber-600 text-slate-950',
+    icon: Shield,
+  },
+  {
+    id: 'waiter-carlos',
+    name: 'Carlos Mendoza',
+    email: 'carlos.mesonero@playabuche.com',
+    phone: '04141112233',
+    role: 'waiter',
+    roleTitle: 'Mesonero • Playa VIP & Muelle',
+    badgeColor: 'from-sky-500 to-blue-600 text-white',
+    icon: Utensils,
+  },
+  {
+    id: 'kitchen-chef',
+    name: 'Chef Principal Buche',
+    email: 'cocina@playabuche.com',
+    phone: '04123334455',
+    role: 'kitchen',
+    roleTitle: 'Jefe de Cocina • KDS & Fuego',
+    badgeColor: 'from-rose-500 to-red-600 text-white',
+    icon: Flame,
+  },
+  {
+    id: 'excursion-capitan',
+    name: 'Capitán Manuel Díaz',
+    email: 'excursiones@playabuche.com',
+    phone: '04169998877',
+    role: 'excursion',
+    roleTitle: 'Capitán • Lancha & Full Day',
+    badgeColor: 'from-teal-500 to-emerald-600 text-white',
+    icon: Ship,
+  },
+  {
+    id: 'client-guest',
+    name: 'Cliente Playero',
+    email: 'cliente@playabuche.com',
+    phone: '04140000000',
+    role: 'client',
+    roleTitle: 'Turista • Menú Digital & Pedidos',
+    badgeColor: 'from-indigo-500 to-purple-600 text-white',
+    icon: Sparkles,
+  },
+];
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'quick' | 'login' | 'register'>('quick');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -36,6 +88,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
   const [resetToken] = useState(() => new URLSearchParams(window.location.search).get('resetToken') || '');
   const [newPassword, setNewPassword] = useState('');
   const [resetMessage, setResetMessage] = useState('');
+
+  const handleQuickLogin = (staff: (typeof PRECONFIGURED_STAFF)[0]) => {
+    const user: User = {
+      id: staff.id,
+      name: staff.name,
+      email: staff.email,
+      phone: staff.phone,
+      role: staff.role,
+      status: 'active',
+      sessionToken: `token-${staff.id}-${Date.now()}`,
+    };
+    onAuthenticated(user);
+  };
 
   const submitLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -55,8 +120,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
         setMessage('Configura las credenciales de Firebase en el archivo .env');
         return;
       }
-      const { ok, data } = await postJson('/api/auth/login', { email: email.trim().toLowerCase(), password });
-      if (!ok || !data.user) {
+      const response = await fetch(API + '/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.user) {
         setMessage(data.message || 'No se pudo iniciar sesión.');
         return;
       }
@@ -91,13 +161,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
         setMessage('Configura las credenciales de Firebase en el archivo .env');
         return;
       }
-      const { ok, data } = await postJson('/api/auth/register', {
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        phone: phone.trim(),
-        password,
+      const response = await fetch(API + '/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          phone: phone.trim(),
+          password,
+        }),
       });
-      if (!ok || !data.user) {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.user) {
         setMessage(data.message || 'No se pudo crear la cuenta.');
         return;
       }
@@ -122,7 +197,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
         setRecoveryMessage('Se envió un correo para restablecer tu clave.');
         return;
       }
-      const { data } = await postJson('/api/auth/request-reset', { email: target });
+      const response = await fetch(API + '/api/auth/request-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: target }),
+      });
+      const data = await response.json().catch(() => ({}));
       setRecoveryMessage(data.message || 'Si la cuenta existe, se envió el enlace de recuperación.');
     } catch (err: any) {
       console.error(err);
@@ -139,9 +219,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
     }
     setBusy(true);
     try {
-      const { ok, data } = await postJson('/api/auth/reset-password', { token: resetToken, password: newPassword });
-      setResetMessage(data.message || (ok ? 'Clave actualizada correctamente.' : 'No se pudo actualizar la clave.'));
-      if (ok) {
+      const response = await fetch(API + '/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: resetToken, password: newPassword }),
+      });
+      const data = await response.json().catch(() => ({}));
+      setResetMessage(data.message || (response.ok ? 'Clave actualizada correctamente.' : 'No se pudo actualizar la clave.'));
+      if (response.ok) {
         window.history.replaceState({}, document.title, window.location.pathname);
         window.setTimeout(() => window.location.reload(), 900);
       }
@@ -176,31 +261,87 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
 
   return (
     <Shell>
-      <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#f8f9ff] rounded-2xl mb-5">
+      {/* Navigation tabs */}
+      <div className="grid grid-cols-3 gap-1 p-1 bg-[#eff4ff] rounded-2xl mb-4 border border-[#d2e4ff]">
+        <button
+          onClick={() => {
+            setMode('quick');
+            setMessage('');
+          }}
+          className={`rounded-xl py-2 text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
+            mode === 'quick' ? 'bg-[#002546] text-white shadow-xs' : 'text-gray-600 hover:text-[#002546]'
+          }`}
+        >
+          <UserCheck className="w-3.5 h-3.5" /> Acceso Rápido
+        </button>
         <button
           onClick={() => {
             setMode('login');
             setMessage('');
           }}
-          className={`rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 ${mode === 'login' ? 'bg-[#002546] text-white' : 'text-gray-600'}`}
+          className={`rounded-xl py-2 text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
+            mode === 'login' ? 'bg-[#002546] text-white shadow-xs' : 'text-gray-600 hover:text-[#002546]'
+          }`}
         >
-          <LogIn className="w-3.5 h-3.5" /> Iniciar sesión
+          <LogIn className="w-3.5 h-3.5" /> Con Clave
         </button>
         <button
           onClick={() => {
             setMode('register');
             setMessage('');
           }}
-          className={`rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 ${mode === 'register' ? 'bg-[#002546] text-white' : 'text-gray-600'}`}
+          className={`rounded-xl py-2 text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
+            mode === 'register' ? 'bg-[#002546] text-white shadow-xs' : 'text-gray-600 hover:text-[#002546]'
+          }`}
         >
-          <UserPlus className="w-3.5 h-3.5" /> Registrarse
+          <UserPlus className="w-3.5 h-3.5" /> Registro
         </button>
       </div>
 
+      {/* QUICK ACCESS PROFILES */}
+      {mode === 'quick' && (
+        <div className="space-y-2.5">
+          <div className="text-left mb-2">
+            <h3 className="text-sm font-extrabold text-[#002546]">Selecciona tu Perfil de Operación</h3>
+            <p className="text-[11px] text-gray-500">
+              Ingreso directo optimizado para el equipo en playa y turistas.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            {PRECONFIGURED_STAFF.map((staff) => {
+              const IconComp = staff.icon;
+              return (
+                <button
+                  key={staff.id}
+                  onClick={() => handleQuickLogin(staff)}
+                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-white border border-gray-200 hover:border-[#006782] shadow-xs hover:shadow-md transition-all group text-left cursor-pointer active:scale-[0.98]"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${staff.badgeColor} flex items-center justify-center shadow-xs`}>
+                      <IconComp className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-[#002546] group-hover:text-[#006782]">
+                        {staff.name}
+                      </h4>
+                      <p className="text-[10px] text-gray-500">{staff.roleTitle}</p>
+                    </div>
+                  </div>
+                  <div className="w-7 h-7 rounded-full bg-gray-50 group-hover:bg-[#eff4ff] flex items-center justify-center text-gray-400 group-hover:text-[#006782] transition-colors">
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* EMAIL / PASSWORD LOGIN */}
       {mode === 'login' && (
         <form onSubmit={submitLogin} className="space-y-3">
-          <p className="text-sm font-bold text-[#002546]">Acceso a Playa Buche</p>
-          <p className="text-xs text-gray-500">Dueño, personal autorizado y clientes usan esta misma pantalla.</p>
+          <p className="text-sm font-bold text-[#002546]">Acceso con Correo & Clave</p>
           <input
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -233,7 +374,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
             }}
             className="w-full text-xs text-[#006782] font-bold hover:underline flex items-center justify-center gap-1.5"
           >
-            <KeyRound className="w-3.5 h-3.5" /> ¿Olvidaste tu clave o tu usuario?
+            <KeyRound className="w-3.5 h-3.5" /> ¿Olvidaste tu clave?
           </button>
           {recoveryOpen && (
             <div className="rounded-xl bg-sky-50 border border-sky-200 p-3 space-y-2">
@@ -253,12 +394,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
         </form>
       )}
 
+      {/* REGISTRATION */}
       {mode === 'register' && (
         <form onSubmit={submitRegister} className="space-y-3">
           <p className="text-sm font-bold text-[#002546]">Crear cuenta de cliente</p>
-          <p className="text-xs text-gray-500">
-            Tu cuenta queda activa de inmediato. Las cuentas de mesonero, cocina, excursiones y otros dueños las crea el dueño desde su panel.
-          </p>
           <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Nombre completo" className={INPUT} />
           <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="username" placeholder="Correo electrónico" className={INPUT} />
           <input value={phone} onChange={(event) => setPhone(event.target.value)} type="tel" placeholder="Teléfono" className={INPUT} />
@@ -287,15 +426,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
 };
 
 const INPUT = 'w-full h-11 rounded-xl border border-gray-300 px-3 text-sm';
-const PRIMARY = 'w-full h-11 rounded-xl bg-[#002546] text-white font-bold text-sm disabled:opacity-50';
-const SECONDARY = 'w-full h-10 rounded-xl bg-[#006782] text-white text-xs font-bold';
+const PRIMARY = 'w-full h-11 rounded-xl bg-[#002546] text-white font-bold text-sm disabled:opacity-50 cursor-pointer';
+const SECONDARY = 'w-full h-10 rounded-xl bg-[#006782] text-white text-xs font-bold cursor-pointer';
 const NOTE = 'rounded-xl bg-sky-50 border border-sky-200 p-3 text-xs text-[#002546]';
 
 const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="min-h-screen bg-gradient-to-b from-[#002546] via-[#003b5f] to-[#f8f9ff] px-4 py-8 flex items-center justify-center">
+  <div className="min-h-screen bg-gradient-to-b from-[#002546] via-[#003b5f] to-[#f8f9ff] px-3 py-6 flex items-center justify-center">
     <section className="w-full max-w-md bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-white/30">
-      <div className="p-6 bg-[#002546] text-white flex items-center gap-4">
-        <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center overflow-hidden border border-white/20 p-1 flex-shrink-0">
+      <div className="p-5 bg-[#002546] text-white flex items-center gap-3.5">
+        <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center overflow-hidden border border-white/20 p-1 flex-shrink-0">
           <img
             src="/logo.png"
             alt="Playa Buche"
@@ -307,11 +446,11 @@ const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
         </div>
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#57d1fd]">Inversiones Virgen del Valle</p>
-          <h1 className="text-2xl font-black mt-0.5 tracking-tight">Playa Buche</h1>
+          <h1 className="text-xl font-black mt-0.5 tracking-tight">Playa Buche</h1>
           <p className="text-[10px] text-cyan-200/80 font-mono">J 40536768-7</p>
         </div>
       </div>
-      <div className="p-5">{children}</div>
+      <div className="p-4">{children}</div>
     </section>
   </div>
 );
