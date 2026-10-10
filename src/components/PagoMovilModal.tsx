@@ -22,7 +22,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 
-export type PaymentMethodKey = 'cash_usd' | 'cash_bs' | 'pago_movil' | 'zelle' | 'card_pos';
+export type PaymentMethodKey = 'cash_usd' | 'cash_bs' | 'pago_movil' | 'zelle' | 'card_pos' | 'mixed_split';
 
 interface PagoMovilModalProps {
   order: Order | null;
@@ -52,6 +52,9 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
   const [screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<OcrValidationResult | null>(null);
+  const [splitCashUsd, setSplitCashUsd] = useState<string>('');
+  const [splitPagoMovilBs, setSplitPagoMovilBs] = useState<string>('');
+  const [splitVueltoPreference, setSplitVueltoPreference] = useState<'bs' | 'usd'>('bs');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [inputError, setInputError] = useState<string | null>(null);
 
@@ -66,6 +69,15 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
 
   const numCashBs = parseFloat(cashReceivedBs) || 0;
   const changeBs = Math.max(0, numCashBs - totalBs);
+
+  // Cálculo de Pago Mixto / Bimodal ($ Efectivo + Pago Móvil)
+  const numSplitCashUsd = parseFloat(splitCashUsd) || 0;
+  const remainingAfterCashUsd = Math.max(0, totalUsd - numSplitCashUsd);
+  const remainingAfterCashBs = remainingAfterCashUsd * bcvRate;
+  const numSplitPagoMovilBs = parseFloat(splitPagoMovilBs) || 0;
+  const totalPaidInUsdEquivalent = numSplitCashUsd + (numSplitPagoMovilBs / (bcvRate || 1));
+  const splitSurplusUsd = Math.max(0, totalPaidInUsdEquivalent - totalUsd);
+  const splitSurplusBs = splitSurplusUsd * bcvRate;
 
   const handleCopy = (text: string, fieldName: string) => {
     if (navigator.clipboard) {
@@ -147,6 +159,32 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
       return;
     }
 
+    if (paymentMethod === 'mixed_split') {
+      if (numSplitCashUsd <= 0 && numSplitPagoMovilBs <= 0) {
+        setInputError('Ingresa al menos un monto en Dólares ($) o Pago Móvil (Bs).');
+        return;
+      }
+      if (totalPaidInUsdEquivalent < totalUsd - 0.01) {
+        const missingUsd = totalUsd - totalPaidInUsdEquivalent;
+        const missingBs = missingUsd * bcvRate;
+        setInputError(`Monto insuficiente. Faltan $${missingUsd.toFixed(2)} (${formatBsDirect(missingBs)}).`);
+        return;
+      }
+      const effectiveRef = reference.trim() || `MIXTO-${Date.now().toString().slice(-4)}`;
+      soundService.playCashChime();
+      onPaymentSuccess(
+        order.id,
+        effectiveRef,
+        'mixed_split',
+        {
+          receivedAmount: numSplitCashUsd,
+          changeAmount: splitVueltoPreference === 'bs' ? splitSurplusBs : splitSurplusUsd,
+        }
+      );
+      onClose();
+      return;
+    }
+
     // Para Pago Móvil, Zelle o Punto POS
     const effectiveRef = reference.trim() || validationResult?.extractedReference;
     if (!effectiveRef && (paymentMethod === 'pago_movil' || paymentMethod === 'zelle' || paymentMethod === 'card_pos')) {
@@ -207,7 +245,7 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
             <label className="block text-xs font-bold text-[#002546] mb-1.5">
               Selecciona la Forma de Pago:
             </label>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
               <button
                 type="button"
                 onClick={() => {
@@ -238,6 +276,22 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
               >
                 <Banknote className={`w-4 h-4 mb-0.5 ${paymentMethod === 'cash_bs' ? 'text-[#57d1fd]' : 'text-teal-600'}`} />
                 <span className="text-[10px] font-bold leading-tight">Efectivo Bs</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentMethod('mixed_split');
+                  setInputError(null);
+                }}
+                className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center cursor-pointer ${
+                  paymentMethod === 'mixed_split'
+                    ? 'bg-[#002546] text-white border-[#002546] shadow-xs ring-2 ring-amber-400'
+                    : 'bg-gradient-to-br from-amber-50 to-sky-50 text-amber-900 border-amber-300 hover:border-amber-500'
+                }`}
+              >
+                <Calculator className={`w-4 h-4 mb-0.5 ${paymentMethod === 'mixed_split' ? 'text-[#57d1fd]' : 'text-amber-600'}`} />
+                <span className="text-[10px] font-extrabold leading-tight">Mixto ($+PM)</span>
               </button>
 
               <button
@@ -401,6 +455,101 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
                   </span>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* 3. PAGO MIXTO / BIMODAL ($ Efectivo + Pago Móvil) */}
+          {paymentMethod === 'mixed_split' && (
+            <div className="bg-amber-50/70 border-2 border-amber-300 rounded-2xl p-3.5 space-y-3 animate-fade-in shadow-xs">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-extrabold text-amber-950 flex items-center gap-1.5">
+                  <Calculator className="w-4 h-4 text-amber-700" /> Calculadora Pago Mixto ($ + Pago Móvil)
+                </span>
+                <span className="text-[10px] bg-amber-200/80 text-amber-950 font-black px-2 py-0.5 rounded-full">
+                  Bimodal Automático
+                </span>
+              </div>
+
+              {/* Input: Efectivo USD */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-gray-700">
+                  1. ¿Cuánto paga el cliente en Efectivo Dólares ($)?:
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-sm font-bold text-gray-400">$</span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={splitCashUsd}
+                    onChange={(e) => setSplitCashUsd(e.target.value)}
+                    placeholder="Ej: 10"
+                    className="w-full h-11 pl-7 pr-3 bg-white rounded-xl border border-amber-300 text-sm font-black text-[#002546] focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+
+              {/* Automatic Calculation of Remaining */}
+              <div className="bg-white rounded-xl p-3 border border-amber-200 space-y-1.5 text-xs shadow-2xs">
+                <div className="flex justify-between items-center text-gray-600">
+                  <span>Resta por pagar en Dólares ($):</span>
+                  <span className="font-extrabold text-[#002546] font-mono text-sm">
+                    {formatUsd(remainingAfterCashUsd)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+                  <span className="font-bold text-amber-900">Resta Exacta en Pago Móvil (Bs):</span>
+                  <span className="text-base font-black text-[#006782] font-mono">
+                    {formatBsDirect(remainingAfterCashBs)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Input: Monto recibido en Pago Móvil */}
+              <div className="space-y-1 pt-1">
+                <label className="block text-[11px] font-bold text-gray-700">
+                  2. Monto Reportado por Pago Móvil (Bs):
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs font-bold text-gray-400">Bs.</span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={splitPagoMovilBs}
+                    onChange={(e) => setSplitPagoMovilBs(e.target.value)}
+                    placeholder={remainingAfterCashBs.toFixed(2)}
+                    className="w-full h-11 pl-9 pr-3 bg-white rounded-xl border border-amber-300 text-sm font-black text-[#002546] focus:outline-none focus:ring-2 focus:ring-[#006782]"
+                  />
+                </div>
+              </div>
+
+              {/* Vuelto / Surplus calculation */}
+              {splitSurplusUsd > 0.01 && (
+                <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 space-y-1.5 animate-fade-in">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-emerald-950">Vuelto / Cambio a Devolver:</span>
+                    <span className="font-black text-emerald-800 text-sm font-mono">
+                      {splitVueltoPreference === 'bs' ? formatBsDirect(splitSurplusBs) : formatUsd(splitSurplusUsd)}
+                    </span>
+                  </div>
+                  <div className="flex gap-2 pt-1 border-t border-emerald-200/60 text-[11px]">
+                    <span className="text-emerald-800 font-medium">Entregar vuelto en:</span>
+                    <button
+                      type="button"
+                      onClick={() => setSplitVueltoPreference('bs')}
+                      className={`px-2 py-0.5 rounded font-bold ${splitVueltoPreference === 'bs' ? 'bg-emerald-800 text-white' : 'bg-emerald-200 text-emerald-900'}`}
+                    >
+                      Bolívares ({formatBsDirect(splitSurplusBs)})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSplitVueltoPreference('usd')}
+                      className={`px-2 py-0.5 rounded font-bold ${splitVueltoPreference === 'usd' ? 'bg-emerald-800 text-white' : 'bg-emerald-200 text-emerald-900'}`}
+                    >
+                      Dólares ({formatUsd(splitSurplusUsd)})
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

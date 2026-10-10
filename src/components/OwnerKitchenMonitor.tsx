@@ -65,6 +65,7 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
   const [editingTimeOrderId, setEditingTimeOrderId] = useState<string | null>(null);
   const [customTimeInput, setCustomTimeInput] = useState('13:30');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [isDishSummaryOpen, setIsDishSummaryOpen] = useState(false);
 
   // Track already-triggered alerts to avoid looping audio on every second ticker
   const notified30MinSet = useRef<Set<string>>(new Set());
@@ -542,6 +543,25 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
         </div>
       </div>
 
+      {/* Botón Resumen de Fogones (Agrupador de Platos) */}
+      <div className="flex">
+        <button
+          onClick={() => {
+            soundService.playBell();
+            setIsDishSummaryOpen(true);
+          }}
+          className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-[#002546] via-[#004b73] to-[#006782] hover:opacity-95 text-white font-black text-xs flex items-center justify-between shadow-sm cursor-pointer active:scale-[0.99] transition-all"
+        >
+          <span className="flex items-center gap-2">
+            <Utensils className="w-4 h-4 text-amber-400" />
+            <span>🍳 Resumen de Fogones (Total de Platos a Preparar)</span>
+          </span>
+          <span className="bg-amber-400 text-amber-950 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+            Ver Totales
+          </span>
+        </button>
+      </div>
+
       {/* Search & Category Filter Navigation */}
       <div className="bg-white rounded-2xl p-3 border border-gray-200 shadow-2xs space-y-2.5">
         <div className="relative">
@@ -958,6 +978,117 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
           })
         )}
       </div>
+
+      {/* MODAL: Resumen de Fogones (Agrupador de Platos Activos) */}
+      {isDishSummaryOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-gray-200 flex flex-col max-h-[90vh] animate-scale-up">
+            {/* Header */}
+            <div className="bg-[#002546] text-white px-4 py-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center font-bold">
+                  <Utensils className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white">Resumen de Fogones en Vivo</h3>
+                  <p className="text-[11px] text-sky-200">Consolidado de platos de todas las comandas activas</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsDishSummaryOpen(false)}
+                className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 overflow-y-auto space-y-3">
+              {(() => {
+                const activeOrders = orders.filter((o) => o.status !== 'delivered' && o.status !== 'cancelled');
+                const dishMap = new Map<string, { name: string; count: number; spots: { spot: string; qty: number; orderNum: string }[] }>();
+
+                activeOrders.forEach((o) => {
+                  (o.items || []).forEach((item) => {
+                    const existing = dishMap.get(item.name);
+                    if (existing) {
+                      existing.count += item.quantity || 1;
+                      existing.spots.push({ spot: o.spotName, qty: item.quantity || 1, orderNum: o.displayNumber });
+                    } else {
+                      dishMap.set(item.name, {
+                        name: item.name,
+                        count: item.quantity || 1,
+                        spots: [{ spot: o.spotName, qty: item.quantity || 1, orderNum: o.displayNumber }],
+                      });
+                    }
+                  });
+                });
+
+                const dishList = Array.from(dishMap.values()).sort((a, b) => b.count - a.count);
+                const totalPlatesCount = dishList.reduce((acc, d) => acc + d.count, 0);
+
+                if (dishList.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-gray-500 text-xs">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
+                      No hay platos pendientes en cocina en este momento. ¡Fogones al día!
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-3">
+                    <div className="bg-amber-50 border border-amber-200 p-3 rounded-2xl flex items-center justify-between text-xs">
+                      <span className="font-bold text-amber-950">Total Platos / Raciones en Fuego:</span>
+                      <span className="text-base font-black text-amber-900 bg-amber-200 px-3 py-0.5 rounded-full font-mono">
+                        {totalPlatesCount} platos
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {dishList.map((dish) => (
+                        <div
+                          key={dish.name}
+                          className="bg-white border border-gray-200 rounded-2xl p-3 shadow-2xs hover:border-[#006782] transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-[#002546]">{dish.name}</span>
+                            <span className="px-2.5 py-1 bg-[#002546] text-amber-300 font-mono font-black text-xs rounded-xl shadow-2xs">
+                              {dish.count}x
+                            </span>
+                          </div>
+
+                          {/* Toldos list breakdown */}
+                          <div className="flex flex-wrap gap-1.5 pt-2 mt-2 border-t border-gray-100">
+                            {dish.spots.map((s, idx) => (
+                              <span
+                                key={idx}
+                                className="text-[10px] font-bold bg-sky-50 text-[#006782] border border-sky-200 px-2 py-0.5 rounded-lg"
+                              >
+                                {s.qty}x en {s.spot} ({s.orderNum})
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="p-3 bg-gray-50 border-t border-gray-200 text-center">
+              <button
+                onClick={() => setIsDishSummaryOpen(false)}
+                className="w-full py-2.5 rounded-xl bg-[#002546] hover:bg-[#0d3b66] text-white text-xs font-bold transition-colors"
+              >
+                Cerrar Resumen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

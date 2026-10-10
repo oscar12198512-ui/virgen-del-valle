@@ -27,7 +27,8 @@ import {
   Share2,
   Copy,
   Zap,
-  QrCode
+  QrCode,
+  Sun
 } from 'lucide-react';
 import { ComandaEditorModal } from '../components/ComandaEditorModal';
 import { PreCuentaModal } from '../components/PreCuentaModal';
@@ -73,6 +74,22 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
   const [preCuentaModalOrder, setPreCuentaModalOrder] = useState<any | null>(null);
   const [zoomedDish, setZoomedDish] = useState<MenuItem | null>(null);
   const [showAllDishes, setShowAllDishes] = useState<boolean>(false);
+  const [highSunMode, setHighSunMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('playa_buche_high_sun') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleHighSunMode = () => {
+    const next = !highSunMode;
+    setHighSunMode(next);
+    try {
+      localStorage.setItem('playa_buche_high_sun', String(next));
+    } catch {}
+    soundService.playBell();
+  };
   const QUICK_MODIFIERS = [
     'Bien dorado',
     'Sin cebolla',
@@ -220,7 +237,9 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
   const recentOrders = orders.filter((o) => o.waiterId === waiterUser.id || o.origin === 'waiter_pos').slice(0, 4);
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-lg mx-auto pb-28 pt-2 px-3 overflow-x-hidden">
+    <div className={`flex flex-col gap-4 w-full max-w-lg mx-auto pb-28 pt-2 px-3 overflow-x-hidden transition-colors ${
+      highSunMode ? 'bg-amber-50/40 text-black font-semibold antialiased' : ''
+    }`}>
       {/* Waiter Profile & Shift Strip */}
       <div className="bg-[#002546] text-white rounded-2xl p-4 shadow-sm relative overflow-hidden">
         <div className="flex justify-between items-center relative z-10">
@@ -237,9 +256,23 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
               </h2>
             </div>
           </div>
-          <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2.5 py-1 rounded-full text-xs font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>En Línea</span>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={toggleHighSunMode}
+              className={`px-2.5 py-1 rounded-full text-xs font-black flex items-center gap-1 transition-all cursor-pointer shadow-xs ${
+                highSunMode
+                  ? 'bg-amber-400 text-amber-950 border-2 border-amber-300 ring-2 ring-amber-300 animate-pulse'
+                  : 'bg-white/10 hover:bg-white/20 text-sky-200 border border-white/20'
+              }`}
+              title="Modo Sol Intenso para lectura bajo luz de playa"
+            >
+              <Sun className="w-3.5 h-3.5" />
+              <span>{highSunMode ? '☀️ Sol: ON' : '☀️ Modo Sol'}</span>
+            </button>
+            <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2.5 py-1 rounded-full text-xs font-semibold">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>En Línea</span>
+            </div>
           </div>
         </div>
       </div>
