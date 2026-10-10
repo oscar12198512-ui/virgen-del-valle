@@ -8,6 +8,7 @@ on:
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
+    if: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_PLAYA_BUCHE_POS != '' }}"
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
