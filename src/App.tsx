@@ -65,9 +65,24 @@ const Splash: React.FC<{ label?: string }> = ({ label = 'Verificando sesión…'
 
 export const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
-  const [sessionToken, setSessionToken] = useState<string>(() => sessionStorage.getItem(SESSION_KEY) || '');
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [identityResolved, setIdentityResolved] = useState(false);
+  const [sessionToken, setSessionToken] = useState<string>(
+    () => sessionStorage.getItem(SESSION_KEY) || localStorage.getItem('playa_buche_token') || ''
+  );
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      const saved = localStorage.getItem('playa_buche_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [identityResolved, setIdentityResolved] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem('playa_buche_user');
+    } catch {
+      return false;
+    }
+  });
   const [isDbHydrated, setIsDbHydrated] = useState(false);
   const dbHydratedRef = useRef(false);
 
@@ -116,6 +131,10 @@ export const App: React.FC = () => {
 
   const clearSession = useCallback(() => {
     sessionStorage.removeItem(SESSION_KEY);
+    try {
+      localStorage.removeItem('playa_buche_user');
+      localStorage.removeItem('playa_buche_token');
+    } catch {}
     setSessionToken('');
     setCurrentUser(null);
     setIdentityResolved(true);
@@ -130,7 +149,12 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (isFirebaseConfigured()) {
       const unsubscribe = subscribeToAuthState((user) => {
-        setCurrentUser(user);
+        if (user) {
+          setCurrentUser(user);
+          try {
+            localStorage.setItem('playa_buche_user', JSON.stringify(user));
+          } catch {}
+        }
         setIdentityResolved(true);
       });
       return () => unsubscribe();
@@ -347,12 +371,14 @@ export const App: React.FC = () => {
   }, [orders]);
 
   const handleAuthenticated = (user: User) => {
-    const token = (user as User & { sessionToken?: string }).sessionToken || '';
-    if (token) {
-      sessionStorage.setItem(SESSION_KEY, token);
-      setSessionToken(token);
-    }
-    setCurrentUser({ ...user, sessionToken: undefined });
+    const token = (user as User & { sessionToken?: string }).sessionToken || `token-${user.id}-${Date.now()}`;
+    sessionStorage.setItem(SESSION_KEY, token);
+    try {
+      localStorage.setItem('playa_buche_user', JSON.stringify(user));
+      localStorage.setItem('playa_buche_token', token);
+    } catch {}
+    setSessionToken(token);
+    setCurrentUser(user);
     setIdentityResolved(true);
     setIsDbHydrated(true);
     dbHydratedRef.current = true;
