@@ -40,6 +40,7 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 import { AppInstallModal } from './components/AppInstallModal';
 import { ToldoQrGeneratorModal } from './components/ToldoQrGeneratorModal';
 import { LoginScreen } from './components/LoginScreen';
+import { CheckCircle2, X } from 'lucide-react';
 import { isFirebaseConfigured } from './config/firebase';
 import {
   subscribeToAppState,
@@ -109,6 +110,14 @@ export const App: React.FC = () => {
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isToldoQrModalOpen, setIsToldoQrModalOpen] = useState(false);
+  const [realtimeToast, setRealtimeToast] = useState<{
+    id: string;
+    title: string;
+    message: string;
+    targetRole: UserRole;
+    spotName: string;
+    displayNumber: string;
+  } | null>(null);
   const [viewRole, setViewRole] = useState<UserRole | null>(null);
   const prevOrdersRef = useRef<Order[]>([]);
 
@@ -345,7 +354,7 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Alertas sonoras y hápticas en tiempo real al ingresar órdenes o pasar a ready_pass
+  // Alertas sonoras, hápticas y notificaciones dirigidas al ingresar órdenes o pasar a ready_pass
   useEffect(() => {
     if (!dbHydratedRef.current || prevOrdersRef.current.length === 0) {
       prevOrdersRef.current = orders;
@@ -364,6 +373,37 @@ export const App: React.FC = () => {
       const prev = prevOrdersRef.current.find((p) => p.id === ord.id);
       if (prev && prev.status !== 'ready_pass' && ord.status === 'ready_pass') {
         soundService.playReadyPassAlert();
+        soundService.buzzSmartBand();
+
+        const targetRole: UserRole =
+          ord.origin === 'client_qr'
+            ? 'client'
+            : ord.origin === 'excursion'
+            ? 'excursion'
+            : 'waiter';
+
+        const title =
+          ord.origin === 'client_qr'
+            ? '🎉 ¡Tu Pedido está LISTO!'
+            : ord.origin === 'excursion'
+            ? '⚓ ¡Excursión LISTA en Cocina!'
+            : '🍽️ ¡Comanda LISTA para Retirar!';
+
+        const message =
+          ord.origin === 'client_qr'
+            ? `Tu comanda ${ord.displayNumber} en ${ord.spotName} está lista en cocina para servir en tu toldo.`
+            : ord.origin === 'excursion'
+            ? `Comanda marítima ${ord.displayNumber} (${ord.spotName}) lista para despacho a lancha.`
+            : `Mesonero ${ord.waiterName || ''}: Retirar comanda ${ord.displayNumber} para ${ord.spotName}.`;
+
+        setRealtimeToast({
+          id: 'toast-' + ord.id + '-' + Date.now(),
+          title,
+          message,
+          targetRole,
+          spotName: ord.spotName,
+          displayNumber: ord.displayNumber,
+        });
       }
     });
 
@@ -561,6 +601,43 @@ export const App: React.FC = () => {
         canPreviewRoles={availableRoles.length > 1}
       />
 
+      {/* Floating Targeted Real-time Notification Banner (Client / Waiter / Excursion) */}
+      {realtimeToast && (
+        <div className="fixed top-18 right-3 sm:right-6 z-50 max-w-md w-[calc(100%-1.5rem)] animate-bounce-subtle">
+          <div className="bg-[#002546] text-white p-3.5 rounded-2xl border-2 border-[#57d1fd] shadow-2xl flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-[#57d1fd] text-[#002546] font-black flex items-center justify-center shrink-0 mt-0.5 shadow-md">
+                <CheckCircle2 className="w-5 h-5 text-[#002546]" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-black uppercase text-[#57d1fd] tracking-wide">
+                    {realtimeToast.title}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-white/20 text-white uppercase">
+                    {realtimeToast.targetRole === 'client'
+                      ? '👤 Para Cliente'
+                      : realtimeToast.targetRole === 'excursion'
+                      ? '⚓ Para Excursión'
+                      : '🧑‍🍳 Para Mesonero'}
+                  </span>
+                </div>
+                <p className="text-xs text-white/90 leading-snug font-medium">
+                  {realtimeToast.message}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setRealtimeToast(null)}
+              className="p-1 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              title="Cerrar aviso"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <main className="flex-1 w-full max-w-2xl mx-auto px-2 sm:px-4 pt-20 pb-24">
         {currentRole === 'waiter' && (
           <WaitersView
@@ -584,6 +661,8 @@ export const App: React.FC = () => {
             menuItems={menuItems}
             onUpdateExcursion={setExcursion}
             onSendApproachingAlert={() => setApproachingAlertCount((previous) => previous + 1)}
+            orders={orders}
+            onUpdateOrderStatus={handleUpdateOrderStatus}
           />
         )}
 
@@ -630,12 +709,12 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentRole === 'client' && currentUser.role === 'client' && (
+        {currentRole === 'client' && (
           <ClientsView
             spots={spots}
             menuItems={menuItems}
             activeOrder={clientActiveOrder}
-            clientName={currentUser.name}
+            clientName={currentUser?.name || 'Cliente'}
             bcvRate={bcvRate}
             selectedSpotId={selectedSpotId}
             onSelectSpot={setSelectedSpotId}

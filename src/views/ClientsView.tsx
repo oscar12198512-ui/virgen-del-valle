@@ -192,6 +192,40 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         </div>
       </div>
 
+      {/* Alerta de Pedido Listo para el Cliente */}
+      {activeOrder?.status === 'ready_pass' && (
+        <div className="bg-emerald-500 text-white p-3.5 rounded-2xl shadow-lg flex items-center justify-between gap-3 animate-bounce-subtle">
+          <div className="flex items-center gap-2.5">
+            <span className="w-8 h-8 rounded-xl bg-white text-emerald-700 flex items-center justify-center font-black">
+              <CheckCircle2 className="w-5 h-5" />
+            </span>
+            <div>
+              <span className="font-black text-xs uppercase tracking-wide block">
+                🎉 ¡Tu Comanda {activeOrder.displayNumber} está LISTA!
+              </span>
+              <p className="text-xs text-emerald-100 font-medium leading-snug">
+                La cocina terminó tus platos y el mesonero los lleva hacia tu {selectedSpot.name}.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveSubTab('tracking')}
+            className="px-2.5 py-1 bg-white text-emerald-800 text-xs font-bold rounded-lg shadow-xs shrink-0 hover:bg-emerald-50"
+          >
+            Ver Rastreo
+          </button>
+        </div>
+      )}
+
+      {activeOrder?.status === 'delivered' && (
+        <div className="bg-[#002546] text-[#57d1fd] p-3 rounded-2xl border border-[#57d1fd]/40 flex items-center gap-2.5 shadow-sm text-xs">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>
+            ✨ <strong>¡Pedido entregado en tu mesa!</strong> Buen provecho en Bahía de Buche.
+          </span>
+        </div>
+      )}
+
       {extraNotice && (
         <div className="bg-sky-50 border border-sky-300 text-sky-900 text-xs p-3 rounded-xl font-bold text-center flex items-center justify-center gap-2 animate-fade-in shadow-xs">
           <Info className="w-4 h-4 text-[#006782] shrink-0" />

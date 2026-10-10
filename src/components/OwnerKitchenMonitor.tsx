@@ -59,7 +59,7 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
 }) => {
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterCategory, setFilterCategory] = useState<'active' | 'in_fire' | 'ready_pass' | 'all'>('active');
+  const [filterCategory, setFilterCategory] = useState<'active' | 'in_fire' | 'ready_pass' | 'history' | 'all'>('active');
   const [soundMuted, setSoundMuted] = useState(false);
   const [activeAlert, setActiveAlert] = useState<KitchenActiveAlert | null>(null);
   const [editingTimeOrderId, setEditingTimeOrderId] = useState<string | null>(null);
@@ -181,6 +181,8 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
       if (ord.status !== 'in_fire' && ord.status !== 'pending') return false;
     } else if (filterCategory === 'ready_pass') {
       if (ord.status !== 'ready_pass' && ord.status !== 'plated') return false;
+    } else if (filterCategory === 'history') {
+      if (ord.status !== 'delivered') return false;
     }
 
     // Search query
@@ -207,6 +209,27 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
     const t = getOrderDeliveryTiming(o, currentTime);
     return t.minutesRemaining <= 30 && t.minutesRemaining > 10;
   }).length;
+
+  const handleOwnerStatusChange = (orderId: string, newStatus: OrderStatus) => {
+    if (onUpdateOrderStatus) {
+      onUpdateOrderStatus(orderId, newStatus);
+    }
+    // If an active alert matches this order (or test alert), clear it immediately
+    if (
+      activeAlert &&
+      (activeAlert.orderId === orderId ||
+        activeAlert.orderId === 'test-order' ||
+        activeAlert.orderId === 'new-incoming' ||
+        activeAlert.id.includes(orderId))
+    ) {
+      setActiveAlert(null);
+    }
+    if (newStatus === 'in_fire') {
+      soundService.playFireAlert();
+    } else if (newStatus === 'ready_pass') {
+      soundService.playReadyPassAlert();
+    }
+  };
 
   // Manual sound tests for the owner
   const handleTest30MinAlert = (order?: Order) => {
@@ -419,7 +442,35 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+            {onUpdateOrderStatus && activeAlert.orderId && (
+              <button
+                onClick={() => {
+                  handleOwnerStatusChange(activeAlert.orderId, 'in_fire');
+                  setActiveAlert(null);
+                }}
+                className="px-2.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1"
+                title="Poner pedido en el fuego y quitar aviso"
+              >
+                <Flame className="w-3.5 h-3.5" />
+                <span>En Fuego</span>
+              </button>
+            )}
+
+            {onUpdateOrderStatus && activeAlert.orderId && (
+              <button
+                onClick={() => {
+                  handleOwnerStatusChange(activeAlert.orderId, 'ready_pass');
+                  setActiveAlert(null);
+                }}
+                className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1"
+                title="Marcar listo y quitar aviso"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Listo Pase</span>
+              </button>
+            )}
+
             <button
               onClick={() => {
                 if (activeAlert.type === 'alert_10') soundService.playUrgent10MinAlert();
@@ -427,13 +478,13 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
                 else soundService.playBell();
               }}
               title="Volver a reproducir sonido de alerta"
-              className="p-1.5 rounded-lg bg-white/70 hover:bg-white text-gray-700 transition-colors"
+              className="p-1.5 rounded-xl bg-white/70 hover:bg-white text-gray-700 transition-colors"
             >
               <Play className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setActiveAlert(null)}
-              className="px-2.5 py-1 rounded-lg bg-white/80 hover:bg-white text-xs font-bold text-gray-800 shadow-xs transition-colors"
+              className="px-2.5 py-1.5 rounded-xl bg-white/80 hover:bg-white text-xs font-bold text-gray-800 shadow-xs transition-colors"
             >
               Entendido
             </button>
@@ -535,6 +586,16 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
               }`}
             >
               <span>Listos Pase ({readyPassCount})</span>
+            </button>
+            <button
+              onClick={() => setFilterCategory('history')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                filterCategory === 'history'
+                  ? 'bg-[#002546] text-white shadow-xs'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <span>📜 Historial ({orders.filter((o) => o.status === 'delivered').length})</span>
             </button>
             <button
               onClick={() => setFilterCategory('all')}
@@ -755,16 +816,65 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       {/* Owner quick transition buttons */}
-                      {onUpdateOrderStatus && order.status !== 'ready_pass' && order.status !== 'delivered' && (
-                        <button
-                          onClick={() => onUpdateOrderStatus(order.id, 'ready_pass')}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Marcar Listo</span>
-                        </button>
+                      {onUpdateOrderStatus && order.status !== 'delivered' && (
+                        <>
+                          <button
+                            onClick={() => handleOwnerStatusChange(order.id, 'in_fire')}
+                            className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                              order.status === 'in_fire'
+                                ? 'bg-amber-600 text-white shadow-xs'
+                                : 'bg-gray-100 hover:bg-amber-100 text-gray-700'
+                            }`}
+                            title="Poner en Fuego / Atender"
+                          >
+                            <Flame className="w-3.5 h-3.5 text-amber-300" />
+                            <span>En Fuego</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleOwnerStatusChange(order.id, 'plated')}
+                            className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                              order.status === 'plated'
+                                ? 'bg-sky-600 text-white shadow-xs'
+                                : 'bg-gray-100 hover:bg-sky-100 text-gray-700'
+                            }`}
+                            title="Montar en Cocina"
+                          >
+                            <Utensils className="w-3.5 h-3.5 text-sky-300" />
+                            <span>Montado</span>
+                          </button>
+
+                          {order.status === 'ready_pass' ? (
+                            <button
+                              onClick={() => handleOwnerStatusChange(order.id, 'delivered')}
+                              className="px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs animate-pulse"
+                              title="Despachar a la mesa y mover definitivamente al historial"
+                            >
+                              <Check className="w-3.5 h-3.5 text-emerald-200" />
+                              <span>Al Historial</span>
+                            </button>
+                          ) : order.status === 'delivered' ? (
+                            <button
+                              onClick={() => handleOwnerStatusChange(order.id, 'ready_pass')}
+                              className="px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 bg-gray-200 hover:bg-gray-300 text-gray-800"
+                              title="Reabrir comanda a Listo Pase"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 text-gray-600" />
+                              <span>Historial ✅</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleOwnerStatusChange(order.id, 'ready_pass')}
+                              className="px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 bg-gray-100 hover:bg-emerald-100 text-gray-700"
+                              title="Listo para Pase / Mesonero"
+                            >
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Listo</span>
+                            </button>
+                          )}
+                        </>
                       )}
 
                       {/* Adjust delivery hour */}
@@ -772,10 +882,11 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
                         onClick={() =>
                           setEditingTimeOrderId(editingTimeOrderId === order.id ? null : order.id)
                         }
-                        className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold transition-colors flex items-center gap-1"
+                        className="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold transition-colors flex items-center gap-1"
+                        title="Ajustar hora de entrega"
                       >
                         <Clock className="w-3.5 h-3.5 text-[#006782]" />
-                        <span>Ajustar Hora</span>
+                        <span>Hora</span>
                       </button>
 
                       {/* Test alert specifically on this order */}

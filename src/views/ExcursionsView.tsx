@@ -26,6 +26,8 @@ interface ExcursionsViewProps {
   menuItems: MenuItem[];
   onUpdateExcursion: (updated: ExcursionPackage) => void;
   onSendApproachingAlert: () => void;
+  orders?: Order[];
+  onUpdateOrderStatus?: (orderId: string, newStatus: any) => void;
 }
 
 export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
@@ -34,6 +36,8 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
   menuItems,
   onUpdateExcursion,
   onSendApproachingAlert,
+  orders = [],
+  onUpdateOrderStatus,
 }) => {
   const safeExcursion: ExcursionPackage = {
     id: excursion?.id || 'exc-morrocoy-01',
@@ -188,6 +192,51 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
           <span>Bahía Activa</span>
         </div>
       </div>
+
+      {/* Alerta de Comanda Marítima Lista en Cocina */}
+      {orders.filter((o) => o.origin === 'excursion' && o.status === 'ready_pass').length > 0 && (
+        <div className="bg-emerald-50 border-2 border-emerald-400 text-emerald-950 p-3.5 rounded-2xl shadow-md space-y-2 animate-bounce-subtle">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                <CheckCircle2 className="w-4 h-4" />
+              </span>
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wide text-emerald-900">
+                  ¡Raciones de Excursión Listas en Cocina!
+                </h4>
+                <p className="text-[11px] text-emerald-800">
+                  Cocina preparó las raciones marítimas para embarcar o servir a los pasajeros.
+                </p>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 text-[10px] font-black uppercase">
+              Muelle Listo
+            </span>
+          </div>
+
+          <div className="pt-1 border-t border-emerald-200/60 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold text-emerald-900">
+              {safeExcursion.tourCode} • {safeExcursion.boatName}
+            </span>
+            {onUpdateOrderStatus && (
+              <button
+                onClick={() => {
+                  const excOrder = orders.find((o) => o.origin === 'excursion' && o.status === 'ready_pass');
+                  if (excOrder) {
+                    onUpdateOrderStatus(excOrder.id, 'delivered');
+                    soundService.playSuccess();
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-colors shrink-0"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
+                <span>Marcar Entregada a Muelle</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Main Tour Card */}
       <div className="bg-[#002546] text-white rounded-2xl p-4 shadow-sm relative overflow-hidden">

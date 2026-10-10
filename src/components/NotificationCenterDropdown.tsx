@@ -20,7 +20,7 @@ import { getOrderDeliveryTiming } from '../utils/deliveryTiming';
 
 export interface AppNotification {
   id: string;
-  type: 'urgent_10' | 'alert_30' | 'new_order' | 'boat_approaching' | 'system';
+  type: 'urgent_10' | 'alert_30' | 'new_order' | 'ready_order' | 'boat_approaching' | 'system';
   title: string;
   message: string;
   timestamp: string;
@@ -114,9 +114,43 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
     }
   });
 
+  // 4. Ready orders for clients, waiters, and excursions
+  orders.forEach((o) => {
+    if (o.status === 'ready_pass') {
+      const targetRole: UserRole =
+        o.origin === 'client_qr'
+          ? 'client'
+          : o.origin === 'excursion'
+          ? 'excursion'
+          : 'waiter';
+
+      dynamicNotifications.push({
+        id: 'ready-pass-' + o.id,
+        type: 'ready_order',
+        title:
+          o.origin === 'client_qr'
+            ? `🎉 ¡Tu Pedido está LISTO!: ${o.displayNumber}`
+            : o.origin === 'excursion'
+            ? `⚓ Excursión LISTA en Cocina: ${o.displayNumber}`
+            : `🍽️ Comanda LISTA para Retirar: ${o.displayNumber}`,
+        message:
+          o.origin === 'client_qr'
+            ? `Servicio para ${o.spotName} listo en cocina para llevar a tu toldo.`
+            : o.origin === 'excursion'
+            ? `Raciones listas para despacho en muelle (${o.spotName}).`
+            : `${o.spotName} • Mesonero ${o.waiterName || ''}: Retirar plato en pase de cocina.`,
+        timestamp: o.readyAt ? new Date(o.readyAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Listo',
+        orderId: o.id,
+        isRead: false,
+        targetRole,
+      });
+    }
+  });
+
   const handlePlaySound = (type: AppNotification['type']) => {
     if (type === 'urgent_10') soundService.playUrgent10MinAlert();
     else if (type === 'alert_30') soundService.playMountPlate30MinAlert();
+    else if (type === 'ready_order') soundService.playReadyPassAlert();
     else if (type === 'new_order') soundService.playBell();
     else soundService.playNotification();
     soundService.buzzSmartBand();
@@ -199,6 +233,8 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
                     ? 'bg-rose-50/70 border-rose-300 hover:bg-rose-50'
                     : notif.type === 'alert_30'
                     ? 'bg-amber-50/70 border-amber-300 hover:bg-amber-50'
+                    : notif.type === 'ready_order'
+                    ? 'bg-emerald-50/80 border-emerald-400 hover:bg-emerald-50'
                     : notif.type === 'boat_approaching'
                     ? 'bg-sky-50/70 border-sky-300 hover:bg-sky-50'
                     : 'bg-white border-gray-200 hover:bg-[#eff4ff]/50'
@@ -211,6 +247,8 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
                         ? 'bg-rose-600 text-white animate-pulse'
                         : notif.type === 'alert_30'
                         ? 'bg-amber-500 text-white'
+                        : notif.type === 'ready_order'
+                        ? 'bg-emerald-600 text-white shadow-xs'
                         : notif.type === 'boat_approaching'
                         ? 'bg-sky-600 text-white'
                         : 'bg-[#002546] text-white'
@@ -220,6 +258,8 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
                       <AlertTriangle className="w-3.5 h-3.5" />
                     ) : notif.type === 'alert_30' ? (
                       <Clock className="w-3.5 h-3.5" />
+                    ) : notif.type === 'ready_order' ? (
+                      <CheckCircle2 className="w-3.5 h-3.5" />
                     ) : notif.type === 'boat_approaching' ? (
                       <Ship className="w-3.5 h-3.5" />
                     ) : (

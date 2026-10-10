@@ -26,6 +26,7 @@ import {
   Layers,
   ListChecks,
   CheckSquare,
+  RotateCcw,
 } from 'lucide-react';
 
 interface KitchenKdsViewProps {
@@ -223,6 +224,15 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
       setTimeout(() => setActiveBannerNotice(null), 6000);
     } else if (status === 'in_fire') {
       soundService.playFireAlert();
+    }
+    // Clear active alert if it belongs to this order
+    if (
+      activeKitchenAlert &&
+      (activeKitchenAlert.orderId === orderId ||
+        activeKitchenAlert.orderId === targetOrder?.id ||
+        activeKitchenAlert.displayNumber === targetOrder?.displayNumber)
+    ) {
+      setActiveKitchenAlert(null);
     }
     onUpdateOrderStatus(orderId, status);
   };
@@ -429,7 +439,33 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+            <button
+              onClick={() => handleStatusChange(activeKitchenAlert.orderId, 'in_fire')}
+              className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs transition-colors ${
+                activeKitchenAlert.type === '10m'
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                  : 'bg-amber-900/20 hover:bg-amber-900/30 text-amber-950 font-black'
+              }`}
+              title="Poner comanda en el fuego y quitar aviso"
+            >
+              <Flame className="w-3.5 h-3.5" />
+              <span>En Fuego</span>
+            </button>
+
+            <button
+              onClick={() => handleStatusChange(activeKitchenAlert.orderId, 'ready_pass')}
+              className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs transition-colors ${
+                activeKitchenAlert.type === '10m'
+                  ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                  : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+              }`}
+              title="Marcar listo y quitar aviso"
+            >
+              <CheckCircle className="w-3.5 h-3.5" />
+              <span>Listo Pase</span>
+            </button>
+
             <button
               onClick={() => {
                 if (activeKitchenAlert.type === '10m') {
@@ -967,11 +1003,11 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
                     onClick={() => handleStatusChange(order.id, 'in_fire')}
                     className={`py-2 px-1 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all ${
                       order.status === 'in_fire'
-                        ? 'bg-[#eff4ff] text-[#002546] border border-[#a4c9fc]'
+                        ? 'bg-amber-600 text-white shadow-xs'
                         : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
                     }`}
                   >
-                    <Flame className="w-3.5 h-3.5 text-amber-600" />
+                    <Flame className="w-3.5 h-3.5 text-amber-300" />
                     <span>En Fuego</span>
                   </button>
 
@@ -979,25 +1015,42 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
                     onClick={() => handleStatusChange(order.id, 'plated')}
                     className={`py-2 px-1 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all ${
                       order.status === 'plated'
-                        ? 'bg-sky-100 text-[#006782] border border-[#57d1fd]'
+                        ? 'bg-sky-600 text-white shadow-xs'
                         : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
                     }`}
                   >
-                    <Utensils className="w-3.5 h-3.5 text-sky-600" />
+                    <Utensils className="w-3.5 h-3.5 text-sky-300" />
                     <span>Montado</span>
                   </button>
 
-                  <button
-                    onClick={() => handleStatusChange(order.id, 'ready_pass')}
-                    className={`py-2 px-1 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all ${
-                      order.status === 'ready_pass'
-                        ? 'bg-emerald-700 text-white shadow-xs'
-                        : 'bg-[#002546] hover:bg-[#0d3b66] text-white shadow-xs'
-                    }`}
-                  >
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-300" />
-                    <span>Listo Pase</span>
-                  </button>
+                  {order.status === 'ready_pass' ? (
+                    <button
+                      onClick={() => handleStatusChange(order.id, 'delivered')}
+                      className="py-2 px-1 rounded-xl text-xs font-bold flex items-center justify-center gap-1 bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition-all animate-pulse"
+                      title="Despachar a la mesa y mover definitivamente al historial"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-200" />
+                      <span>Al Historial</span>
+                    </button>
+                  ) : order.status === 'delivered' ? (
+                    <button
+                      onClick={() => handleStatusChange(order.id, 'ready_pass')}
+                      className="py-2 px-1 rounded-xl text-xs font-bold flex items-center justify-center gap-1 bg-gray-200 hover:bg-gray-300 text-gray-800 transition-all"
+                      title="Reabrir y regresar a Listo Pase"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-gray-600" />
+                      <span>Historial ✅</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleStatusChange(order.id, 'ready_pass')}
+                      className="py-2 px-1 rounded-xl text-xs font-bold flex items-center justify-center gap-1 bg-[#002546] hover:bg-[#0d3b66] text-white shadow-xs transition-all"
+                      title="Marcar comanda lista para pase"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-300" />
+                      <span>Listo Pase</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );

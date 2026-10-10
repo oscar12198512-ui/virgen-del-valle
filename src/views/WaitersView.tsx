@@ -261,6 +261,72 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
         </div>
       </div>
 
+      {/* Alerta de Comandas Listas para Retirar en Cocina (Mesonero) */}
+      {orders.filter((o) => o.status === 'ready_pass').length > 0 && (
+        <div className="bg-emerald-50 border-2 border-emerald-400 text-emerald-950 p-3.5 rounded-2xl shadow-md space-y-2 animate-bounce-subtle">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                <CheckCircle className="w-4 h-4" />
+              </span>
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wide text-emerald-900">
+                  ¡Comanda Lista en Pase de Cocina!
+                </h4>
+                <p className="text-[11px] text-emerald-800">
+                  {orders.filter((o) => o.status === 'ready_pass').length} comanda(s) listas para retirar y servir.
+                </p>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 text-[10px] font-black uppercase animate-pulse">
+              Pase Activo
+            </span>
+          </div>
+
+          <div className="space-y-1.5 pt-1 border-t border-emerald-200/60">
+            {orders
+              .filter((o) => o.status === 'ready_pass')
+              .map((readyOrd) => (
+                <div
+                  key={readyOrd.id}
+                  className="bg-white/90 p-2.5 rounded-xl border border-emerald-300 flex items-center justify-between gap-2 shadow-2xs"
+                >
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-extrabold text-xs text-[#002546]">
+                        {readyOrd.displayNumber}
+                      </span>
+                      <span className="text-xs font-bold text-emerald-800">
+                        • {readyOrd.spotName}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-gray-500">
+                      {readyOrd.items.map((i) => `${i.quantity}x ${i.name}`).slice(0, 2).join(', ')}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (onUpdateOrder) {
+                        onUpdateOrder({
+                          ...readyOrd,
+                          status: 'delivered',
+                          updatedAt: new Date().toISOString(),
+                        });
+                        soundService.playSuccess();
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-colors shrink-0"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-200" />
+                    <span>Entregar a Mesa</span>
+                  </button>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* Selector Toldo / Mesa */}
       <div className="bg-white rounded-2xl p-3.5 border border-gray-200 shadow-xs space-y-2.5">
         <div className="flex justify-between items-center text-xs">
@@ -947,6 +1013,24 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
                 >
                   <Edit3 className="w-3.5 h-3.5" /> Editar
                 </button>
+                {ord.status === 'ready_pass' && (
+                  <button
+                    onClick={() => {
+                      if (onUpdateOrder) {
+                        onUpdateOrder({
+                          ...ord,
+                          status: 'delivered',
+                          updatedAt: new Date().toISOString(),
+                        });
+                        soundService.playSuccess();
+                      }
+                    }}
+                    title="Marcar comanda como entregada a la mesa"
+                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs animate-pulse"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-200" /> Entregar
+                  </button>
+                )}
                 <button
                   onClick={() => onOpenPaymentModal(ord)}
                   title="Cobrar comanda"
