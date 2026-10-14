@@ -25,7 +25,8 @@ import {
   ArenaSupplyItem,
   CargoBoatManifest,
   WasteReportItem,
-  RbacRoleDefinition
+  RbacRoleDefinition,
+  GiveawayState
 } from '../types';
 
 export interface AppStateData {
@@ -42,6 +43,7 @@ export interface AppStateData {
   cargoManifests?: CargoBoatManifest[];
   wasteReports?: WasteReportItem[];
   rolePermissions?: Record<string, RbacRoleDefinition>;
+  giveaway?: GiveawayState;
   updatedAt?: any;
 }
 

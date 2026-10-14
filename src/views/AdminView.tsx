@@ -14,6 +14,7 @@ import {
   OrderStatus,
   ToldoSpot,
   WaiterComandaItem,
+  GiveawayState,
 } from '../types';
 import {
   INITIAL_ARENA_SUPPLIES,
@@ -33,6 +34,7 @@ import { OrderSyncEditor } from '../components/OrderSyncEditor';
 import { OwnerMenuManager } from '../components/OwnerMenuManager';
 import { OwnerKitchenMonitor } from '../components/OwnerKitchenMonitor';
 import { OwnerStaffManager } from '../components/OwnerStaffManager';
+import { OwnerGiveawayManager } from '../components/OwnerGiveawayManager';
 import { getOrderDeliveryTiming } from '../utils/deliveryTiming';
 import {
   Wallet,
@@ -101,6 +103,8 @@ interface AdminViewProps {
   approachingAlertCount?: number;
   spots?: ToldoSpot[];
   onOpenToldoQrModal?: () => void;
+  giveaway: GiveawayState;
+  onUpdateGiveaway: (updated: GiveawayState) => void;
 }
 
 export const AdminView: React.FC<AdminViewProps> = ({
@@ -131,9 +135,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
   approachingAlertCount = 0,
   spots = [],
   onOpenToldoQrModal,
+  giveaway,
+  onUpdateGiveaway,
 }) => {
   const [adminTab, setAdminTab] = useState<
-    'closings' | 'staff_access' | 'menu' | 'fiscal_audit' | 'contingency' | 'order_sync' | 'logistics' | 'rbac' | 'dashboard'
+    'closings' | 'staff_access' | 'menu' | 'fiscal_audit' | 'contingency' | 'order_sync' | 'logistics' | 'rbac' | 'dashboard' | 'giveaway'
   >('closings');
   const [kdsSubView, setKdsSubView] = useState<'monitor' | 'editor'>('monitor');
   const [rateInput, setRateInput] = useState<string>(bcvRate.toString());
@@ -780,6 +786,23 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
       {/* Top Toggle Navigation Bar */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none bg-[#eff4ff] p-1.5 rounded-2xl border border-[#d2e4ff]">
+        <button
+          onClick={() => setAdminTab('giveaway')}
+          className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all ${
+            adminTab === 'giveaway'
+              ? 'bg-[#002546] text-white shadow-xs ring-1 ring-amber-400'
+              : 'text-[#42474f] hover:text-[#002546] hover:bg-white/60'
+          }`}
+        >
+          <span className="text-amber-400">🎁</span>
+          <span>Sorteo VIP (200)</span>
+          {giveaway.participants.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black bg-amber-400 text-[#002546]">
+              {giveaway.participants.length}
+            </span>
+          )}
+        </button>
+
         <button
           onClick={() => setAdminTab('closings')}
           className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all ${
@@ -2650,6 +2673,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* PESTAÑA: SORTEO OFICIAL 200 PERSONAS */}
+      {adminTab === 'giveaway' && (
+        <OwnerGiveawayManager
+          giveaway={giveaway}
+          onUpdateGiveaway={onUpdateGiveaway}
+        />
       )}
 
       {/* Footer Branding */}

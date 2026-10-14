@@ -11,6 +11,8 @@ import {
   User,
   UserRole,
   WaiterClosingSummary,
+  GiveawayState,
+  GiveawayParticipant,
 } from './types';
 import {
   INITIAL_BANK_CONFIG,
@@ -18,11 +20,13 @@ import {
   INITIAL_EXCURSION,
   INITIAL_MENU_ITEMS,
   INITIAL_SPOTS,
+  INITIAL_GIVEAWAY_STATE,
 } from './data/initialData';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
 import { AccountPanel } from './components/AccountPanel';
 import { PagoMovilModal, PaymentMethodKey } from './components/PagoMovilModal';
+import { GiveawayModal } from './components/GiveawayModal';
 import { PazYSalvoModal } from './components/PazYSalvoModal';
 import { FiscalInvoiceModal } from './components/FiscalInvoiceModal';
 import { CurrencyCalculatorModal } from './components/CurrencyCalculatorModal';
@@ -106,6 +110,18 @@ export const App: React.FC = () => {
   const [selectedSpotId, setSelectedSpotId] = useState<string>('');
   const [approachingAlertCount, setApproachingAlertCount] = useState<number>(0);
   const [clientActiveOrder, setClientActiveOrder] = useState<Order | null>(null);
+
+  const [giveaway, setGiveaway] = useState<GiveawayState>(() => {
+    try {
+      const saved = localStorage.getItem('playa_buche_giveaway');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && Array.isArray(parsed.participants)) return parsed;
+      }
+    } catch {}
+    return INITIAL_GIVEAWAY_STATE;
+  });
+  const [isGiveawayModalOpen, setIsGiveawayModalOpen] = useState(false);
 
   const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
@@ -222,6 +238,12 @@ export const App: React.FC = () => {
           if (state.bankConfig) setBankConfig(state.bankConfig);
           if (Array.isArray(state.waitersClosings)) setWaitersClosings(state.waitersClosings);
           if (state.drawerBills) setDrawerBills(state.drawerBills);
+          if (state.giveaway) {
+            setGiveaway(state.giveaway);
+            try {
+              localStorage.setItem('playa_buche_giveaway', JSON.stringify(state.giveaway));
+            } catch {}
+          }
           if (typeof state.bcvRate === 'number' && !isNaN(state.bcvRate) && state.bcvRate > 0) {
             setBcvRate(state.bcvRate);
             try {
@@ -260,6 +282,7 @@ export const App: React.FC = () => {
         if (Array.isArray(data.state.menuItems)) setMenuItems(data.state.menuItems);
         if (Array.isArray(data.state.spots)) setSpots(data.state.spots);
         if (data.state.excursion && data.state.excursion.id) setExcursion(data.state.excursion);
+        if (data.state.giveaway) setGiveaway(data.state.giveaway);
         if (typeof data.state.bcvRate === 'number' && !isNaN(data.state.bcvRate) && data.state.bcvRate > 0) {
           setBcvRate(data.state.bcvRate);
           try {
@@ -304,6 +327,7 @@ export const App: React.FC = () => {
           if (data.state.bankConfig) setBankConfig(data.state.bankConfig);
           if (Array.isArray(data.state.waitersClosings)) setWaitersClosings(data.state.waitersClosings);
           if (data.state.drawerBills) setDrawerBills(data.state.drawerBills);
+          if (data.state.giveaway) setGiveaway(data.state.giveaway);
           if (typeof data.state.bcvRate === 'number') setBcvRate(data.state.bcvRate);
         }
         setIsDbHydrated(true);
@@ -324,7 +348,7 @@ export const App: React.FC = () => {
   // Persistencia de cambios de personal operativo (Firestore / REST)
   useEffect(() => {
     if (!isDbHydrated || !signedInRole || !STAFF_ROLES.includes(signedInRole)) return;
-    const payload = { menuItems, spots, orders, excursion, bankConfig, waitersClosings, drawerBills, bcvRate };
+    const payload = { menuItems, spots, orders, excursion, bankConfig, waitersClosings, drawerBills, bcvRate, giveaway };
     
     if (isFirebaseConfigured()) {
       const timer = window.setTimeout(async () => {
@@ -645,6 +669,83 @@ export const App: React.FC = () => {
     soundService.playCashChime();
   };
 
+  const handleOpenGiveaway = useCallback(() => {
+    setIsGiveawayModalOpen(true);
+  }, []);
+
+  const handleCloseGiveaway = useCallback(() => {
+    setIsGiveawayModalOpen(false);
+  }, []);
+
+  const handleUpdateGiveaway = useCallback((nextGiveaway: GiveawayState) => {
+    setGiveaway(nextGiveaway);
+    try {
+      localStorage.setItem('playa_buche_giveaway', JSON.stringify(nextGiveaway));
+    } catch {}
+    if (isFirebaseConfigured()) {
+      saveAppState({ giveaway: nextGiveaway }).catch((err) => {
+        console.warn('Error al guardar sorteo en Firestore:', err);
+      });
+    }
+  }, []);
+
+  const handleRegisterGiveawayParticipant = useCallback(
+    (info: { fullName: string; email: string; phone?: string; userId?: string }) => {
+      let assignedTicket: number | null = null;
+      setGiveaway((prev) => {
+        const cleanEmail = info.email.trim().toLowerCase();
+        const existing = prev.participants.find(
+          (p) => (p.email && p.email.toLowerCase() === cleanEmail) || (info.userId && p.userId === info.userId)
+        );
+        if (existing) {
+          assignedTicket = existing.ticketNumber;
+          return prev;
+        }
+        if (prev.participants.length >= prev.maxParticipants) {
+          return prev;
+        }
+        const ticketNumber = prev.participants.length + 1;
+        assignedTicket = ticketNumber;
+        const newParticipant: GiveawayParticipant = {
+          id: `part-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          ticketNumber,
+          userId: info.userId || `usr-${Date.now()}`,
+          name: info.fullName.trim(),
+          email: cleanEmail,
+          phone: info.phone?.trim() || null,
+          registeredAt: new Date().toISOString()
+        };
+        const next = {
+          ...prev,
+          participants: [...prev.participants, newParticipant]
+        };
+        try {
+          localStorage.setItem('playa_buche_giveaway', JSON.stringify(next));
+        } catch {}
+        if (isFirebaseConfigured()) {
+          saveAppState({ giveaway: next }).catch((err) => {
+            console.warn('Error al registrar participante en Firestore:', err);
+          });
+        }
+        return next;
+      });
+
+      if (assignedTicket && currentUser) {
+        setCurrentUser((prev) => {
+          if (!prev) return prev;
+          const updated = { ...prev, giveawayTicket: assignedTicket! };
+          try {
+            localStorage.setItem('playa_buche_user', JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+      }
+
+      return assignedTicket;
+    },
+    [currentUser]
+  );
+
   if (!API_BASE && !isFirebaseConfigured()) {
     return (
       <Splash label="Falta configurar Firebase o VITE_API_URL con la dirección de la API." />
@@ -652,7 +753,22 @@ export const App: React.FC = () => {
   }
 
   if (directLoginRequested || (!sessionToken && !currentUser)) {
-    return <LoginScreen onAuthenticated={handleAuthenticated} />;
+    return (
+      <>
+        <LoginScreen
+          onAuthenticated={handleAuthenticated}
+          giveaway={giveaway}
+          onOpenGiveaway={handleOpenGiveaway}
+          onRegisterGiveawayParticipant={handleRegisterGiveawayParticipant}
+        />
+        <GiveawayModal
+          isOpen={isGiveawayModalOpen}
+          onClose={handleCloseGiveaway}
+          giveaway={giveaway}
+          currentUser={currentUser}
+        />
+      </>
+    );
   }
 
   if (!identityResolved || !currentUser) {
@@ -675,6 +791,7 @@ export const App: React.FC = () => {
         onOpenWeather={() => setIsWeatherModalOpen(true)}
         onOpenNotifications={() => setIsNotificationCenterOpen(true)}
         onOpenInstall={() => setIsInstallModalOpen(true)}
+        onOpenGiveaway={handleOpenGiveaway}
         notificationCount={totalNotificationCount}
         canPreviewRoles={availableRoles.length > 1}
       />
@@ -784,6 +901,8 @@ export const App: React.FC = () => {
             approachingAlertCount={approachingAlertCount}
             spots={spots}
             onOpenToldoQrModal={() => setIsToldoQrModalOpen(true)}
+            giveaway={giveaway}
+            onUpdateGiveaway={handleUpdateGiveaway}
           />
         )}
 
@@ -800,6 +919,9 @@ export const App: React.FC = () => {
             onOpenPaymentModal={setActivePagoMovilOrder}
             onOpenFiscalInvoice={() => setIsFiscalInvoiceOpen(true)}
             onUpdateOrder={handleUpdateOrder}
+            giveaway={giveaway}
+            giveawayTicket={currentUser?.giveawayTicket}
+            onOpenGiveaway={handleOpenGiveaway}
           />
         )}
       </main>
@@ -909,6 +1031,13 @@ export const App: React.FC = () => {
         isOpen={isToldoQrModalOpen}
         onClose={() => setIsToldoQrModalOpen(false)}
         spots={spots}
+      />
+
+      <GiveawayModal
+        isOpen={isGiveawayModalOpen}
+        onClose={handleCloseGiveaway}
+        giveaway={giveaway}
+        currentUser={currentUser}
       />
     </div>
   );

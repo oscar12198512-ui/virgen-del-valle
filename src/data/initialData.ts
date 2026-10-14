@@ -12,6 +12,7 @@ import {
   CargoBoatManifest,
   WasteReportItem,
   RbacRoleDefinition,
+  GiveawayState,
 } from '../types';
 
 export const INITIAL_BCV_RATE = 54.50;
@@ -435,4 +436,48 @@ export const RBAC_ROLE_DEFINITIONS: RbacRoleDefinition[] = [
     ],
   },
 ];
+
+export const INITIAL_GIVEAWAY_STATE: GiveawayState = {
+  id: 'sorteo-inauguracion-200',
+  title: 'Gran Sorteo Inaugural · Primeras 200 Personas',
+  prizeTitle: 'Tour VIP Todo Incluido a Playa Buche',
+  prizeDescription: '¡Disfruta de un día de playa de ensueño totalmente cubierto por Playa Buche e Inversiones Virgen del Valle! Incluye traslado terrestre, marítimo, almuerzo y barra de bebidas.',
+  prizeItems: [
+    '🚌 Pasaje en autobús ida y vuelta completamente gratis',
+    '🚤 Traslado en lancha rápida muelle ↔ Playa Buche ida y vuelta gratis',
+    '🍽️ Almuerzo playero completo de la casa gratis',
+    '🍹 Bebidas refrescantes durante todo el día gratis'
+  ],
+  maxParticipants: 200,
+  isActive: true,
+  participants: [
+    {
+      ticketNumber: 1,
+      userId: 'usr-p01',
+      name: 'Carlos Mendoza',
+      email: 'carlos.mendoza@gmail.com',
+      phone: '0414-1234567',
+      registeredAt: '2026-10-14 09:15'
+    },
+    {
+      ticketNumber: 2,
+      userId: 'usr-p02',
+      name: 'Mariana Silva',
+      email: 'mariana.silva@hotmail.com',
+      phone: '0424-9876543',
+      registeredAt: '2026-10-14 10:30'
+    },
+    {
+      ticketNumber: 3,
+      userId: 'usr-p03',
+      name: 'Alejandro Gómez',
+      email: 'alejandro.g@gmail.com',
+      phone: '0412-5557788',
+      registeredAt: '2026-10-14 11:05'
+    }
+  ],
+  winner: null,
+  drawnAt: null
+};
+
 

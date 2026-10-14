@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MenuItem, Order, OrderItem, SpotZone, ToldoSpot } from '../types';
+import { MenuItem, Order, OrderItem, SpotZone, ToldoSpot, GiveawayState } from '../types';
 import { formatUsd, formatBsDirect } from '../utils/currencyFormatter';
 import { soundService } from '../services/soundService';
 import {
@@ -41,6 +41,9 @@ interface ClientsViewProps {
   onOpenPaymentModal: (order: Order) => void;
   onOpenFiscalInvoice?: () => void;
   onUpdateOrder?: (updatedOrder: Order) => void;
+  giveaway?: GiveawayState;
+  giveawayTicket?: number;
+  onOpenGiveaway?: () => void;
 }
 
 export const ClientsView: React.FC<ClientsViewProps> = ({
@@ -55,6 +58,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   onOpenPaymentModal,
   onOpenFiscalInvoice,
   onUpdateOrder,
+  giveaway,
+  giveawayTicket,
+  onOpenGiveaway,
 }) => {
   const [activeZone, setActiveZone] = useState<SpotZone>('beach');
   const [activeSubTab, setActiveSubTab] = useState<'spots' | 'menu' | 'tracking'>('menu');
@@ -187,6 +193,51 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </p>
         </div>
       </div>
+
+      {/* TARJETA VIP DEL GRAN SORTEO 200 PERSONAS */}
+      {giveaway && (
+        <div
+          onClick={onOpenGiveaway}
+          className="p-4 rounded-2xl bg-gradient-to-r from-[#002546] via-[#00386b] to-[#001c37] border-2 border-amber-400 text-white shadow-lg cursor-pointer hover:border-amber-300 transition-all flex items-center justify-between gap-3 group active:scale-98"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#fbbf24] to-[#f59e0b] text-[#002546] font-black text-2xl flex items-center justify-center shrink-0 shadow-md">
+              🎁
+            </div>
+            <div className="space-y-0.5 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2 py-0.5 rounded-full bg-amber-400 text-[#002546] text-[10px] font-black uppercase">
+                  Sorteo 200 Personas
+                </span>
+                {giveawayTicket ? (
+                  <span className="text-[10px] font-black text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-500/40">
+                    🎟️ Tu Ticket: #{giveawayTicket.toString().padStart(3, '0')}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-[#57d1fd]">
+                    1 Solo Ganador
+                  </span>
+                )}
+              </div>
+              <h3 className="text-xs sm:text-sm font-black text-white group-hover:text-[#57d1fd] transition-colors leading-tight truncate">
+                Tour VIP Todo Incluido a Playa Buche
+              </h3>
+              <p className="text-[11px] text-white/80 line-clamp-1">
+                {giveaway.winner
+                  ? `🏆 Ganador: ${giveaway.winner.name} (Ticket #${giveaway.winner.ticketNumber})`
+                  : giveawayTicket
+                  ? '¡Estás participando! Incluye bus, lancha, almuerzo y bebidas gratis.'
+                  : 'Bus + Lancha + Almuerzo + Bebidas gratis para 1 ganador.'}
+              </p>
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <span className="inline-block px-3 py-1.5 rounded-xl bg-white/10 group-hover:bg-white/20 text-[#57d1fd] text-xs font-black transition-colors">
+              Ver Bases →
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Alerta de Pedido Listo para el Cliente */}
       {activeOrder?.status === 'ready_pass' && (

@@ -25,6 +25,30 @@ export interface User {
   notes?: string | null;
   lastLogin?: string | null;
   sessionToken?: string;
+  giveawayTicket?: number;
+}
+
+export interface GiveawayParticipant {
+  id?: string;
+  ticketNumber: number;
+  userId: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  registeredAt: string;
+}
+
+export interface GiveawayState {
+  id: string;
+  title: string;
+  prizeTitle: string;
+  prizeDescription: string;
+  prizeItems: string[];
+  maxParticipants: number;
+  isActive: boolean;
+  participants: GiveawayParticipant[];
+  winner: GiveawayParticipant | null;
+  drawnAt?: string | null;
 }
 
 export type SpotZone = 'beach' | 'churuata' | 'muelle';

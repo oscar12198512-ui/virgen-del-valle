@@ -15,6 +15,7 @@ interface HeaderProps {
   onOpenWeather?: () => void;
   onOpenNotifications?: () => void;
   onOpenInstall?: () => void;
+  onOpenGiveaway?: () => void;
   notificationCount?: number;
   canPreviewRoles?: boolean;
 }
@@ -39,6 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenWeather,
   onOpenNotifications,
   onOpenInstall,
+  onOpenGiveaway,
   notificationCount = 0,
   canPreviewRoles = false,
 }) => {
@@ -135,6 +137,17 @@ export const Header: React.FC<HeaderProps> = ({
                   {notificationCount}
                 </span>
               )}
+            </button>
+          )}
+
+          {onOpenGiveaway && (
+            <button
+              onClick={onOpenGiveaway}
+              title="Gran Sorteo 200 Personas · Tour VIP Gratis"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-[#002546] shadow-sm active:scale-95 transition-all cursor-pointer shrink-0"
+            >
+              <span className="text-sm">🎁</span>
+              <span className="text-[11px] font-black hidden sm:inline">Sorteo VIP</span>
             </button>
           )}
 

@@ -13,17 +13,30 @@ import {
   ShieldAlert,
   Info
 } from 'lucide-react';
-import { User, UserRole, ROLE_LABELS } from '../types';
+import { User, UserRole, ROLE_LABELS, GiveawayState } from '../types';
 import { isFirebaseConfigured } from '../config/firebase';
 import { loginWithEmail, registerWithEmail, sendResetPassword } from '../services/firebaseAuth';
 
 interface LoginScreenProps {
   onAuthenticated: (user: User) => void;
+  giveaway?: GiveawayState;
+  onOpenGiveaway?: () => void;
+  onRegisterGiveawayParticipant?: (participant: {
+    fullName: string;
+    email: string;
+    phone?: string;
+    userId?: string;
+  }) => number | null;
 }
 
 const API = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({
+  onAuthenticated,
+  giveaway,
+  onOpenGiveaway,
+  onRegisterGiveawayParticipant,
+}) => {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -154,6 +167,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
     try {
       const initialStatus = selectedRole === 'client' ? 'active' : 'pending_approval';
 
+      let assignedTicket: number | undefined = undefined;
+      if (selectedRole === 'client' && onRegisterGiveawayParticipant) {
+        const ticket = onRegisterGiveawayParticipant({
+          fullName: name.trim(),
+          email: email.trim().toLowerCase(),
+          phone: phone.trim() || undefined,
+        });
+        if (ticket) assignedTicket = ticket;
+      }
+
       if (isFirebaseConfigured()) {
         const user = await registerWithEmail(
           email,
@@ -167,6 +190,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
             status: initialStatus
           }
         );
+
+        if (assignedTicket) {
+          user.giveawayTicket = assignedTicket;
+        }
 
         if (initialStatus === 'pending_approval') {
           setRegistrationSuccess({ role: selectedRole, name: user.name });
@@ -194,11 +221,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
         });
         const data = await response.json().catch(() => ({}));
         if (response.ok && data.user) {
+          const apiUser = data.user;
+          if (assignedTicket) {
+            apiUser.giveawayTicket = assignedTicket;
+          }
           if (initialStatus === 'pending_approval') {
-            setRegistrationSuccess({ role: selectedRole, name: data.user.name });
+            setRegistrationSuccess({ role: selectedRole, name: apiUser.name });
             return;
           }
-          onAuthenticated(data.user);
+          onAuthenticated(apiUser);
           return;
         }
       }
@@ -214,7 +245,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
         boatName: selectedRole === 'excursion' ? boatName.trim() : null,
         zone: selectedRole === 'waiter' ? zone.trim() : null,
         status: initialStatus,
-        sessionToken: `token-${Date.now()}`
+        sessionToken: `token-${Date.now()}`,
+        giveawayTicket: assignedTicket
       };
 
       if (initialStatus === 'pending_approval') {
@@ -351,6 +383,42 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
 
   return (
     <Shell>
+      {/* Sorteo VIP Promocional para primeros 200 registrados */}
+      {giveaway && (
+        <div
+          onClick={onOpenGiveaway}
+          className="mb-4 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 rounded-2xl p-3.5 text-white shadow-lg cursor-pointer hover:shadow-xl transition-all active:scale-[0.99] border border-amber-300/40 relative overflow-hidden group"
+          role="button"
+          tabIndex={0}
+        >
+          <div className="absolute top-0 right-0 translate-x-3 -translate-y-3 w-20 h-20 bg-white/15 rounded-full blur-xl group-hover:scale-150 transition-all pointer-events-none" />
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0 border border-white/30 text-2xl shadow-inner animate-pulse">
+              🎁
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[9px] font-black uppercase tracking-wider bg-black/35 px-2 py-0.5 rounded-full border border-white/20 text-amber-200">
+                  Sorteo VIP • 1 Solo Ganador
+                </span>
+                <span className="text-[10px] font-bold text-amber-100">
+                  {giveaway.participants.length} / {giveaway.maxParticipants} Cupos
+                </span>
+              </div>
+              <p className="text-xs font-black truncate mt-1 drop-shadow-sm text-white">
+                ¡Gana Tour VIP + Bus + Lancha + Almuerzo y Bebidas!
+              </p>
+              <p className="text-[10px] text-amber-100/90 leading-tight">
+                Primeras 200 personas en registrarse participan automáticamente.
+              </p>
+            </div>
+            <div className="text-[11px] font-extrabold bg-white text-orange-600 px-2.5 py-1 rounded-xl shadow-sm shrink-0 whitespace-nowrap group-hover:bg-amber-100 transition-colors">
+              Ver Sorteo
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Navigation tabs */}
       <div className="grid grid-cols-2 gap-1 p-1 bg-[#eff4ff] rounded-2xl mb-4 border border-[#d2e4ff]">
         <button
