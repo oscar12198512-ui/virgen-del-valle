@@ -40,7 +40,7 @@ export async function loginWithEmail(email: string, pass: string): Promise<User>
       id: `usr-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
       name: cleanEmail.split('@')[0],
       email: cleanEmail,
-      role: cleanEmail.includes('admin') || cleanEmail.includes('emmanuel') ? 'admin' : 'client',
+      role: cleanEmail.includes('admin') || cleanEmail.includes('oscar') || cleanEmail.includes('emmanuel') ? 'admin' : 'client',
       status: 'active',
       sessionToken: `token-usr-${Date.now()}`
     };

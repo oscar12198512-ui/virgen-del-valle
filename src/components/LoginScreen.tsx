@@ -131,7 +131,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         id: `usr-${clean.replace(/[^a-z0-9]/g, '_')}`,
         name: clean.split('@')[0],
         email: clean,
-        role: clean.includes('admin') || clean.includes('emmanuel') ? 'admin' : 'client',
+        role: clean.includes('admin') || clean.includes('oscar') || clean.includes('emmanuel') ? 'admin' : 'client',
         status: 'active',
         sessionToken: `token-${Date.now()}`
       };

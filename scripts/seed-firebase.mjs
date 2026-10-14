@@ -210,6 +210,13 @@ const INITIAL_DRAWER_BILLS = {
 
 const INITIAL_STAFF = [
   {
+    id: 'admin-oscar',
+    name: 'Oscar',
+    email: 'oscar12198512@gmail.com',
+    role: 'admin',
+    status: 'active',
+  },
+  {
     id: 'admin-emmanuel',
     name: 'Emmanuel Mejías',
     email: 'emmanuelmejias2616@gmail.com',
