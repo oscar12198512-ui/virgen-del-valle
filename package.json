@@ -13,12 +13,14 @@
     "dev:server": "node --watch server/index.js",
     "db:migrate": "node server/migrate.js",
     "firebase:seed": "node scripts/seed-firebase.mjs",
+    "firebase:sync": "npx esbuild src/data/initialData.ts --format=esm --outfile=scripts/initialData.mjs && node scripts/sync-firebase.mjs",
     "cap:sync": "npm run build && npx cap sync"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
     "@capacitor/core": "^8.0.0",
     "@capacitor/ios": "^8.0.0",
+    "@capacitor/local-notifications": "^8.3.1",
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/qrcode": "^1.5.6",

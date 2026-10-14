@@ -540,11 +540,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
               {[
-                { id: 'all', label: 'Todo el Menú' },
-                { id: 'fish', label: '🐟 Pescados' },
-                { id: 'seafood', label: '🍤 Marisquería' },
-                { id: 'drinks', label: '🍹 Cocteles' },
-                { id: 'sides', label: '🍟 Para Picar' },
+                { id: 'all', label: '🌟 Todo el Menú' },
+                { id: 'pescados', label: '🐟 Pescados' },
+                { id: 'mariscos', label: '🍤 Marisquería & Sopas' },
+                { id: 'entradas', label: '🥟 Empanadas & Tostones' },
+                { id: 'bebidas', label: '🍹 Bebidas' },
+                { id: 'postres', label: '🍰 Postres' },
                 { id: 'fav', label: `❤️ Favoritos (${Object.values(favorites).filter(Boolean).length})` },
               ].map((cat) => (
                 <button

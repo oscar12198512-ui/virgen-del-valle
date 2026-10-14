@@ -40,6 +40,7 @@ import { KitchenKdsView } from './views/KitchenKdsView';
 import { AdminView } from './views/AdminView';
 import { ClientsView } from './views/ClientsView';
 import { soundService } from './services/soundService';
+import { nativeNotificationService } from './services/nativeNotificationService';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { AppInstallModal } from './components/AppInstallModal';
 import { ToldoQrGeneratorModal } from './components/ToldoQrGeneratorModal';
@@ -224,6 +225,13 @@ export const App: React.FC = () => {
       cancelled = true;
     };
   }, [API_BASE, sessionToken, authHeaders, clearSession]);
+
+  // Solicitud y activación de permisos de notificación (Android 13+ y Web PWA)
+  useEffect(() => {
+    nativeNotificationService.init().catch((error) => {
+      console.warn('Permisos de notificaciones no activados:', error);
+    });
+  }, []);
 
   // Sincronización de datos (Firebase Firestore Real-Time / Fallback REST API)
   useEffect(() => {
@@ -452,6 +460,8 @@ export const App: React.FC = () => {
             spotName: ord.spotName,
             displayNumber: ord.displayNumber,
           });
+
+          nativeNotificationService.sendNotification(title, message);
         }
       }
     });
