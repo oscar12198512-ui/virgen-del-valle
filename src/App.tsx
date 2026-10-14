@@ -413,9 +413,25 @@ export const App: React.FC = () => {
 
     if (orders.length > prevOrdersRef.current.length) {
       const prevIds = new Set(prevOrdersRef.current.map((o) => o.id));
-      const hasNew = orders.some((o) => !prevIds.has(o.id));
-      if (hasNew) {
+      const newOrders = orders.filter((o) => !prevIds.has(o.id));
+      if (newOrders.length > 0) {
         soundService.playNewIncomingOrderAlert();
+        soundService.buzzSmartBand();
+        newOrders.forEach((newOrd) => {
+          if (currentRole === 'admin' || currentRole === 'kitchen' || currentRole === 'waiter') {
+            const title = `🔔 ¡Nuevo Pedido ${newOrd.displayNumber}!`;
+            const message = `Llegó orden en ${newOrd.spotName} • Total: $${newOrd.totalUsd.toFixed(2)}`;
+            setRealtimeToast({
+              id: 'toast-new-' + newOrd.id + '-' + Date.now(),
+              title,
+              message,
+              targetRole: currentRole,
+              spotName: newOrd.spotName,
+              displayNumber: newOrd.displayNumber,
+            });
+            nativeNotificationService.sendNotification(title, message);
+          }
+        });
       }
     }
 

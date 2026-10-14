@@ -117,6 +117,15 @@ export async function pushOrderToFirestore(newOrder: Order): Promise<void> {
     updatedOrders = [newOrder, ...currentOrders];
   }
   await saveAppState({ orders: updatedOrders });
+
+  try {
+    await setDoc(doc(db, 'orders', newOrder.id), {
+      ...newOrder,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (err) {
+    console.warn('Error al guardar en colección orders:', err);
+  }
 }
 
 // -------------------------------------------------------------
