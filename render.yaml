@@ -53,6 +53,8 @@ services:
         source: /*
         destination: /index.html
     envVars:
+      - key: VITE_API_URL
+        value: "https://virgen-del-valle-api.onrender.com"
       - key: VITE_FIREBASE_API_KEY
         value: "AIzaSyAnMvY9S2ZCRwaY-rCzMnSUGe6XSY7kl5k"
       - key: VITE_FIREBASE_AUTH_DOMAIN

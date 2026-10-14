@@ -63,15 +63,23 @@ export const AppInstallModal: React.FC<AppInstallModalProps> = ({ isOpen, onClos
             </div>
           )}
 
+          <a
+            href="./playa-buche.apk"
+            download="playa-buche.apk"
+            className="w-full h-11 rounded-xl bg-[#57d1fd] text-[#002546] font-black text-xs flex items-center justify-center gap-2 shadow-md hover:bg-[#38bdf8] active:scale-98 transition-all"
+          >
+            <Download className="w-4 h-4" /> Descargar APK Directo (.apk)
+          </a>
+
           <button
             onClick={() => void share()}
             className="w-full h-11 rounded-xl bg-[#eff4ff] text-[#006782] border border-[#d2e4ff] text-xs font-bold flex items-center justify-center gap-2"
           >
-            <Share className="w-4 h-4" /> Compartir acceso
+            <Share className="w-4 h-4" /> Compartir enlace
           </button>
 
           <p className="text-[11px] text-gray-500">
-            La aplicación móvil de Android se distribuye como APK firmado. Puedes descargarlo desde{' '}
+            La aplicación móvil de Android también se distribuye en{' '}
             <a href={APP_STORE_LINKS.uptodown} target="_blank" rel="noreferrer" className="font-bold text-[#006782] underline">
               Uptodown
             </a>
