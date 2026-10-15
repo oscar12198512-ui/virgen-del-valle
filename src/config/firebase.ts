@@ -1,10 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-  persistentSingleTabManager,
-  CACHE_SIZE_UNLIMITED,
   getFirestore
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
@@ -23,27 +19,14 @@ const firebaseConfig = {
 // Initialize Firebase
 export const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Firestore con almacenamiento local persistente e ilimitado (Compensación de latencia para Venezuela)
+// Configuración para forzar respuestas limpias del servidor en prototipos (modo prueba en vivo sin interferencia de caché)
 export const db = (() => {
   try {
     return initializeFirestore(firebaseApp, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager(), // Permite compartir la caché entre varias pestañas del navegador
-        cacheSizeBytes: CACHE_SIZE_UNLIMITED // Evita que Firestore elimine comandas o menú por límite de almacenamiento
-      })
+      localCache: undefined // Obliga a la app a comunicarse de forma estricta y limpia con los servidores de Firebase
     });
-  } catch (err) {
-    try {
-      // Fallback para entornos móviles (Capacitor/WebView) donde multi-tab no esté soportado
-      return initializeFirestore(firebaseApp, {
-        localCache: persistentLocalCache({
-          tabManager: persistentSingleTabManager({}),
-          cacheSizeBytes: CACHE_SIZE_UNLIMITED
-        })
-      });
-    } catch {
-      return getFirestore(firebaseApp);
-    }
+  } catch {
+    return getFirestore(firebaseApp);
   }
 })();
 

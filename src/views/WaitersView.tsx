@@ -41,7 +41,7 @@ interface WaitersViewProps {
   spots: ToldoSpot[];
   orders: Order[];
   bcvRate: number;
-  onSendOrderToKitchen: (newOrder: Order) => void;
+  onSendOrderToKitchen: (newOrder: Order) => Promise<void> | void;
   onOpenPaymentModal: (order: Order) => void;
   onUpdateOrder?: (updatedOrder: Order) => void;
   onOpenCalculator?: (initialTotal?: number) => void;
@@ -178,6 +178,7 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
   const totalBs = totalUsd * bcvRate;
 
   const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState<boolean>(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
 
   const handleOpenBreakdown = () => {
     if (orderItems.length === 0) {
@@ -188,14 +189,12 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
     setIsBreakdownModalOpen(true);
   };
 
-  const handleConfirmBreakdownOrder = (
+  const handleConfirmBreakdownOrder = async (
     finalItems: OrderItem[],
     deliveryTime: string,
     orderNoteText: string,
     finalTipPercent: number
   ) => {
-    setIsBreakdownModalOpen(false);
-
     const calculatedSubtotalUsd = finalItems.reduce(
       (acc, i) => acc + (i.quantity || 1) * i.unitPriceUsd,
       0
@@ -228,14 +227,22 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
       elapsedSeconds: 15,
     };
 
-    soundService.playBell();
-    onSendOrderToKitchen(newOrder);
+    setIsSubmittingOrder(true);
+    try {
+      await onSendOrderToKitchen(newOrder);
+      soundService.playBell();
+      setIsBreakdownModalOpen(false);
 
-    // Reset drafting
-    setOrderItems([]);
-    setAllergyNote('');
-    setSendSuccessNotice(true);
-    setTimeout(() => setSendSuccessNotice(false), 4000);
+      // Reset drafting
+      setOrderItems([]);
+      setAllergyNote('');
+      setSendSuccessNotice(true);
+      setTimeout(() => setSendSuccessNotice(false), 4000);
+    } catch (error) {
+      console.error('Error al enviar comanda desde mesonero:', error);
+    } finally {
+      setIsSubmittingOrder(false);
+    }
   };
 
   // Filtered menu: only dishes available for beach waiters (excludes dishes exclusive to excursions)
@@ -1233,6 +1240,7 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
           initialDeliveryTime={selectedTiming}
           initialOrderNote={allergyNote}
           tipPercent={tipPercent}
+          isSubmitting={isSubmittingOrder}
           onClose={() => setIsBreakdownModalOpen(false)}
           onConfirmOrder={handleConfirmBreakdownOrder}
         />

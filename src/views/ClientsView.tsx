@@ -37,7 +37,7 @@ interface ClientsViewProps {
   bcvRate: number;
   onSelectSpot: (spotId: string) => void;
   selectedSpotId: string;
-  onPlaceOrder: (items: OrderItem[], spot: ToldoSpot, requestedTime?: string, orderNote?: string) => void;
+  onPlaceOrder: (items: OrderItem[], spot: ToldoSpot, requestedTime?: string, orderNote?: string) => Promise<void> | void;
   onOpenPaymentModal: (order: Order) => void;
   onOpenFiscalInvoice?: () => void;
   onUpdateOrder?: (updatedOrder: Order) => void;
@@ -119,6 +119,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const cartItemsCount: number = (Object.values(cart) as number[]).reduce((a: number, b: number) => a + b, 0);
 
   const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState<boolean>(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
   const [breakdownDraftItems, setBreakdownDraftItems] = useState<OrderItem[]>([]);
 
   const handleCheckout = () => {
@@ -146,15 +147,22 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setIsBreakdownModalOpen(true);
   };
 
-  const handleConfirmOrderFromBreakdown = (
+  const handleConfirmOrderFromBreakdown = async (
     finalItems: OrderItem[],
     deliveryTime: string,
     orderNoteText: string
   ) => {
-    setIsBreakdownModalOpen(false);
-    setCart({});
-    onPlaceOrder(finalItems, selectedSpot, deliveryTime, orderNoteText);
-    setActiveSubTab('tracking');
+    setIsSubmittingOrder(true);
+    try {
+      await onPlaceOrder(finalItems, selectedSpot, deliveryTime, orderNoteText);
+      setIsBreakdownModalOpen(false);
+      setCart({});
+      setActiveSubTab('tracking');
+    } catch (error) {
+      console.error('Error al registrar orden:', error);
+    } finally {
+      setIsSubmittingOrder(false);
+    }
   };
 
   const handleCallWaiterBuzzer = () => {
@@ -1154,6 +1162,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           items={breakdownDraftItems}
           bcvRate={bcvRate}
           initialDeliveryTime={orderDeliveryTime}
+          isSubmitting={isSubmittingOrder}
           onClose={() => setIsBreakdownModalOpen(false)}
           onConfirmOrder={handleConfirmOrderFromBreakdown}
         />

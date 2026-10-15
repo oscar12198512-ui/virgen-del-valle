@@ -29,6 +29,7 @@ export interface OrderBreakdownModalProps {
   initialDeliveryTime?: string;
   initialOrderNote?: string;
   tipPercent?: number;
+  isSubmitting?: boolean;
   onClose: () => void;
   onConfirmOrder: (
     finalItems: OrderItem[],
@@ -63,6 +64,7 @@ export const OrderBreakdownModal: React.FC<OrderBreakdownModalProps> = ({
   initialDeliveryTime = 'Ahora (~20 min)',
   initialOrderNote = '',
   tipPercent: initialTipPercent = role === 'excursion' ? 0 : 10,
+  isSubmitting = false,
   onClose,
   onConfirmOrder,
 }) => {
@@ -407,7 +409,8 @@ export const OrderBreakdownModal: React.FC<OrderBreakdownModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="h-12 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs transition-colors"
+              disabled={isSubmitting}
+              className="h-12 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 rounded-xl font-bold text-xs transition-colors"
             >
               Volver al Menú
             </button>
@@ -415,11 +418,20 @@ export const OrderBreakdownModal: React.FC<OrderBreakdownModalProps> = ({
             <button
               type="button"
               onClick={handleConfirm}
-              disabled={items.length === 0}
-              className="h-12 bg-[#002546] hover:bg-[#0d3b66] disabled:opacity-50 text-white rounded-xl font-black text-xs shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-[0.99] cursor-pointer"
+              disabled={items.length === 0 || isSubmitting}
+              className="h-12 bg-[#002546] hover:bg-[#0d3b66] disabled:opacity-60 text-white rounded-xl font-black text-xs shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-[0.99] cursor-pointer"
             >
-              <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
-              <span>Confirmar y Enviar a Cocina</span>
+              {isSubmitting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Enviando a Firebase...</span>
+                </>
+              ) : (
+                <>
+                  <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
+                  <span>Confirmar y Enviar a Cocina</span>
+                </>
+              )}
             </button>
           </div>
         </div>

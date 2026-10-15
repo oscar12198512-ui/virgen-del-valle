@@ -31,7 +31,7 @@ interface ExcursionsViewProps {
   onSendApproachingAlert: () => void;
   orders?: Order[];
   onUpdateOrderStatus?: (orderId: string, newStatus: any) => void;
-  onSendOrderToKitchen?: (newOrder: Order) => void;
+  onSendOrderToKitchen?: (newOrder: Order) => Promise<void> | void;
   onUpdateOrder?: (updatedOrder: Order) => void;
 }
 
@@ -153,6 +153,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
   };
 
   const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
 
   const handleOpenBreakdown = () => {
     if (orderItems.length === 0) {
@@ -164,13 +165,11 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
     setIsBreakdownModalOpen(true);
   };
 
-  const handleConfirmBreakdownOrder = (
+  const handleConfirmBreakdownOrder = async (
     finalItems: OrderItem[],
     deliveryTime: string,
     orderNoteText: string
   ) => {
-    setIsBreakdownModalOpen(false);
-
     if (!finalItems || finalItems.length === 0) {
       setNoticeMessage('La comanda debe contener al menos un plato.');
       setTimeout(() => setNoticeMessage(null), 3000);
@@ -213,20 +212,29 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
       elapsedSeconds: 0,
     };
 
-    if (onSendOrderToKitchen) {
-      onSendOrderToKitchen(excursionOrder);
-    }
-
-    // Limpiar el carrito de la excursión una vez enviada a cocina
-    setOrderItems([]);
+    setIsSubmittingOrder(true);
     try {
-      localStorage.removeItem('playa_buche_excursion_cart');
-    } catch {}
+      if (onSendOrderToKitchen) {
+        await onSendOrderToKitchen(excursionOrder);
+      }
 
-    soundService.playBell();
-    soundService.playFireAlert();
-    setNoticeMessage(`¡Comanda marítima ${newDisplayNumber} enviada a Cocina KDS con éxito!`);
-    setTimeout(() => setNoticeMessage(null), 5000);
+      setIsBreakdownModalOpen(false);
+
+      // Limpiar el carrito de la excursión una vez enviada a cocina
+      setOrderItems([]);
+      try {
+        localStorage.removeItem('playa_buche_excursion_cart');
+      } catch {}
+
+      soundService.playBell();
+      soundService.playFireAlert();
+      setNoticeMessage(`¡Comanda marítima ${newDisplayNumber} enviada a Cocina KDS con éxito!`);
+      setTimeout(() => setNoticeMessage(null), 5000);
+    } catch (error) {
+      console.error('Error al enviar comanda de excursión:', error);
+    } finally {
+      setIsSubmittingOrder(false);
+    }
   };
 
   const handleApproachingAlert = () => {
@@ -1207,6 +1215,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
           initialDeliveryTime={safeExcursion.estimatedServingTime}
           initialOrderNote={safeExcursion.orderNote}
           tipPercent={0}
+          isSubmitting={isSubmittingOrder}
           onClose={() => setIsBreakdownModalOpen(false)}
           onConfirmOrder={handleConfirmBreakdownOrder}
         />

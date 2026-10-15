@@ -866,13 +866,19 @@ export const App: React.FC = () => {
   }).length;
   const totalNotificationCount = alertOrdersCount + (isKitchenOrAdmin ? approachingAlertCount : 0);
 
-  const handleSendOrderToKitchen = (newOrder: Order) => {
-    setOrders((previous) => [newOrder, ...previous]);
+  const handleSendOrderToKitchen = async (newOrder: Order) => {
     soundService.playNewIncomingOrderAlert();
     if (isFirebaseConfigured()) {
-      pushOrderToFirestore(newOrder).catch((error) => {
-        console.warn('Error al enviar comanda a Firestore:', error);
-      });
+      try {
+        await saveOrderToFirestore(newOrder);
+        setOrders((previous) => [newOrder, ...previous]);
+      } catch (error: any) {
+        console.error('Error al enviar comanda a Firestore:', error);
+        alert('Error al enviar comanda a Firebase: ' + (error?.message || error));
+        throw error;
+      }
+    } else {
+      setOrders((previous) => [newOrder, ...previous]);
     }
   };
 
@@ -991,21 +997,24 @@ export const App: React.FC = () => {
       kitchenStep: 2,
     };
 
-    setClientActiveOrder(newOrder);
-    try {
-      const idKey = getClientOrderStorageKey(currentUser);
-      const dataKey = getClientOrderDataStorageKey(currentUser);
-      localStorage.setItem(idKey, newOrder.id);
-      localStorage.setItem(dataKey, JSON.stringify(newOrder));
-    } catch {}
-    soundService.playBell();
-
     if (isFirebaseConfigured()) {
-      setOrders((previous) => [newOrder, ...previous]);
-      pushOrderToFirestore(newOrder, orders).catch((error) => {
-        console.warn('No se pudo guardar la orden en Firestore:', error);
-      });
-      return;
+      try {
+        await saveOrderToFirestore(newOrder);
+        setOrders((previous) => [newOrder, ...previous]);
+        setClientActiveOrder(newOrder);
+        try {
+          const idKey = getClientOrderStorageKey(currentUser);
+          const dataKey = getClientOrderDataStorageKey(currentUser);
+          localStorage.setItem(idKey, newOrder.id);
+          localStorage.setItem(dataKey, JSON.stringify(newOrder));
+        } catch {}
+        soundService.playBell();
+        return;
+      } catch (error: any) {
+        console.error('Error al registrar pedido en Firebase:', error);
+        alert('Error al enviar la comanda a Firebase: ' + (error?.message || error));
+        throw error;
+      }
     }
 
     // Fallback REST API
@@ -1025,9 +1034,19 @@ export const App: React.FC = () => {
       } else {
         setOrders((previous) => [newOrder, ...previous]);
       }
+      setClientActiveOrder(newOrder);
+      try {
+        const idKey = getClientOrderStorageKey(currentUser);
+        const dataKey = getClientOrderDataStorageKey(currentUser);
+        localStorage.setItem(idKey, newOrder.id);
+        localStorage.setItem(dataKey, JSON.stringify(newOrder));
+      } catch {}
+      soundService.playBell();
     } catch (error) {
       console.warn('No se pudo registrar el pedido en el servidor.', error);
       setOrders((previous) => [newOrder, ...previous]);
+      setClientActiveOrder(newOrder);
+      soundService.playBell();
     }
   };
 
