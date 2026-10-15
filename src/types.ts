@@ -108,6 +108,8 @@ export interface Order {
   spotName: string;
   customerName: string;
   customerPhone?: string;
+  customerId?: string;
+  customerEmail?: string;
   waiterId?: string;
   waiterName?: string;
   items: OrderItem[];

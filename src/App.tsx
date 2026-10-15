@@ -70,6 +70,59 @@ const Splash: React.FC<{ label?: string }> = ({ label = 'Verificando sesión…'
   </div>
 );
 
+// Funciones de aislamiento de cuenta: Cada usuario ve exclusivamente sus propios pedidos
+export const isOrderOwnedByClient = (
+  order: Order | null | undefined,
+  user: User | null,
+  localStoredOrderId?: string | null
+): boolean => {
+  if (!order) return false;
+  const userEmail = (user?.email || '').toLowerCase().trim();
+  const userId = user?.id || '';
+
+  // 1. Si la orden tiene un email registrado:
+  if (order.customerEmail) {
+    const orderEmail = order.customerEmail.toLowerCase().trim();
+    // Solo pertenece si el usuario actual está logueado con ese MISMO email
+    return !!userEmail && userEmail === orderEmail;
+  }
+
+  // 2. Si la orden tiene un customerId o clientUserId registrado:
+  if (order.customerId || order.clientUserId) {
+    const orderOwnerId = order.customerId || order.clientUserId;
+    // Solo pertenece si el usuario actual tiene ese MISMO ID
+    return !!userId && userId === orderOwnerId;
+  }
+
+  // 3. Si la orden NO tiene ni email ni ID (pedido anónimo / invitado):
+  // Solo pertenece si coincide con el ID guardado específicamente en este dispositivo para invitado
+  if (localStoredOrderId && order.id === localStoredOrderId) {
+    return true;
+  }
+
+  return false;
+};
+
+export const getClientOrderStorageKey = (user: User | null): string => {
+  if (user?.email) {
+    return `playa_buche_client_active_order_id_${user.email.toLowerCase().trim()}`;
+  }
+  if (user?.id) {
+    return `playa_buche_client_active_order_id_${user.id}`;
+  }
+  return 'playa_buche_client_active_order_id_guest';
+};
+
+export const getClientOrderDataStorageKey = (user: User | null): string => {
+  if (user?.email) {
+    return `playa_buche_client_active_order_${user.email.toLowerCase().trim()}`;
+  }
+  if (user?.id) {
+    return `playa_buche_client_active_order_${user.id}`;
+  }
+  return 'playa_buche_client_active_order_guest';
+};
+
 export const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [sessionToken, setSessionToken] = useState<string>(
@@ -83,6 +136,10 @@ export const App: React.FC = () => {
       return null;
     }
   });
+  const currentUserRef = useRef<User | null>(currentUser);
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
   const [identityResolved, setIdentityResolved] = useState<boolean>(() => {
     try {
       return !!localStorage.getItem('playa_buche_user');
@@ -113,8 +170,21 @@ export const App: React.FC = () => {
   const [approachingAlertCount, setApproachingAlertCount] = useState<number>(0);
   const [clientActiveOrder, setClientActiveOrder] = useState<Order | null>(() => {
     try {
-      const saved = localStorage.getItem('playa_buche_client_active_order');
-      return saved ? JSON.parse(saved) : null;
+      const initialUser = (() => {
+        try {
+          const s = localStorage.getItem('playa_buche_user');
+          return s ? JSON.parse(s) : null;
+        } catch {
+          return null;
+        }
+      })();
+      const key = getClientOrderDataStorageKey(initialUser);
+      const saved = localStorage.getItem(key);
+      const parsed = saved ? JSON.parse(saved) : null;
+      if (parsed && isOrderOwnedByClient(parsed, initialUser, parsed.id)) {
+        return parsed;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -251,16 +321,35 @@ export const App: React.FC = () => {
           if (Array.isArray(state.spots) && state.spots.length) setSpots(state.spots);
           if (Array.isArray(state.orders)) {
             setOrders(state.orders);
+            const userNow = currentUserRef.current;
             setClientActiveOrder((prev) => {
-              const targetId = prev?.id || localStorage.getItem('playa_buche_client_active_order_id');
+              const idKey = getClientOrderStorageKey(userNow);
+              const dataKey = getClientOrderDataStorageKey(userNow);
+              const targetId = prev?.id || localStorage.getItem(idKey);
               if (targetId) {
-                const match = state.orders.find((o) => o.id === targetId);
+                const match = state.orders.find((o) => o.id === targetId && isOrderOwnedByClient(o, userNow, targetId));
                 if (match) {
                   try {
-                    localStorage.setItem('playa_buche_client_active_order', JSON.stringify(match));
+                    localStorage.setItem(dataKey, JSON.stringify(match));
                   } catch {}
                   return match;
                 }
+              }
+              // Si el usuario actual tiene una orden abierta pero prev no la tenía
+              if (userNow?.email || userNow?.id) {
+                const ownedOpenOrder = state.orders.find(
+                  (o) => isOrderOwnedByClient(o, userNow, null) && o.paymentStatus !== 'paid' && o.status !== 'cancelled'
+                );
+                if (ownedOpenOrder) {
+                  try {
+                    localStorage.setItem(dataKey, JSON.stringify(ownedOpenOrder));
+                  } catch {}
+                  return ownedOpenOrder;
+                }
+              }
+              // Si la comanda previa ya no pertenece a este usuario, descartarla
+              if (prev && !isOrderOwnedByClient(prev, userNow, targetId)) {
+                return null;
               }
               return prev;
             });
@@ -468,12 +557,17 @@ export const App: React.FC = () => {
             ? 'excursion'
             : 'waiter';
 
-        const isTargetUser =
+        const isClientOwner =
+          currentRole === 'client' &&
+          isOrderOwnedByClient(ord, currentUser, clientActiveOrder?.id);
+
+        const isStaff =
           currentRole === 'admin' ||
           currentRole === 'kitchen' ||
-          currentRole === targetRole;
+          (currentRole === 'waiter' && targetRole === 'waiter') ||
+          (currentRole === 'excursion' && targetRole === 'excursion');
 
-        if (isTargetUser) {
+        if (isClientOwner || isStaff) {
           soundService.playReadyPassAlert();
           soundService.buzzSmartBand();
 
@@ -505,18 +599,18 @@ export const App: React.FC = () => {
       }
 
       if (prev && prev.status !== 'delivered' && ord.status === 'delivered') {
-        const isClientTarget =
+        const isClientOwner =
           currentRole === 'client' &&
-          (ord.id === clientActiveOrder?.id || ord.spotId === selectedSpotId || ord.origin === 'client_qr');
+          isOrderOwnedByClient(ord, currentUser, clientActiveOrder?.id);
         const isStaff =
           currentRole === 'admin' || currentRole === 'kitchen' || currentRole === 'waiter';
 
-        if (isClientTarget || isStaff) {
+        if (isClientOwner || isStaff) {
           soundService.playSuccess();
           soundService.buzzSmartBand();
 
-          const title = isClientTarget ? '✨ ¡Comanda Servida en tu Toldo!' : `✅ ¡Comanda ${ord.displayNumber} Entregada!`;
-          const message = isClientTarget
+          const title = isClientOwner ? '✨ ¡Comanda Servida en tu Toldo!' : `✅ ¡Comanda ${ord.displayNumber} Entregada!`;
+          const message = isClientOwner
             ? `¡Buen provecho! Tu pedido ${ord.displayNumber} ha sido servido en ${ord.spotName}.`
             : `Mesonero entregó la comanda ${ord.displayNumber} para ${ord.spotName}.`;
 
@@ -535,23 +629,52 @@ export const App: React.FC = () => {
     });
 
     prevOrdersRef.current = orders;
-  }, [orders, currentRole, clientActiveOrder, selectedSpotId]);
+  }, [orders, currentRole, clientActiveOrder, currentUser]);
 
-  // Auto-enlazar comanda activa de toldo para comensal si aún no tiene una seleccionada
+  // Sincronizar comanda activa del comensal estrictamente por cuenta de usuario (email / id)
   useEffect(() => {
-    if (!clientActiveOrder && selectedSpotId && orders.length > 0) {
-      const match = orders.find(
-        (o) => o.spotId === selectedSpotId && o.paymentStatus !== 'paid' && o.status !== 'cancelled'
-      );
-      if (match) {
-        setClientActiveOrder(match);
-        try {
-          localStorage.setItem('playa_buche_client_active_order_id', match.id);
-          localStorage.setItem('playa_buche_client_active_order', JSON.stringify(match));
-        } catch {}
+    const idKey = getClientOrderStorageKey(currentUser);
+    const dataKey = getClientOrderDataStorageKey(currentUser);
+    const storedId = localStorage.getItem(idKey);
+
+    setClientActiveOrder((prev) => {
+      // 1. Si hay un pedido previo pero no le pertenece al usuario actual, descartarlo
+      if (prev && !isOrderOwnedByClient(prev, currentUser, storedId)) {
+        return null;
       }
-    }
-  }, [selectedSpotId, orders, clientActiveOrder]);
+
+      // 2. Si hay un ID guardado en este dispositivo para este usuario, buscarlo
+      if (storedId) {
+        const match = orders.find((o) => o.id === storedId && isOrderOwnedByClient(o, currentUser, storedId));
+        if (match) {
+          try {
+            localStorage.setItem(dataKey, JSON.stringify(match));
+          } catch {}
+          return match;
+        }
+      }
+
+      // 3. Si el usuario tiene email o ID registrado, buscar su orden activa en orders
+      if (currentUser?.email || currentUser?.id) {
+        const ownedOrder = orders.find(
+          (o) => isOrderOwnedByClient(o, currentUser, null) && o.paymentStatus !== 'paid' && o.status !== 'cancelled'
+        );
+        if (ownedOrder) {
+          try {
+            localStorage.setItem(dataKey, JSON.stringify(ownedOrder));
+          } catch {}
+          return ownedOrder;
+        }
+      }
+
+      // 4. Si el previo sigue siendo válido para este usuario, mantenerlo
+      if (prev && isOrderOwnedByClient(prev, currentUser, storedId)) {
+        return prev;
+      }
+
+      return null;
+    });
+  }, [currentUser, orders]);
 
   const handleAuthenticated = (user: User) => {
     const token = (user as User & { sessionToken?: string }).sessionToken || `token-${user.id}-${Date.now()}`;
@@ -605,9 +728,9 @@ export const App: React.FC = () => {
       const timing = getOrderDeliveryTiming(order, now);
       return timing.minutesRemaining <= 30 && timing.minutesRemaining > 0;
     }
-    // Clientes solo reciben notificación si su orden está lista
+    // Clientes solo reciben notificación si su orden propia está lista
     if (currentRole === 'client') {
-      return order.status === 'ready_pass' && (order.origin === 'client_qr' || order.spotId === selectedSpotId);
+      return order.status === 'ready_pass' && isOrderOwnedByClient(order, currentUser, clientActiveOrder?.id);
     }
     // Mesoneros solo reciben notificación si la comanda está lista en cocina
     if (currentRole === 'waiter') {
@@ -657,7 +780,8 @@ export const App: React.FC = () => {
       if (prev?.id === orderId) {
         const updated = nextOrders.find((o) => o.id === orderId) || prev;
         try {
-          localStorage.setItem('playa_buche_client_active_order', JSON.stringify(updated));
+          const dataKey = getClientOrderDataStorageKey(currentUser);
+          localStorage.setItem(dataKey, JSON.stringify(updated));
         } catch {}
         return updated;
       }
@@ -677,7 +801,8 @@ export const App: React.FC = () => {
     if (clientActiveOrder?.id === updatedOrder.id) {
       setClientActiveOrder(updatedOrder);
       try {
-        localStorage.setItem('playa_buche_client_active_order', JSON.stringify(updatedOrder));
+        const dataKey = getClientOrderDataStorageKey(currentUser);
+        localStorage.setItem(dataKey, JSON.stringify(updatedOrder));
       } catch {}
     }
     if (isFirebaseConfigured()) {
@@ -704,6 +829,9 @@ export const App: React.FC = () => {
   const handleClientPlaceOrder = async (items: OrderItem[], spot: ToldoSpot, requestedTime?: string) => {
     const subtotal = items.reduce((total, item) => total + item.quantity * item.unitPriceUsd, 0);
     const nowIso = new Date().toISOString();
+    const customerEmail = currentUser?.email ? currentUser.email.toLowerCase().trim() : undefined;
+    const customerId = currentUser?.id || `client-${Date.now()}`;
+
     const newOrder: Order = {
       id: `ord-client-${Date.now()}`,
       displayNumber: `#${Math.floor(200 + Math.random() * 800)}`,
@@ -711,6 +839,9 @@ export const App: React.FC = () => {
       spotId: spot.id,
       spotName: `${spot.name} • ${spot.typeDesc}`,
       customerName: currentUser?.name || 'Cliente',
+      customerId,
+      customerEmail,
+      clientUserId: currentUser?.id,
       items,
       subtotalUsd: subtotal,
       tipPercent: 0,
@@ -727,8 +858,10 @@ export const App: React.FC = () => {
 
     setClientActiveOrder(newOrder);
     try {
-      localStorage.setItem('playa_buche_client_active_order_id', newOrder.id);
-      localStorage.setItem('playa_buche_client_active_order', JSON.stringify(newOrder));
+      const idKey = getClientOrderStorageKey(currentUser);
+      const dataKey = getClientOrderDataStorageKey(currentUser);
+      localStorage.setItem(idKey, newOrder.id);
+      localStorage.setItem(dataKey, JSON.stringify(newOrder));
     } catch {}
     soundService.playBell();
 
