@@ -904,7 +904,12 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  const handleClientPlaceOrder = async (items: OrderItem[], spot: ToldoSpot, requestedTime?: string) => {
+  const handleClientPlaceOrder = async (
+    items: OrderItem[],
+    spot: ToldoSpot,
+    requestedTime?: string,
+    orderNote?: string
+  ) => {
     const subtotal = items.reduce((total, item) => total + item.quantity * item.unitPriceUsd, 0);
     const nowIso = new Date().toISOString();
     const customerEmail = currentUser?.email ? currentUser.email.toLowerCase().trim() : undefined;
@@ -931,6 +936,7 @@ export const App: React.FC = () => {
       createdAt: nowIso,
       updatedAt: nowIso,
       estimatedDeliveryTime: requestedTime || 'Ahora',
+      orderNote: orderNote?.trim() || undefined,
       kitchenStep: 2,
     };
 
@@ -1195,6 +1201,8 @@ export const App: React.FC = () => {
             onSendApproachingAlert={() => setApproachingAlertCount((previous) => previous + 1)}
             orders={orders}
             onUpdateOrderStatus={handleUpdateOrderStatus}
+            onSendOrderToKitchen={handleSendOrderToKitchen}
+            onUpdateOrder={handleUpdateOrder}
           />
         )}
 

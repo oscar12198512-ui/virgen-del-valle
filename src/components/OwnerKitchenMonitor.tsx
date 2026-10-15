@@ -17,6 +17,7 @@ import {
   Volume2,
   VolumeX,
   AlertTriangle,
+  AlertCircle,
   CheckCircle2,
   Search,
   ChevronDown,
@@ -806,6 +807,16 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
                       </div>
                     ))}
                   </div>
+
+                  {order.orderNote && (
+                    <div className="text-[11px] text-amber-900 font-semibold bg-amber-50 border border-amber-200 rounded-xl p-2 flex items-start gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold text-amber-950 uppercase text-[9px] block">Nota General / Alergias:</span>
+                        <span>{order.orderNote}</span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Quick Controls & Status Modification Bar */}
                   <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">

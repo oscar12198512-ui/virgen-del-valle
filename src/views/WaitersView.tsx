@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { ComandaEditorModal } from '../components/ComandaEditorModal';
 import { PreCuentaModal } from '../components/PreCuentaModal';
+import { OrderBreakdownModal } from '../components/OrderBreakdownModal';
 import { isOrderOwnedByWaiter } from '../App';
 
 interface WaitersViewProps {
@@ -176,12 +177,31 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
   const totalUsd = subtotalUsd + tipUsd;
   const totalBs = totalUsd * bcvRate;
 
-  const handleSubmitOrder = () => {
+  const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState<boolean>(false);
+
+  const handleOpenBreakdown = () => {
     if (orderItems.length === 0) {
       setValidationError('Agrega al menos un plato a la comanda antes de enviar a cocina.');
       setTimeout(() => setValidationError(null), 3500);
       return;
     }
+    setIsBreakdownModalOpen(true);
+  };
+
+  const handleConfirmBreakdownOrder = (
+    finalItems: OrderItem[],
+    deliveryTime: string,
+    orderNoteText: string,
+    finalTipPercent: number
+  ) => {
+    setIsBreakdownModalOpen(false);
+
+    const calculatedSubtotalUsd = finalItems.reduce(
+      (acc, i) => acc + (i.quantity || 1) * i.unitPriceUsd,
+      0
+    );
+    const calculatedTipUsd = (calculatedSubtotalUsd * finalTipPercent) / 100;
+    const calculatedTotalUsd = calculatedSubtotalUsd + calculatedTipUsd;
 
     const newOrder: Order = {
       id: 'ord-' + Date.now(),
@@ -192,18 +212,18 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
       customerName: 'Comensal ' + selectedSpot.number,
       waiterId: waiterUser.id,
       waiterName: waiterUser.name,
-      items: orderItems,
-      subtotalUsd,
-      tipPercent,
-      tipUsd,
-      totalUsd,
-      totalBs,
+      items: finalItems,
+      subtotalUsd: calculatedSubtotalUsd,
+      tipPercent: finalTipPercent,
+      tipUsd: calculatedTipUsd,
+      totalUsd: calculatedTotalUsd,
+      totalBs: calculatedTotalUsd * bcvRate,
       status: 'in_fire',
       paymentStatus: 'pending',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      estimatedDeliveryTime: selectedTiming,
-      orderNote: allergyNote ? `Alergias/Req: ${allergyNote}` : undefined,
+      estimatedDeliveryTime: deliveryTime || selectedTiming,
+      orderNote: orderNoteText || (allergyNote ? `Alergias/Req: ${allergyNote}` : undefined),
       kitchenStep: 2,
       elapsedSeconds: 15,
     };
@@ -213,6 +233,7 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
 
     // Reset drafting
     setOrderItems([]);
+    setAllergyNote('');
     setSendSuccessNotice(true);
     setTimeout(() => setSendSuccessNotice(false), 4000);
   };
@@ -954,12 +975,12 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
           </button>
 
           <button
-            onClick={handleSubmitOrder}
+            onClick={handleOpenBreakdown}
             disabled={orderItems.length === 0}
-            className="h-12 bg-[#002546] hover:bg-[#0d3b66] disabled:opacity-50 text-white rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-[0.99]"
+            className="h-12 bg-[#002546] hover:bg-[#0d3b66] disabled:opacity-50 text-white rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-[0.99] cursor-pointer"
           >
             <Send className="w-4 h-4 text-[#57d1fd]" />
-            <span>Enviar a Cocina</span>
+            <span>Desglosar y Enviar a Cocina</span>
           </button>
         </div>
       </div>
@@ -1199,6 +1220,22 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {isBreakdownModalOpen && (
+        <OrderBreakdownModal
+          isOpen={isBreakdownModalOpen}
+          role="waiter"
+          spotName={`${selectedSpot.name} • ${selectedSpot.typeDesc}`}
+          customerName={`Mesonero ${waiterUser.name}`}
+          items={orderItems}
+          bcvRate={bcvRate}
+          initialDeliveryTime={selectedTiming}
+          initialOrderNote={allergyNote}
+          tipPercent={tipPercent}
+          onClose={() => setIsBreakdownModalOpen(false)}
+          onConfirmOrder={handleConfirmBreakdownOrder}
+        />
       )}
     </div>
   );

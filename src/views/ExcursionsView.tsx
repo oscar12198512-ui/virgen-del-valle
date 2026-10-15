@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ExcursionPackage, MenuItem, Order, User } from '../types';
+import { ExcursionPackage, MenuItem, Order, OrderItem, User } from '../types';
 import { formatUsd, formatBsDirect } from '../utils/currencyFormatter';
 import { soundService } from '../services/soundService';
 import {
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { ComandaEditorModal } from '../components/ComandaEditorModal';
 import { CaptainVhfModal } from '../components/CaptainVhfModal';
+import { OrderBreakdownModal } from '../components/OrderBreakdownModal';
 import { isOrderOwnedByExcursion } from '../App';
 
 interface ExcursionsViewProps {
@@ -30,6 +31,8 @@ interface ExcursionsViewProps {
   onSendApproachingAlert: () => void;
   orders?: Order[];
   onUpdateOrderStatus?: (orderId: string, newStatus: any) => void;
+  onSendOrderToKitchen?: (newOrder: Order) => void;
+  onUpdateOrder?: (updatedOrder: Order) => void;
 }
 
 export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
@@ -41,6 +44,8 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
   onSendApproachingAlert,
   orders = [],
   onUpdateOrderStatus,
+  onSendOrderToKitchen,
+  onUpdateOrder,
 }) => {
   const userKey = currentUser?.email ? currentUser.email.toLowerCase().trim() : currentUser?.id || 'default';
   const defaultTourCode = currentUser?.boatName ? `TOUR-${currentUser.boatName.toUpperCase().replace(/\s+/g, '-').slice(0, 10)}` : 'TOUR-BUCHE-882';
@@ -132,6 +137,71 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
     onUpdateExcursion(updatedExcursion);
     setIsEditingComandaModalOpen(false);
     setNoticeMessage('Comanda de excursión y hora de entrega sincronizadas con la cocina.');
+    setTimeout(() => setNoticeMessage(null), 4000);
+  };
+
+  const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState(false);
+
+  const handleConfirmBreakdownOrder = (
+    finalItems: OrderItem[],
+    deliveryTime: string,
+    orderNoteText: string
+  ) => {
+    setIsBreakdownModalOpen(false);
+
+    const calculatedSubtotal = finalItems.reduce(
+      (acc, i) => acc + (i.quantity || 0) * (i.unitPriceUsd || 0),
+      0
+    );
+
+    const updatedExcursion: ExcursionPackage = {
+      ...safeExcursion,
+      items: finalItems,
+      subtotalUsd: calculatedSubtotal,
+      totalUsd: calculatedSubtotal,
+      estimatedServingTime: deliveryTime || safeExcursion.estimatedServingTime,
+      orderNote: orderNoteText || safeExcursion.orderNote,
+      tipPercent: 0,
+    };
+    onUpdateExcursion(updatedExcursion);
+
+    const excursionOrder: Order = {
+      id: safeExcursion.id,
+      displayNumber: safeExcursion.tourCode,
+      origin: 'excursion',
+      spotId: 'dock-buche-central',
+      spotName: `Muelle Central • ${safeExcursion.boatName} (${safeExcursion.passengersCount} pax)`,
+      customerName: `${safeExcursion.captainName} (${safeExcursion.braceletsColor})`,
+      customerId: currentUser?.id,
+      customerEmail: currentUser?.email,
+      clientUserId: currentUser?.id,
+      waiterId: 'coord-maritima',
+      waiterName: 'Capitanía Buche',
+      items: finalItems,
+      subtotalUsd: calculatedSubtotal,
+      tipPercent: 0,
+      tipUsd: 0,
+      totalUsd: calculatedSubtotal,
+      totalBs: calculatedSubtotal * bcvRate,
+      status: 'in_fire',
+      paymentStatus: safeExcursion.paymentStatus,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      estimatedDeliveryTime: deliveryTime || safeExcursion.estimatedServingTime,
+      orderNote: orderNoteText || safeExcursion.orderNote,
+      kitchenStep: 2,
+      elapsedSeconds: 300,
+    };
+
+    const existingMatch = orders.find((o) => o.id === safeExcursion.id);
+    if (existingMatch && onUpdateOrder) {
+      onUpdateOrder(excursionOrder);
+    } else if (onSendOrderToKitchen) {
+      onSendOrderToKitchen(excursionOrder);
+    }
+
+    soundService.playBell();
+    setNoticeMessage('¡Raciones de excursión desglosadas y enviadas a Cocina KDS con éxito!');
     setTimeout(() => setNoticeMessage(null), 4000);
   };
 
@@ -369,15 +439,25 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
             />
           </div>
 
-          {/* Quick Button to Open Full Comanda Editor Modal */}
-          <button
-            type="button"
-            onClick={() => setIsEditingComandaModalOpen(true)}
-            className="w-full mt-1 py-2 bg-[#57d1fd] hover:bg-[#80deea] text-[#002546] rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-[0.99]"
-          >
-            <Edit3 className="w-4 h-4 text-[#002546]" />
-            <span>Editar Comanda Completa (Anexar, quitar platos, hora o nota)</span>
-          </button>
+          {/* Quick Buttons for Excursion Comanda: Breakdown / Edit */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => setIsBreakdownModalOpen(true)}
+              className="py-2.5 px-3 bg-gradient-to-r from-amber-400 to-[#57d1fd] hover:from-amber-300 hover:to-sky-300 text-[#002546] rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-[0.99] cursor-pointer"
+            >
+              <Flame className="w-4 h-4 text-[#002546] animate-pulse" />
+              <span>Desglosar y Enviar a Cocina</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsEditingComandaModalOpen(true)}
+              className="py-2.5 px-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-white/20 transition-all active:scale-[0.99] cursor-pointer"
+            >
+              <Edit3 className="w-4 h-4 text-[#57d1fd]" />
+              <span>Editar o Anexar Platos</span>
+            </button>
+          </div>
         </div>
 
         {/* KDS Progress Bar */}
@@ -625,6 +705,17 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
                 </div>
               );
             })
+          )}
+
+          {safeExcursion.items.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setIsBreakdownModalOpen(true)}
+              className="w-full py-2.5 bg-[#002546] hover:bg-[#0d3b66] text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-all active:scale-[0.99] cursor-pointer mt-2"
+            >
+              <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
+              <span>Desglosar Raciones y Enviar a Cocina</span>
+            </button>
           )}
         </div>
       </div>
@@ -947,6 +1038,22 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
           onClose={() => setIsEditingComandaModalOpen(false)}
           onSaveOrder={handleSaveFromEditor}
           hideTipPercent={true}
+        />
+      )}
+
+      {isBreakdownModalOpen && (
+        <OrderBreakdownModal
+          isOpen={isBreakdownModalOpen}
+          role="excursion"
+          spotName={`Muelle Central • ${safeExcursion.boatName} (${safeExcursion.passengersCount} pax)`}
+          customerName={safeExcursion.captainName}
+          items={safeExcursion.items}
+          bcvRate={bcvRate}
+          initialDeliveryTime={safeExcursion.estimatedServingTime}
+          initialOrderNote={safeExcursion.orderNote}
+          tipPercent={0}
+          onClose={() => setIsBreakdownModalOpen(false)}
+          onConfirmOrder={handleConfirmBreakdownOrder}
         />
       )}
     </div>

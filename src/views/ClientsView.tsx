@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { ComandaEditorModal } from '../components/ComandaEditorModal';
 import { PreCuentaModal } from '../components/PreCuentaModal';
+import { OrderBreakdownModal } from '../components/OrderBreakdownModal';
 
 interface ClientsViewProps {
   spots: ToldoSpot[];
@@ -36,7 +37,7 @@ interface ClientsViewProps {
   bcvRate: number;
   onSelectSpot: (spotId: string) => void;
   selectedSpotId: string;
-  onPlaceOrder: (items: OrderItem[], spot: ToldoSpot, requestedTime?: string) => void;
+  onPlaceOrder: (items: OrderItem[], spot: ToldoSpot, requestedTime?: string, orderNote?: string) => void;
   onOpenPaymentModal: (order: Order) => void;
   onOpenFiscalInvoice?: () => void;
   onUpdateOrder?: (updatedOrder: Order) => void;
@@ -117,6 +118,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   const cartItemsCount: number = (Object.values(cart) as number[]).reduce((a: number, b: number) => a + b, 0);
 
+  const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState<boolean>(false);
+  const [breakdownDraftItems, setBreakdownDraftItems] = useState<OrderItem[]>([]);
+
   const handleCheckout = () => {
     if (cartItemsCount === 0) {
       setExtraNotice('Tu carrito está vacío. Elige tus platos playeros favoritos.');
@@ -134,10 +138,22 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           name: m ? m.name : 'Plato Playero',
           quantity: qty,
           unitPriceUsd: m ? m.priceUsd : 0,
+          specialNote: '',
         };
       });
 
-    onPlaceOrder(items, selectedSpot, orderDeliveryTime);
+    setBreakdownDraftItems(items);
+    setIsBreakdownModalOpen(true);
+  };
+
+  const handleConfirmOrderFromBreakdown = (
+    finalItems: OrderItem[],
+    deliveryTime: string,
+    orderNoteText: string
+  ) => {
+    setIsBreakdownModalOpen(false);
+    setCart({});
+    onPlaceOrder(finalItems, selectedSpot, deliveryTime, orderNoteText);
     setActiveSubTab('tracking');
   };
 
@@ -1126,6 +1142,20 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           }
           bcvRate={bcvRate}
           onClose={() => setPreCuentaModalOpen(false)}
+        />
+      )}
+
+      {isBreakdownModalOpen && (
+        <OrderBreakdownModal
+          isOpen={isBreakdownModalOpen}
+          role="client"
+          spotName={`${selectedSpot.name} • ${selectedSpot.typeDesc}`}
+          customerName={clientName}
+          items={breakdownDraftItems}
+          bcvRate={bcvRate}
+          initialDeliveryTime={orderDeliveryTime}
+          onClose={() => setIsBreakdownModalOpen(false)}
+          onConfirmOrder={handleConfirmOrderFromBreakdown}
         />
       )}
     </div>

@@ -912,6 +912,19 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
                     })}
                   </div>
 
+                  {/* Order General Note / Alergias / Contornos Especiales */}
+                  {order.orderNote && (
+                    <div className="bg-amber-50 border border-amber-300 text-amber-950 p-2.5 rounded-xl text-xs flex items-start gap-2 shadow-2xs font-medium">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <span className="font-extrabold text-amber-900 block text-[10px] uppercase tracking-wider">
+                          Nota General de la Comanda:
+                        </span>
+                        <span className="text-[11px] leading-snug">{order.orderNote}</span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Delivery Schedule Control & Testing */}
                   <div className="bg-gray-50 border border-gray-200 rounded-xl p-2.5 space-y-2 text-xs">
                     <div className="flex items-center justify-between">

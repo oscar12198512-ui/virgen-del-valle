@@ -610,6 +610,38 @@ export const ComandaEditorModal: React.FC<ComandaEditorModalProps> = ({
               rows={3}
               className="w-full text-xs bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-[#002546] focus:outline-none focus:ring-2 focus:ring-[#006782] resize-none"
             />
+            <div className="flex flex-wrap gap-1">
+              {[
+                'Sin tostones',
+                'Sin ensalada',
+                'Tostones extra',
+                'Salsa aparte',
+                'Sin sal',
+                'Bien dorado',
+                'Poco picante',
+                'Para llevar',
+              ].map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => {
+                    const tagStr = `[${tag}]`;
+                    if (tempItemNote.includes(tagStr)) {
+                      setTempItemNote(tempItemNote.replace(tagStr, '').trim());
+                    } else {
+                      setTempItemNote(tempItemNote ? `${tempItemNote} ${tagStr}` : tagStr);
+                    }
+                  }}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition-all ${
+                    tempItemNote.includes(`[${tag}]`)
+                      ? 'bg-amber-500 text-white border-amber-600'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200'
+                  }`}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
             <div className="flex gap-2">
               <button
                 type="button"
