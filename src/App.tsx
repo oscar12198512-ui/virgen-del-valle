@@ -52,7 +52,9 @@ import {
   saveAppState,
   getAppStateOnce,
   pushOrderToFirestore,
+  saveOrderToFirestore,
   updateOrderStatusInFirestore,
+  subscribeToOrders,
   subscribeToUsers,
   fetchUsersFromFirestore
 } from './services/firebaseDb';
@@ -381,20 +383,18 @@ export const App: React.FC = () => {
   // Sincronización de datos (Firebase Firestore Real-Time / Fallback REST API)
   useEffect(() => {
     if (isFirebaseConfigured()) {
-      // Suscripción en tiempo real con Firestore para estado operativo
-      const unsubState = subscribeToAppState(
-        (state) => {
-          if (Array.isArray(state.menuItems) && state.menuItems.length) setMenuItems(state.menuItems);
-          if (Array.isArray(state.spots) && state.spots.length) setSpots(state.spots);
-          if (Array.isArray(state.orders)) {
-            setOrders(state.orders);
+      // Suscripción en tiempo real con Firestore para colección orders (pedidos instantáneos)
+      const unsubOrders = subscribeToOrders(
+        (firestoreOrders) => {
+          if (Array.isArray(firestoreOrders)) {
+            setOrders(firestoreOrders);
             const userNow = currentUserRef.current;
             setClientActiveOrder((prev) => {
               const idKey = getClientOrderStorageKey(userNow);
               const dataKey = getClientOrderDataStorageKey(userNow);
               const targetId = prev?.id || localStorage.getItem(idKey);
               if (targetId) {
-                const match = state.orders.find((o) => o.id === targetId && isOrderOwnedByClient(o, userNow, targetId));
+                const match = firestoreOrders.find((o) => o.id === targetId && isOrderOwnedByClient(o, userNow, targetId));
                 if (match) {
                   try {
                     localStorage.setItem(dataKey, JSON.stringify(match));
@@ -404,7 +404,7 @@ export const App: React.FC = () => {
               }
               // Si el usuario actual tiene una orden abierta pero prev no la tenía
               if (userNow?.email || userNow?.id) {
-                const ownedOpenOrder = state.orders.find(
+                const ownedOpenOrder = firestoreOrders.find(
                   (o) => isOrderOwnedByClient(o, userNow, null) && o.paymentStatus !== 'verified' && !o.isSettled && o.status !== 'cancelled'
                 );
                 if (ownedOpenOrder) {
@@ -419,6 +419,25 @@ export const App: React.FC = () => {
                 return null;
               }
               return prev;
+            });
+          }
+        },
+        (error) => {
+          console.warn('Error al sincronizar colección orders:', error);
+        }
+      );
+
+      // Suscripción en tiempo real con Firestore para estado operativo (menú, mesas, tasas)
+      const unsubState = subscribeToAppState(
+        (state) => {
+          if (Array.isArray(state.menuItems) && state.menuItems.length) setMenuItems(state.menuItems);
+          if (Array.isArray(state.spots) && state.spots.length) setSpots(state.spots);
+          if (Array.isArray(state.orders) && state.orders.length) {
+            // Migrar órdenes históricas de app_state a la colección orders
+            state.orders.forEach((legacyOrder) => {
+              if (legacyOrder && legacyOrder.id) {
+                saveOrderToFirestore(legacyOrder).catch(() => {});
+              }
             });
           }
           if (state.excursion && state.excursion.id) setExcursion(state.excursion);
@@ -452,6 +471,7 @@ export const App: React.FC = () => {
       });
 
       return () => {
+        unsubOrders();
         unsubState();
         unsubUsers();
       };
@@ -532,10 +552,10 @@ export const App: React.FC = () => {
     };
   }, [API_BASE, sessionToken, signedInRole, authHeaders, clearSession]);
 
-  // Persistencia de cambios de personal operativo (Firestore / REST)
+  // Persistencia de cambios de personal operativo (Firestore / REST) - Excluye orders que se sincronizan atómicamente
   useEffect(() => {
     if (!isDbHydrated || !signedInRole || !STAFF_ROLES.includes(signedInRole)) return;
-    const payload = { menuItems, spots, orders, excursion, bankConfig, waitersClosings, drawerBills, bcvRate, giveaway };
+    const payload = { menuItems, spots, excursion, bankConfig, waitersClosings, drawerBills, bcvRate, giveaway };
     
     if (isFirebaseConfigured()) {
       const timer = window.setTimeout(async () => {
@@ -555,7 +575,7 @@ export const App: React.FC = () => {
         const response = await fetch(API_BASE + '/api/state', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({ state: payload }),
+          body: JSON.stringify({ state: { ...payload, orders } }),
           signal: controller.signal,
         });
         if (!response.ok) throw new Error('state save failed');
@@ -568,8 +588,8 @@ export const App: React.FC = () => {
       controller.abort();
     };
   }, [
-    API_BASE, sessionToken, isDbHydrated, signedInRole, menuItems, spots, orders,
-    excursion, bankConfig, waitersClosings, drawerBills, bcvRate, authHeaders,
+    API_BASE, sessionToken, isDbHydrated, signedInRole, menuItems, spots,
+    excursion, bankConfig, waitersClosings, drawerBills, bcvRate, giveaway, authHeaders, orders
   ]);
 
   useEffect(() => {
@@ -825,6 +845,11 @@ export const App: React.FC = () => {
   const handleSendOrderToKitchen = (newOrder: Order) => {
     setOrders((previous) => [newOrder, ...previous]);
     soundService.playNewIncomingOrderAlert();
+    if (isFirebaseConfigured()) {
+      pushOrderToFirestore(newOrder).catch((error) => {
+        console.warn('Error al enviar comanda a Firestore:', error);
+      });
+    }
   };
 
   const handleUpdateOrderStatus = (orderId: string, newStatus: OrderStatus) => {
@@ -836,6 +861,7 @@ export const App: React.FC = () => {
       soundService.playSuccess();
     }
     const updatedAt = new Date().toISOString();
+    let updatedOrderObj: Order | undefined;
     const nextOrders = orders.map((order) => {
       if (order.id !== orderId) return order;
       const updates: Partial<Order> = { status: newStatus, updatedAt };
@@ -850,7 +876,8 @@ export const App: React.FC = () => {
               ? Math.max(1, Math.round(order.elapsedSeconds / 60))
               : 1;
       }
-      return { ...order, ...updates };
+      updatedOrderObj = { ...order, ...updates };
+      return updatedOrderObj;
     });
     setOrders(nextOrders);
 
@@ -866,8 +893,8 @@ export const App: React.FC = () => {
       return prev;
     });
 
-    if (isFirebaseConfigured()) {
-      updateOrderStatusInFirestore(orderId, newStatus, nextOrders).catch((error) => {
+    if (isFirebaseConfigured() && updatedOrderObj) {
+      saveOrderToFirestore(updatedOrderObj).catch((error) => {
         console.warn('Error al actualizar estado en Firestore:', error);
       });
     }
@@ -884,7 +911,7 @@ export const App: React.FC = () => {
       } catch {}
     }
     if (isFirebaseConfigured()) {
-      updateOrderStatusInFirestore(updatedOrder.id, updatedOrder.status, nextOrders).catch((error) => {
+      saveOrderToFirestore(updatedOrder).catch((error) => {
         console.warn('Error al actualizar orden en Firestore:', error);
       });
     }
@@ -986,21 +1013,23 @@ export const App: React.FC = () => {
     method: PaymentMethodKey,
     details?: { receivedAmount?: number; changeAmount?: number }
   ) => {
+    let paidOrderObj: Order | undefined;
     const applyPayment = (order: Order): Order => {
       if (order.id !== orderId) return order;
-      return {
+      paidOrderObj = {
         ...order,
         paymentStatus: 'verified' as const,
         paymentMethod: method,
         paymentReference: reference,
         isSettled: true,
       };
+      return paidOrderObj;
     };
 
     setOrders((previous) => {
       const nextOrders = previous.map(applyPayment);
-      if (isFirebaseConfigured()) {
-        saveAppState({ orders: nextOrders }).catch((error) => {
+      if (paidOrderObj && isFirebaseConfigured()) {
+        saveOrderToFirestore(paidOrderObj).catch((error) => {
           console.warn('Error al sincronizar orden cobrada en Firestore:', error);
         });
       }

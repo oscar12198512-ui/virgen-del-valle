@@ -98,54 +98,90 @@ export async function getAppStateOnce(): Promise<AppStateData | null> {
   return null;
 }
 
+// -------------------------------------------------------------
+// GESTIÓN DE ÓRDENES Y COMANDAS EN TIEMPO REAL (COLECCIÓN DEDICADA)
+// -------------------------------------------------------------
+const ORDERS_COLLECTION = collection(db, 'orders');
+
 /**
- * Agrega o actualiza una orden directamente en Firestore de forma instantánea.
+ * Escucha cambios en tiempo real en la colección 'orders'.
+ * Garantiza que todo pedido creado por un cliente, mesonero o excursión
+ * aparezca de inmediato en la pantalla del dueño y cocina sin condiciones de carrera.
  */
-export async function pushOrderToFirestore(newOrder: Order, currentOrders?: Order[]): Promise<void> {
-  const orderDocRef = doc(db, 'orders', newOrder.id);
-  const saveIndividual = setDoc(orderDocRef, {
-    ...newOrder,
-    updatedAt: serverTimestamp()
-  }, { merge: true });
-
-  let list = currentOrders;
-  if (!list) {
-    const snapshot = await getDoc(STATE_DOC_REF);
-    list = snapshot.exists() ? (snapshot.data() as AppStateData).orders || [] : [];
-  }
-
-  const existingIdx = list.findIndex((o) => o.id === newOrder.id);
-  let updatedOrders: Order[];
-  if (existingIdx >= 0) {
-    updatedOrders = [...list];
-    updatedOrders[existingIdx] = newOrder;
-  } else {
-    updatedOrders = [newOrder, ...list];
-  }
-
-  const saveState = saveAppState({ orders: updatedOrders });
-  await Promise.all([saveIndividual, saveState]);
+export function subscribeToOrders(
+  onUpdate: (orders: Order[]) => void,
+  onError?: (error: Error) => void
+): Unsubscribe {
+  return onSnapshot(
+    ORDERS_COLLECTION,
+    (snapshot) => {
+      const ordersList: Order[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        ordersList.push({ id: docSnap.id, ...data } as Order);
+      });
+      // Ordenar por fecha de creación descendente (más recientes primero)
+      ordersList.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
+      onUpdate(ordersList);
+    },
+    (error) => {
+      console.error('Error al escuchar colección orders en Firestore:', error);
+      if (onError) onError(error);
+    }
+  );
 }
 
 /**
- * Actualiza el estado de una comanda inmediatamente en Firestore (sin esperas ni rebotes).
+ * Guarda o actualiza una orden de forma atómica en Firestore.
+ * Notifica de inmediato a todos los dispositivos conectados.
+ */
+export async function saveOrderToFirestore(order: Order): Promise<void> {
+  const orderDocRef = doc(db, 'orders', order.id);
+  const cleanOrder = {
+    ...order,
+    updatedAt: new Date().toISOString()
+  };
+  await setDoc(orderDocRef, cleanOrder, { merge: true });
+}
+
+/**
+ * Agrega una nueva comanda atómicamente a Firestore.
+ */
+export async function pushOrderToFirestore(newOrder: Order, _currentOrders?: Order[]): Promise<void> {
+  await saveOrderToFirestore(newOrder);
+}
+
+/**
+ * Actualiza el estado de una comanda inmediatamente en Firestore.
  */
 export async function updateOrderStatusInFirestore(
   orderId: string,
   newStatus: string,
-  allOrders: Order[]
+  _allOrders?: Order[],
+  additionalUpdates?: Partial<Order>
 ): Promise<void> {
   const orderDocRef = doc(db, 'orders', orderId);
-  const updateIndividual = setDoc(orderDocRef, {
-    status: newStatus,
-    updatedAt: serverTimestamp()
-  }, { merge: true });
+  await setDoc(
+    orderDocRef,
+    {
+      status: newStatus,
+      updatedAt: new Date().toISOString(),
+      ...(additionalUpdates || {})
+    },
+    { merge: true }
+  );
+}
 
-  const nowIso = new Date().toISOString();
-  const updatedOrders = allOrders.map((o) => (o.id === orderId ? { ...o, status: newStatus as any, updatedAt: nowIso } : o));
-  const updateState = saveAppState({ orders: updatedOrders });
-
-  await Promise.all([updateIndividual, updateState]);
+/**
+ * Elimina una orden de Firestore.
+ */
+export async function deleteOrderFromFirestore(orderId: string): Promise<void> {
+  const orderDocRef = doc(db, 'orders', orderId);
+  await deleteDoc(orderDocRef);
 }
 
 
