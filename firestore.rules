@@ -1,64 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Funciones de ayuda de autenticación y roles
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    function getUserRole() {
-      return get(/databases/$(database)/documents/app_users/$(request.auth.uid)).data.role;
-    }
-    
-    function isStaff() {
-      return isAuthenticated() && (
-        getUserRole() in ['admin', 'waiter', 'kitchen', 'excursion']
-      );
-    }
-    
-    function isAdmin() {
-      return isAuthenticated() && getUserRole() == 'admin';
-    }
-
-    // 1. Estado Global Unificado (Menú, Spots, Excursión, Configuración)
-    // Lectura y escritura en tiempo real para sincronización inmediata entre dispositivos
-    match /app_state/{docId} {
-      allow read, write: if true;
-    }
-    
-    // 2. Catálogo de Menú y Platos
-    match /menu_items/{itemId} {
-      allow read, write: if true;
-    }
-    
-    // 3. Ubicaciones, Toldos y Puntos de Playa
-    match /spots/{spotId} {
-      allow read, write: if true;
-    }
-    
-    // 4. Excursiones y Grupos Turísticos
-    match /excursions/{excursionId} {
-      allow read, write: if true;
-    }
-    
-    // 5. Gestión de Personal, Mesoneros y Roles
-    match /app_users/{userId} {
-      allow read, create, update: if true;
-      allow delete: if isAdmin() || isStaff();
-    }
-    
-    // 6. Tasas de Cambio y Parámetros Financieros
-    match /settings/{settingId} {
-      allow read, write: if true;
-    }
-    
-    // 7. Colección de Pedidos y Comandas (Órdenes en Tiempo Real)
-    // Lectura, creación y actualización sin barreras para clientes QR, mesoneros, excursiones y cocina
-    match /orders/{orderId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if isAdmin() || isStaff();
+    match /{document=**} {
+      // Permite leer y escribir solo si el usuario inició sesión en la aplicación
+      allow read, write: if request.auth != null;
     }
   }
 }

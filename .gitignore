@@ -18,3 +18,15 @@ signing/
 /*.aab
 !public/playa-buche.apk
 .firebase/
+
+# Archivos comprimidos e instalables del restaurante
+*.apk
+playa-buche.apk
+playa-buche-release.apk
+
+# Registros de errores viejos
+firebase-debug.log
+
+# Carpetas de compilación local
+dist/
+dev-dist/
