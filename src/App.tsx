@@ -222,6 +222,7 @@ export const App: React.FC = () => {
   });
   const [isDbHydrated, setIsDbHydrated] = useState(false);
   const dbHydratedRef = useRef(false);
+  const lastReceivedStateHashRef = useRef<string>('');
 
   const [bcvRate, setBcvRate] = useState<number>(() => {
     try {
@@ -434,16 +435,19 @@ export const App: React.FC = () => {
       // Suscripción en tiempo real con Firestore para estado operativo (menú, mesas, tasas)
       const unsubState = subscribeToAppState(
         (state) => {
+          // Registrar hash entrante para evitar bucles ping-pong de re-escritura
+          const incomingHash = JSON.stringify({
+            menuItems: state.menuItems?.length || 0,
+            spots: state.spots?.length || 0,
+            bcvRate: state.bcvRate || 0,
+            excursion: state.excursion?.id || '',
+            bankConfig: state.bankConfig?.pagoMovilPhone || '',
+            giveaway: state.giveaway?.status || ''
+          });
+          lastReceivedStateHashRef.current = incomingHash;
+
           if (Array.isArray(state.menuItems) && state.menuItems.length) setMenuItems(state.menuItems);
           if (Array.isArray(state.spots) && state.spots.length) setSpots(state.spots);
-          if (Array.isArray(state.orders) && state.orders.length) {
-            // Migrar órdenes históricas de app_state a la colección orders
-            state.orders.forEach((legacyOrder) => {
-              if (legacyOrder && legacyOrder.id) {
-                saveOrderToFirestore(legacyOrder).catch(() => {});
-              }
-            });
-          }
           if (state.excursion && state.excursion.id) setExcursion(state.excursion);
           if (state.bankConfig) setBankConfig(state.bankConfig);
           if (Array.isArray(state.waitersClosings)) setWaitersClosings(state.waitersClosings);
@@ -556,44 +560,37 @@ export const App: React.FC = () => {
     };
   }, [API_BASE, sessionToken, signedInRole, authHeaders, clearSession]);
 
-  // Persistencia de cambios de personal operativo (Firestore / REST) - Excluye orders que se sincronizan atómicamente
+  // Persistencia de cambios de personal operativo (Firestore) - Excluye orders que se sincronizan atómicamente
   useEffect(() => {
     if (!isDbHydrated || !signedInRole || !STAFF_ROLES.includes(signedInRole)) return;
+    const currentHash = JSON.stringify({
+      menuItems: menuItems.length,
+      spots: spots.length,
+      bcvRate,
+      excursion: excursion.id,
+      bankConfig: bankConfig.pagoMovilPhone,
+      giveaway: giveaway?.status || ''
+    });
+
+    // Si el estado local es idéntico al recién recibido de Firestore, no re-escribir
+    if (currentHash === lastReceivedStateHashRef.current) return;
+
     const payload = { menuItems, spots, excursion, bankConfig, waitersClosings, drawerBills, bcvRate, giveaway };
     
     if (isFirebaseConfigured()) {
       const timer = window.setTimeout(async () => {
         try {
+          lastReceivedStateHashRef.current = currentHash;
           await saveAppState(payload);
         } catch (error) {
           console.warn('No se pudo guardar el estado en Firestore.', error);
         }
-      }, 600);
+      }, 800);
       return () => window.clearTimeout(timer);
     }
-
-    if (!API_BASE || !sessionToken) return;
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      try {
-        const response = await fetch(API_BASE + '/api/state', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({ state: { ...payload, orders } }),
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error('state save failed');
-      } catch (error) {
-        if ((error as Error).name !== 'AbortError') console.warn('No se pudo guardar el estado.', error);
-      }
-    }, 600);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
   }, [
-    API_BASE, sessionToken, isDbHydrated, signedInRole, menuItems, spots,
-    excursion, bankConfig, waitersClosings, drawerBills, bcvRate, giveaway, authHeaders, orders
+    isDbHydrated, signedInRole, menuItems, spots,
+    excursion, bankConfig, waitersClosings, drawerBills, bcvRate, giveaway
   ]);
 
   useEffect(() => {

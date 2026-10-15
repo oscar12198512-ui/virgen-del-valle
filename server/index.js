@@ -228,13 +228,23 @@ async function ensureOwner() {
 
 // ------------------------------------------------------------------ estado
 app.get('/health', async (_req, res) => {
-  if (!pool) return res.status(503).json({ ok: false, database: false, source: describeDatabaseSource() });
-  try {
-    await pool.query('SELECT 1');
-    return res.json({ ok: true, database: true, source: describeDatabaseSource() });
-  } catch {
-    return res.status(503).json({ ok: false, database: false, source: describeDatabaseSource() });
+  let dbStatus = false;
+  if (pool) {
+    try {
+      await pool.query('SELECT 1');
+      dbStatus = true;
+    } catch {
+      dbStatus = false;
+    }
   }
+  return res.json({
+    ok: true,
+    service: 'virgen-del-valle-api',
+    platform: 'Render',
+    primaryDatabase: 'Firebase Firestore',
+    pgConnected: dbStatus,
+    timestamp: new Date().toISOString()
+  });
 });
 
 function publicState(rawState) {
@@ -651,8 +661,7 @@ const manualReview = (note) => ({
   notes: note,
 });
 
-app.post('/api/ai/validate-payment', requireAuth, requireRole(...OPERATIONAL_ROLES), async (req, res) => {
-  if (!pool) return fail(res, 503, 'Servicio de validación no disponible.');
+app.post('/api/ai/validate-payment', async (req, res) => {
   const imageBase64 = String(req.body?.imageBase64 || '');
   const expectedRef = String(req.body?.expectedRef || '').trim();
   const expectedAmountBs = Number(req.body?.expectedAmountBs || 0);

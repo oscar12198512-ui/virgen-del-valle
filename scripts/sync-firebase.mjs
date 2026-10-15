@@ -58,30 +58,7 @@ async function sync() {
   };
 
   await setDoc(mainDocRef, updatedMain, { merge: true });
-  console.log(`✅ app_state/main actualizado con ${INITIAL_MENU_ITEMS.length} platos del menú y sorteo activo.`);
-
-  // 3. Sincronizar colección menu_items individual
-  for (const item of INITIAL_MENU_ITEMS) {
-    await setDoc(doc(db, 'menu_items', item.id), {
-      ...item,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-  }
-  console.log(`✅ Colección menu_items sincronizada (${INITIAL_MENU_ITEMS.length} documentos).`);
-
-  // 4. Sincronizar colección spots
-  for (const spot of INITIAL_SPOTS) {
-    await setDoc(doc(db, 'spots', spot.id), {
-      ...spot,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-  }
-  console.log(`✅ Colección spots sincronizada (${INITIAL_SPOTS.length} ubicaciones).`);
-
-  // 5. Limpiar plato obsoleto si existía (m-paella)
-  try {
-    await deleteDoc(doc(db, 'menu_items', 'm-paella'));
-  } catch {}
+  console.log(`✅ app_state/main actualizado atómicamente con ${INITIAL_MENU_ITEMS.length} platos del menú y sorteo activo.`);
 
   console.log('🎉 ¡Base de datos de Firebase Firestore 100% sincronizada con éxito!');
   process.exit(0);
