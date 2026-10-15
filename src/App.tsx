@@ -123,6 +123,73 @@ export const getClientOrderDataStorageKey = (user: User | null): string => {
   return 'playa_buche_client_active_order_guest';
 };
 
+// Aislamiento estricto de comandas para Mesoneros: cada mesonero solo ve sus propias comandas
+export const isOrderOwnedByWaiter = (
+  order: Order | null | undefined,
+  user: User | null,
+  spots?: ToldoSpot[]
+): boolean => {
+  if (!order || !user) return false;
+  const userId = user.id || '';
+  const userEmail = (user.email || '').toLowerCase().trim();
+  const userName = (user.name || '').toLowerCase().trim();
+
+  // 1. Si la orden fue tomada directamente por este mesonero (por ID o email)
+  if (order.waiterId) {
+    if (userId && order.waiterId === userId) return true;
+    if (userEmail && order.waiterId.toLowerCase().trim() === userEmail) return true;
+  }
+
+  // 2. Si la orden tiene el nombre exacto de este mesonero
+  if (order.waiterName && userName && order.waiterName.toLowerCase().trim() === userName) {
+    return true;
+  }
+
+  // 3. Si es comanda de cliente (QR) en un toldo asignado a este mesonero
+  if (order.origin === 'client_qr' && spots && spots.length > 0) {
+    const spot = spots.find((s) => s.id === order.spotId);
+    if (spot) {
+      if (spot.assignedWaiterId && userId && spot.assignedWaiterId === userId) return true;
+      if (spot.assignedWaiterName && userName && spot.assignedWaiterName.toLowerCase().trim() === userName) return true;
+    }
+  }
+
+  return false;
+};
+
+// Aislamiento estricto de paquetes y comandas de Excursión: cada agencia o lancha solo ve la suya
+export const isOrderOwnedByExcursion = (
+  order: Order | null | undefined,
+  user: User | null,
+  excursion?: ExcursionPackage | null
+): boolean => {
+  if (!order || !user) return false;
+  if (order.origin !== 'excursion') return false;
+
+  const userId = user.id || '';
+  const userEmail = (user.email || '').toLowerCase().trim();
+  const userBoat = (user.boatName || '').toLowerCase().trim();
+  const userName = (user.name || '').toLowerCase().trim();
+
+  // 1. Coincidencia por ID de usuario / cliente
+  if (userId && (order.customerId === userId || order.clientUserId === userId)) return true;
+
+  // 2. Coincidencia por email
+  if (userEmail && order.customerEmail && order.customerEmail.toLowerCase().trim() === userEmail) return true;
+
+  // 3. Coincidencia por paquete de excursión específico
+  if (excursion) {
+    if (order.id === excursion.id) return true;
+    if (excursion.tourCode && order.displayNumber === excursion.tourCode) return true;
+  }
+
+  // 4. Coincidencia por nombre de embarcación o agencia
+  if (userBoat && order.spotName && order.spotName.toLowerCase().includes(userBoat)) return true;
+  if (userName && order.customerName && order.customerName.toLowerCase().includes(userName)) return true;
+
+  return false;
+};
+
 export const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [sessionToken, setSessionToken] = useState<string>(
@@ -338,7 +405,7 @@ export const App: React.FC = () => {
               // Si el usuario actual tiene una orden abierta pero prev no la tenía
               if (userNow?.email || userNow?.id) {
                 const ownedOpenOrder = state.orders.find(
-                  (o) => isOrderOwnedByClient(o, userNow, null) && o.paymentStatus !== 'paid' && o.status !== 'cancelled'
+                  (o) => isOrderOwnedByClient(o, userNow, null) && o.paymentStatus !== 'verified' && !o.isSettled && o.status !== 'cancelled'
                 );
                 if (ownedOpenOrder) {
                   try {
@@ -561,13 +628,19 @@ export const App: React.FC = () => {
           currentRole === 'client' &&
           isOrderOwnedByClient(ord, currentUser, clientActiveOrder?.id);
 
+        const isWaiterOwner =
+          currentRole === 'waiter' &&
+          isOrderOwnedByWaiter(ord, currentUser, spots);
+
+        const isExcursionOwner =
+          currentRole === 'excursion' &&
+          isOrderOwnedByExcursion(ord, currentUser, excursion);
+
         const isStaff =
           currentRole === 'admin' ||
-          currentRole === 'kitchen' ||
-          (currentRole === 'waiter' && targetRole === 'waiter') ||
-          (currentRole === 'excursion' && targetRole === 'excursion');
+          currentRole === 'kitchen';
 
-        if (isClientOwner || isStaff) {
+        if (isClientOwner || isWaiterOwner || isExcursionOwner || isStaff) {
           soundService.playReadyPassAlert();
           soundService.buzzSmartBand();
 
@@ -602,10 +675,15 @@ export const App: React.FC = () => {
         const isClientOwner =
           currentRole === 'client' &&
           isOrderOwnedByClient(ord, currentUser, clientActiveOrder?.id);
-        const isStaff =
-          currentRole === 'admin' || currentRole === 'kitchen' || currentRole === 'waiter';
 
-        if (isClientOwner || isStaff) {
+        const isWaiterOwner =
+          currentRole === 'waiter' &&
+          isOrderOwnedByWaiter(ord, currentUser, spots);
+
+        const isStaff =
+          currentRole === 'admin' || currentRole === 'kitchen';
+
+        if (isClientOwner || isWaiterOwner || isStaff) {
           soundService.playSuccess();
           soundService.buzzSmartBand();
 
@@ -657,7 +735,7 @@ export const App: React.FC = () => {
       // 3. Si el usuario tiene email o ID registrado, buscar su orden activa en orders
       if (currentUser?.email || currentUser?.id) {
         const ownedOrder = orders.find(
-          (o) => isOrderOwnedByClient(o, currentUser, null) && o.paymentStatus !== 'paid' && o.status !== 'cancelled'
+          (o) => isOrderOwnedByClient(o, currentUser, null) && o.paymentStatus !== 'verified' && !o.isSettled && o.status !== 'cancelled'
         );
         if (ownedOrder) {
           try {
@@ -734,11 +812,11 @@ export const App: React.FC = () => {
     }
     // Mesoneros solo reciben notificación si la comanda está lista en cocina
     if (currentRole === 'waiter') {
-      return order.status === 'ready_pass' && order.origin !== 'excursion';
+      return order.status === 'ready_pass' && isOrderOwnedByWaiter(order, currentUser, spots);
     }
     // Excursiones solo reciben notificación si su orden marítima está lista
     if (currentRole === 'excursion') {
-      return order.status === 'ready_pass' && order.origin === 'excursion';
+      return order.status === 'ready_pass' && isOrderOwnedByExcursion(order, currentUser, excursion);
     }
     return false;
   }).length;
@@ -1109,6 +1187,7 @@ export const App: React.FC = () => {
 
         {currentRole === 'excursion' && (
           <ExcursionsView
+            currentUser={currentUser}
             excursion={excursion}
             bcvRate={bcvRate}
             menuItems={menuItems}

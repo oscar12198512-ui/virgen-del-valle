@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { ComandaEditorModal } from '../components/ComandaEditorModal';
 import { PreCuentaModal } from '../components/PreCuentaModal';
+import { isOrderOwnedByWaiter } from '../App';
 
 interface WaitersViewProps {
   waiterUser: User;
@@ -233,8 +234,9 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
     return matchesCat && matchesSearch;
   });
 
-  // Waiter recent orders
-  const recentOrders = orders.filter((o) => o.waiterId === waiterUser.id || o.origin === 'waiter_pos').slice(0, 4);
+  // Waiter recent orders (aislados estrictamente para este mesonero y sus toldos asignados)
+  const recentOrders = orders.filter((o) => isOrderOwnedByWaiter(o, waiterUser, spots)).slice(0, 10);
+  const waiterReadyPassOrders = orders.filter((o) => o.status === 'ready_pass' && isOrderOwnedByWaiter(o, waiterUser, spots));
 
   return (
     <div className={`flex flex-col gap-4 w-full max-w-lg mx-auto pb-28 pt-2 px-3 overflow-x-hidden transition-colors ${
@@ -277,8 +279,8 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
         </div>
       </div>
 
-      {/* Alerta de Comandas Listas para Retirar en Cocina (Mesonero) */}
-      {orders.filter((o) => o.status === 'ready_pass').length > 0 && (
+      {/* Alerta de Comandas Listas para Retirar en Cocina (Solo de este Mesonero) */}
+      {waiterReadyPassOrders.length > 0 && (
         <div className="bg-emerald-50 border-2 border-emerald-400 text-emerald-950 p-3.5 rounded-2xl shadow-md space-y-2 animate-bounce-subtle">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -290,7 +292,7 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
                   ¡Comanda Lista en Pase de Cocina!
                 </h4>
                 <p className="text-[11px] text-emerald-800">
-                  {orders.filter((o) => o.status === 'ready_pass').length} comanda(s) listas para retirar y servir.
+                  {waiterReadyPassOrders.length} comanda(s) tuyas listas para retirar y servir.
                 </p>
               </div>
             </div>
@@ -300,9 +302,7 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
           </div>
 
           <div className="space-y-1.5 pt-1 border-t border-emerald-200/60">
-            {orders
-              .filter((o) => o.status === 'ready_pass')
-              .map((readyOrd) => (
+            {waiterReadyPassOrders.map((readyOrd) => (
                 <div
                   key={readyOrd.id}
                   className="bg-white/90 p-2.5 rounded-xl border border-emerald-300 flex items-center justify-between gap-2 shadow-2xs"
@@ -982,7 +982,7 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
             </p>
           ) : (
             recentOrders.map((ord) => {
-              const isPaid = ord.paymentStatus === 'verified' || ord.paymentStatus === 'paid';
+              const isPaid = ord.paymentStatus === 'verified' || Boolean(ord.isSettled);
               return (
                 <div
                   key={ord.id}

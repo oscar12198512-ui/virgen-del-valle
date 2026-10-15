@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ExcursionPackage, MenuItem, Order } from '../types';
+import { ExcursionPackage, MenuItem, Order, User } from '../types';
 import { formatUsd, formatBsDirect } from '../utils/currencyFormatter';
 import { soundService } from '../services/soundService';
 import {
@@ -19,8 +19,10 @@ import {
 } from 'lucide-react';
 import { ComandaEditorModal } from '../components/ComandaEditorModal';
 import { CaptainVhfModal } from '../components/CaptainVhfModal';
+import { isOrderOwnedByExcursion } from '../App';
 
 interface ExcursionsViewProps {
+  currentUser?: User | null;
   excursion: ExcursionPackage;
   bcvRate: number;
   menuItems: MenuItem[];
@@ -31,6 +33,7 @@ interface ExcursionsViewProps {
 }
 
 export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
+  currentUser,
   excursion,
   bcvRate,
   menuItems,
@@ -39,13 +42,16 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
   orders = [],
   onUpdateOrderStatus,
 }) => {
+  const userKey = currentUser?.email ? currentUser.email.toLowerCase().trim() : currentUser?.id || 'default';
+  const defaultTourCode = currentUser?.boatName ? `TOUR-${currentUser.boatName.toUpperCase().replace(/\s+/g, '-').slice(0, 10)}` : 'TOUR-BUCHE-882';
+
   const safeExcursion: ExcursionPackage = {
-    id: excursion?.id || 'exc-morrocoy-01',
-    tourCode: excursion?.tourCode || 'TOUR-BUCHE-882',
-    boatName: excursion?.boatName || 'Doña Delia VIP',
-    captainName: excursion?.captainName || 'Capitán Manuel Díaz',
+    id: excursion?.id || `exc-${userKey}`,
+    tourCode: excursion?.tourCode || defaultTourCode,
+    boatName: excursion?.boatName || currentUser?.boatName || 'Doña Delia VIP',
+    captainName: excursion?.captainName || currentUser?.name || 'Capitán Manuel Díaz',
     passengersCount: excursion?.passengersCount || 18,
-    agencyName: excursion?.agencyName || 'Morrocoy & Buche Tours C.A.',
+    agencyName: excursion?.agencyName || currentUser?.boatName || 'Morrocoy & Buche Tours C.A.',
     braceletsColor: excursion?.braceletsColor || 'Verde Neón VIP',
     menuIncluded: excursion?.menuIncluded || 'Almuerzo Marinero Pargo + Bebida + Toldo',
     departureTime: excursion?.departureTime || '10:30 AM',
@@ -89,6 +95,9 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
     spotId: 'dock-buche-central',
     spotName: `Muelle Central • ${safeExcursion.boatName} (${safeExcursion.passengersCount} pax)`,
     customerName: `${safeExcursion.captainName} (${safeExcursion.braceletsColor})`,
+    customerId: currentUser?.id,
+    customerEmail: currentUser?.email,
+    clientUserId: currentUser?.id,
     waiterId: 'coord-maritima',
     waiterName: 'Capitanía Buche',
     items: safeItems,
@@ -106,6 +115,10 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
     kitchenStep: 2,
     elapsedSeconds: 300,
   };
+
+  const myExcursionOrders = orders.filter((o) =>
+    isOrderOwnedByExcursion(o, currentUser ?? null, safeExcursion)
+  );
 
   const handleSaveFromEditor = (updatedOrder: Order) => {
     const updatedExcursion: ExcursionPackage = {
@@ -193,8 +206,8 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
         </div>
       </div>
 
-      {/* Alerta de Comanda Marítima Lista en Cocina */}
-      {orders.filter((o) => o.origin === 'excursion' && o.status === 'ready_pass').length > 0 && (
+      {/* Alerta de Comanda Marítima Lista en Cocina (Solo de esta Excursión) */}
+      {myExcursionOrders.filter((o) => o.status === 'ready_pass').length > 0 && (
         <div className="bg-emerald-50 border-2 border-emerald-400 text-emerald-950 p-3.5 rounded-2xl shadow-md space-y-2 animate-bounce-subtle">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -206,7 +219,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
                   ¡Raciones de Excursión Listas en Cocina!
                 </h4>
                 <p className="text-[11px] text-emerald-800">
-                  Cocina preparó las raciones marítimas para embarcar o servir a los pasajeros.
+                  Cocina preparó las raciones marítimas de {safeExcursion.boatName} para embarcar o servir a los pasajeros.
                 </p>
               </div>
             </div>
@@ -222,7 +235,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
             {onUpdateOrderStatus && (
               <button
                 onClick={() => {
-                  const excOrder = orders.find((o) => o.origin === 'excursion' && o.status === 'ready_pass');
+                  const excOrder = myExcursionOrders.find((o) => o.status === 'ready_pass');
                   if (excOrder) {
                     onUpdateOrderStatus(excOrder.id, 'delivered');
                     soundService.playSuccess();
