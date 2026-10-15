@@ -86,8 +86,26 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
   const [activeCategory, setActiveCategory] = useState<string>('Todo');
   const [showVisualCatalog, setShowVisualCatalog] = useState<boolean>(true);
 
-  const safeItems = safeExcursion.items;
-  const subtotal = safeItems.reduce((acc, i) => acc + (i.quantity || 0) * (i.unitPriceUsd || 0), 0);
+  // Carrito y raciones de la comanda de excursión en estado reactivo persistente
+  const [orderItems, setOrderItems] = useState<OrderItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('playa_buche_excursion_cart');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return Array.isArray(excursion?.items) ? excursion.items : [];
+  });
+
+  // Guardar en almacenamiento local cada vez que cambia para que nunca se pierda
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('playa_buche_excursion_cart', JSON.stringify(orderItems));
+    } catch {}
+  }, [orderItems]);
+
+  const subtotal = orderItems.reduce((acc, i) => acc + (i.quantity || 0) * (i.unitPriceUsd || 0), 0);
   // Las facturas de excursiones no cobran ningún porcentaje (0% propina / recargo)
   const totalUsd = subtotal;
   const totalBs = totalUsd * bcvRate;
@@ -105,7 +123,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
     clientUserId: currentUser?.id,
     waiterId: 'coord-maritima',
     waiterName: 'Capitanía Buche',
-    items: safeItems,
+    items: orderItems,
     subtotalUsd: subtotal,
     tipPercent: 0,
     tipUsd: 0,
@@ -118,29 +136,33 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
     estimatedDeliveryTime: safeExcursion.estimatedServingTime,
     orderNote: safeExcursion.orderNote || 'Coordinar con atraque de lancha en muelle central',
     kitchenStep: 2,
-    elapsedSeconds: 300,
+    elapsedSeconds: 0,
   };
 
   const myExcursionOrders = orders.filter((o) =>
-    isOrderOwnedByExcursion(o, currentUser ?? null, safeExcursion)
+    currentUser?.role === 'admin'
+      ? o.origin === 'excursion'
+      : isOrderOwnedByExcursion(o, currentUser ?? null, safeExcursion)
   );
 
   const handleSaveFromEditor = (updatedOrder: Order) => {
-    const updatedExcursion: ExcursionPackage = {
-      ...safeExcursion,
-      items: updatedOrder.items,
-      subtotalUsd: updatedOrder.subtotalUsd,
-      estimatedServingTime: updatedOrder.estimatedDeliveryTime || safeExcursion.estimatedServingTime,
-      orderNote: updatedOrder.orderNote,
-      tipPercent: 0,
-    };
-    onUpdateExcursion(updatedExcursion);
+    setOrderItems(updatedOrder.items);
     setIsEditingComandaModalOpen(false);
-    setNoticeMessage('Comanda de excursión y hora de entrega sincronizadas con la cocina.');
-    setTimeout(() => setNoticeMessage(null), 4000);
+    setNoticeMessage('Comanda de excursión actualizada con éxito.');
+    setTimeout(() => setNoticeMessage(null), 3500);
   };
 
   const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState(false);
+
+  const handleOpenBreakdown = () => {
+    if (orderItems.length === 0) {
+      setNoticeMessage('Por favor añade al menos un plato o ración del catálogo para enviar el pedido a cocina.');
+      setShowAddDishModal(true);
+      setTimeout(() => setNoticeMessage(null), 4000);
+      return;
+    }
+    setIsBreakdownModalOpen(true);
+  };
 
   const handleConfirmBreakdownOrder = (
     finalItems: OrderItem[],
@@ -149,25 +171,23 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
   ) => {
     setIsBreakdownModalOpen(false);
 
+    if (!finalItems || finalItems.length === 0) {
+      setNoticeMessage('La comanda debe contener al menos un plato.');
+      setTimeout(() => setNoticeMessage(null), 3000);
+      return;
+    }
+
     const calculatedSubtotal = finalItems.reduce(
       (acc, i) => acc + (i.quantity || 0) * (i.unitPriceUsd || 0),
       0
     );
 
-    const updatedExcursion: ExcursionPackage = {
-      ...safeExcursion,
-      items: finalItems,
-      subtotalUsd: calculatedSubtotal,
-      totalUsd: calculatedSubtotal,
-      estimatedServingTime: deliveryTime || safeExcursion.estimatedServingTime,
-      orderNote: orderNoteText || safeExcursion.orderNote,
-      tipPercent: 0,
-    };
-    onUpdateExcursion(updatedExcursion);
+    const newOrderId = `ord-exc-${Date.now()}`;
+    const newDisplayNumber = safeExcursion.tourCode || `#EXC-${Math.floor(100 + Math.random() * 900)}`;
 
     const excursionOrder: Order = {
-      id: safeExcursion.id,
-      displayNumber: safeExcursion.tourCode,
+      id: newOrderId,
+      displayNumber: newDisplayNumber,
       origin: 'excursion',
       spotId: 'dock-buche-central',
       spotName: `Muelle Central • ${safeExcursion.boatName} (${safeExcursion.passengersCount} pax)`,
@@ -184,25 +204,29 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
       totalUsd: calculatedSubtotal,
       totalBs: calculatedSubtotal * bcvRate,
       status: 'in_fire',
-      paymentStatus: safeExcursion.paymentStatus,
+      paymentStatus: safeExcursion.paymentStatus || 'pending',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       estimatedDeliveryTime: deliveryTime || safeExcursion.estimatedServingTime,
       orderNote: orderNoteText || safeExcursion.orderNote,
       kitchenStep: 2,
-      elapsedSeconds: 300,
+      elapsedSeconds: 0,
     };
 
-    const existingMatch = orders.find((o) => o.id === safeExcursion.id);
-    if (existingMatch && onUpdateOrder) {
-      onUpdateOrder(excursionOrder);
-    } else if (onSendOrderToKitchen) {
+    if (onSendOrderToKitchen) {
       onSendOrderToKitchen(excursionOrder);
     }
 
+    // Limpiar el carrito de la excursión una vez enviada a cocina
+    setOrderItems([]);
+    try {
+      localStorage.removeItem('playa_buche_excursion_cart');
+    } catch {}
+
     soundService.playBell();
-    setNoticeMessage('¡Raciones de excursión desglosadas y enviadas a Cocina KDS con éxito!');
-    setTimeout(() => setNoticeMessage(null), 4000);
+    soundService.playFireAlert();
+    setNoticeMessage(`¡Comanda marítima ${newDisplayNumber} enviada a Cocina KDS con éxito!`);
+    setTimeout(() => setNoticeMessage(null), 5000);
   };
 
   const handleApproachingAlert = () => {
@@ -218,15 +242,11 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
   };
 
   const handleUpdateQty = (itemId: string, delta: number) => {
-    const updatedItems = safeExcursion.items
-      .map((item) => (item.id === itemId ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item))
-      .filter((item) => item.quantity > 0);
-
-    onUpdateExcursion({
-      ...safeExcursion,
-      items: updatedItems,
-      subtotalUsd: updatedItems.reduce((acc, i) => acc + i.quantity * i.unitPriceUsd, 0),
-    });
+    setOrderItems((prev) =>
+      prev
+        .map((item) => (item.id === itemId ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item))
+        .filter((item) => item.quantity > 0)
+    );
   };
 
   // Menú exclusivo filtrado para Excursiones (excluye platos exclusivos de mesoneros)
@@ -236,23 +256,35 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
 
   const handleAddDish = (menuItem: MenuItem) => {
     const finalPrice = menuItem.priceExcursionUsd ?? menuItem.priceUsd;
-    const newItem = {
-      id: 'exc-item-' + Date.now(),
-      menuItemId: menuItem.id,
-      name: menuItem.name,
-      quantity: 1,
-      unitPriceUsd: finalPrice,
-      imageUrl: menuItem.imageUrl,
-      specialNote: 'Tarifa Excursión • Agregado en aproximación marítima',
-    };
-    const updated = [...safeExcursion.items, newItem];
-    onUpdateExcursion({
-      ...safeExcursion,
-      items: updated,
-      subtotalUsd: updated.reduce((acc, i) => acc + i.quantity * i.unitPriceUsd, 0),
+    setOrderItems((prev) => {
+      const existingIdx = prev.findIndex(
+        (i) => i.menuItemId === menuItem.id || i.name.toLowerCase() === menuItem.name.toLowerCase()
+      );
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        next[existingIdx] = {
+          ...next[existingIdx],
+          quantity: (next[existingIdx].quantity || 1) + 1,
+        };
+        return next;
+      }
+      return [
+        ...prev,
+        {
+          id: 'exc-item-' + Date.now() + Math.random().toString(36).slice(2, 6),
+          menuItemId: menuItem.id,
+          name: menuItem.name,
+          quantity: 1,
+          unitPriceUsd: finalPrice,
+          imageUrl: menuItem.imageUrl,
+          specialNote: '',
+        },
+      ];
     });
     setShowAddDishModal(false);
     soundService.playFireAlert();
+    setNoticeMessage(`¡${menuItem.name} añadido a la comanda!`);
+    setTimeout(() => setNoticeMessage(null), 3000);
   };
 
   return (
@@ -443,11 +475,11 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
             <button
               type="button"
-              onClick={() => setIsBreakdownModalOpen(true)}
+              onClick={handleOpenBreakdown}
               className="py-2.5 px-3 bg-gradient-to-r from-amber-400 to-[#57d1fd] hover:from-amber-300 hover:to-sky-300 text-[#002546] rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-[0.99] cursor-pointer"
             >
               <Flame className="w-4 h-4 text-[#002546] animate-pulse" />
-              <span>Desglosar y Enviar a Cocina</span>
+              <span>Desglosar y Enviar a Cocina ({orderItems.reduce((acc, i) => acc + (i.quantity || 0), 0)})</span>
             </button>
             <button
               type="button"
@@ -617,32 +649,41 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
         )}
       </div>
 
-      {/* Platos Confirmados List */}
+      {/* Platos Confirmados / En Comanda */}
       <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm space-y-3">
         <div className="flex justify-between items-center pb-2 border-b border-gray-100">
           <div>
             <h3 className="text-xs font-bold text-[#002546] uppercase tracking-wider">
-              Platos Confirmados
+              Platos de la Comanda
             </h3>
             <span className="text-[11px] text-[#006782] font-semibold">
-              Grupo Morrocoy & Mochima
+              {safeExcursion.tourCode} • {orderItems.reduce((acc, i) => acc + (i.quantity || 0), 0)} raciones seleccionadas
             </span>
           </div>
           <button
             onClick={() => setShowAddDishModal(true)}
-            className="px-2.5 py-1.5 bg-[#eff4ff] hover:bg-[#dce9ff] text-[#006782] rounded-lg text-xs font-bold flex items-center gap-1"
+            className="px-2.5 py-1.5 bg-[#eff4ff] hover:bg-[#dce9ff] text-[#006782] rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" /> Añadir Plato
           </button>
         </div>
 
         <div className="space-y-3">
-          {safeExcursion.items.length === 0 ? (
-            <p className="text-gray-400 italic text-center py-4 text-xs">
-              Aún no hay platos agregados para esta excursión. Usa el botón "+ Añadir Plato" o selecciona del catálogo arriba.
-            </p>
+          {orderItems.length === 0 ? (
+            <div className="text-center py-6 px-4 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+              <span className="text-2xl block mb-1">📋</span>
+              <p className="text-gray-500 font-bold text-xs">Aún no hay platos en esta comanda de excursión</p>
+              <p className="text-gray-400 text-[11px] mt-0.5">Selecciona platos del catálogo visual arriba o toca "+ Añadir Plato".</p>
+              <button
+                type="button"
+                onClick={() => setShowAddDishModal(true)}
+                className="mt-3 px-4 py-2 bg-[#002546] text-[#57d1fd] text-xs font-bold rounded-xl shadow-xs hover:bg-[#003b5f] transition-all cursor-pointer"
+              >
+                + Explorar Menú Excursiones
+              </button>
+            </div>
           ) : (
-            safeExcursion.items.map((item) => {
+            orderItems.map((item) => {
               const menuItem = menuItems.find(
                 (m) => m.id === item.menuItemId || m.name.toLowerCase() === item.name.toLowerCase()
               );
@@ -682,16 +723,18 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
                     <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-2 py-0.5 shrink-0">
                       <button
                         onClick={() => handleUpdateQty(item.id, -1)}
-                        className="p-1 hover:text-rose-600"
+                        className="p-1 hover:text-rose-600 cursor-pointer"
+                        title="Restar"
                       >
-                        <Minus className="w-3 h-3" />
+                        <Minus className="w-3.5 h-3.5" />
                       </button>
                       <span className="text-xs font-bold min-w-4 text-center">{item.quantity}</span>
                       <button
                         onClick={() => handleUpdateQty(item.id, 1)}
-                        className="p-1 hover:text-[#006782]"
+                        className="p-1 hover:text-[#006782] cursor-pointer"
+                        title="Sumar"
                       >
-                        <Plus className="w-3 h-3" />
+                        <Plus className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -707,18 +750,108 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
             })
           )}
 
-          {safeExcursion.items.length > 0 && (
+          {orderItems.length > 0 && (
             <button
               type="button"
-              onClick={() => setIsBreakdownModalOpen(true)}
-              className="w-full py-2.5 bg-[#002546] hover:bg-[#0d3b66] text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-all active:scale-[0.99] cursor-pointer mt-2"
+              onClick={handleOpenBreakdown}
+              className="w-full py-3 bg-[#002546] hover:bg-[#0d3b66] text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.99] cursor-pointer mt-2"
             >
               <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
-              <span>Desglosar Raciones y Enviar a Cocina</span>
+              <span>Desglosar Raciones y Enviar a Cocina ({orderItems.reduce((acc, i) => acc + (i.quantity || 0), 0)} platos)</span>
             </button>
           )}
         </div>
       </div>
+
+      {/* Comandas Marítimas de la Excursión en Cocina KDS */}
+      {myExcursionOrders.length > 0 && (
+        <div className="bg-white rounded-2xl p-4 border border-sky-200 shadow-sm space-y-3">
+          <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+            <div>
+              <h3 className="text-xs font-bold text-[#002546] uppercase tracking-wider flex items-center gap-1.5">
+                <Flame className="w-4 h-4 text-amber-500 animate-pulse" />
+                <span>Comandas en Cocina ({myExcursionOrders.length})</span>
+              </h3>
+              <p className="text-[11px] text-gray-500">
+                Órdenes enviadas a cocina para este grupo y muelle
+              </p>
+            </div>
+            <span className="text-[10px] font-bold bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full">
+              En tiempo real
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {myExcursionOrders.map((ord) => {
+              const statusColors: Record<string, string> = {
+                pending: 'bg-amber-100 text-amber-800 border-amber-300',
+                in_fire: 'bg-orange-100 text-orange-800 border-orange-300',
+                ready: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+                delivered: 'bg-blue-100 text-blue-800 border-blue-300',
+                cancelled: 'bg-rose-100 text-rose-800 border-rose-300',
+              };
+              const statusLabels: Record<string, string> = {
+                pending: 'En Cola KDS',
+                in_fire: 'En Fogón / Preparando',
+                ready: '¡Listo para Servir!',
+                delivered: 'Entregado en Muelle',
+                cancelled: 'Cancelado',
+              };
+
+              return (
+                <div
+                  key={ord.id}
+                  className="p-3 rounded-xl border border-gray-200 bg-[#fbfcfe] space-y-2"
+                >
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-black text-[#002546] flex items-center gap-1">
+                      <span>🚤</span> {ord.displayNumber || ord.id}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                        statusColors[ord.status] || 'bg-gray-100 text-gray-700 border-gray-300'
+                      }`}
+                    >
+                      {statusLabels[ord.status] || ord.status}
+                    </span>
+                  </div>
+
+                  <div className="text-[11px] text-gray-600 divide-y divide-gray-100">
+                    {ord.items.map((it, idx) => (
+                      <div key={idx} className="py-1 flex justify-between items-start">
+                        <div>
+                          <span className="font-bold text-[#002546]">
+                            {it.quantity}x {it.name}
+                          </span>
+                          {it.specialNote && (
+                            <p className="text-[10px] text-sky-800 italic ml-2">
+                              • Nota: {it.specialNote}
+                            </p>
+                          )}
+                        </div>
+                        <span className="font-bold text-gray-700">
+                          {formatUsd((it.unitPriceUsd || 0) * (it.quantity || 1))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex justify-between items-center pt-2 border-t border-gray-100 text-xs">
+                    <span className="text-[10px] text-gray-500">
+                      Total: <strong className="text-[#002546]">{formatUsd(ord.totalUsd)}</strong> ({ord.totalBs ? ord.totalBs.toFixed(0) : (ord.totalUsd * bcvRate).toFixed(0)} Bs.)
+                    </span>
+                    {ord.estimatedDeliveryTime && (
+                      <span className="text-[10px] font-semibold text-[#006782] bg-sky-50 px-2 py-0.5 rounded-md">
+                        Hora entrega: {ord.estimatedDeliveryTime}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Facturación y Liquidación del Grupo */}
       <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm space-y-3.5">
@@ -951,6 +1084,28 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
                 })
               )}
             </div>
+            {orderItems.length > 0 && (
+              <div className="pt-2 border-t border-gray-100 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddDishModal(false)}
+                  className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-[#002546] rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Seguir agregando
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddDishModal(false);
+                    handleOpenBreakdown();
+                  }}
+                  className="flex-1 py-2 bg-[#002546] hover:bg-[#003b5f] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-md cursor-pointer"
+                >
+                  <Flame className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Desglosar ({orderItems.reduce((a, b) => a + (b.quantity || 0), 0)})</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1047,7 +1202,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
           role="excursion"
           spotName={`Muelle Central • ${safeExcursion.boatName} (${safeExcursion.passengersCount} pax)`}
           customerName={safeExcursion.captainName}
-          items={safeExcursion.items}
+          items={orderItems}
           bcvRate={bcvRate}
           initialDeliveryTime={safeExcursion.estimatedServingTime}
           initialOrderNote={safeExcursion.orderNote}

@@ -165,8 +165,12 @@ export const isOrderOwnedByExcursion = (
   user: User | null,
   excursion?: ExcursionPackage | null
 ): boolean => {
-  if (!order || !user) return false;
+  if (!order) return false;
   if (order.origin !== 'excursion') return false;
+
+  // Si el usuario es administrador / dueño, tiene visibilidad total de todas las comandas de excursión
+  if (user?.role === 'admin') return true;
+  if (!user) return false;
 
   const userId = user.id || '';
   const userEmail = (user.email || '').toLowerCase().trim();
