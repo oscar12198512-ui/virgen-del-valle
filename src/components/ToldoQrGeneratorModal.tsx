@@ -175,7 +175,7 @@ export const ToldoQrGeneratorModal: React.FC<ToldoQrGeneratorModalProps> = ({
                   <div className="w-full flex items-center justify-between pb-3 border-b border-amber-500/20 mb-3 print:border-slate-300">
                     <div className="flex items-center gap-2">
                       <img
-                        src="/logo.png"
+                        src="./logo.png"
                         alt="Virgen del Valle"
                         className="w-8 h-8 object-contain rounded-full bg-white/10 p-0.5 border border-amber-400/40"
                       />

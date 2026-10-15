@@ -25,7 +25,6 @@ import {
   Heart,
   BellRing
 } from 'lucide-react';
-import { OrderSyncEditor } from '../components/OrderSyncEditor';
 import { ComandaEditorModal } from '../components/ComandaEditorModal';
 import { PreCuentaModal } from '../components/PreCuentaModal';
 
@@ -73,7 +72,6 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [preCuentaModalOpen, setPreCuentaModalOpen] = useState<boolean>(false);
   const [buzzerActiveNotice, setBuzzerActiveNotice] = useState(false);
   const [extraNotice, setExtraNotice] = useState<string | null>(null);
-  const [showKdsSyncEditor, setShowKdsSyncEditor] = useState<boolean>(false);
 
   const defaultClientSpot: ToldoSpot = {
     id: 'spot-14',
@@ -173,10 +171,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     <div className="flex flex-col gap-4 max-w-lg mx-auto pb-28 pt-2 px-3">
       {/* Saludo & Identidad Marina con Medallón */}
       <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-xs flex items-center gap-3.5 relative overflow-hidden">
-        <div className="w-14 h-14 rounded-full p-1 bg-[#eff4ff] border border-[#d2e4ff] flex items-center justify-center shrink-0 shadow-xs">
-          <div className="w-full h-full rounded-full bg-gradient-to-tr from-[#002546] to-[#006782] text-white flex items-center justify-center font-bold text-xs">
-            BUCHE
-          </div>
+        <div className="w-14 h-14 rounded-full bg-transparent flex items-center justify-center shrink-0">
+          <img
+            src="./logo.png"
+            alt="Playa Buche"
+            className="w-14 h-14 object-contain drop-shadow-sm"
+          />
         </div>
         <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-1.5 mb-0.5">
@@ -777,108 +777,159 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
               </div>
 
-              {/* Toggle between Stepper Tracking and Live Comanda KDS Editor */}
-              <div className="flex bg-[#eff4ff] p-1 rounded-xl border border-[#d2e4ff]">
+              {/* Direct Comanda Quick Action Button */}
+              {activeOrder.status !== 'delivered' && (
                 <button
-                  onClick={() => setShowKdsSyncEditor(false)}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                    !showKdsSyncEditor ? 'bg-white text-[#002546] shadow-xs' : 'text-[#42474f] hover:text-[#002546]'
-                  }`}
+                  type="button"
+                  onClick={() => setIsEditingActiveComanda(true)}
+                  className="w-full py-2.5 px-3.5 bg-white hover:bg-[#eff4ff] border-2 border-[#006782] text-[#006782] rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all active:scale-[0.99]"
                 >
-                  Rastreo & Estado de Entrega
+                  <Edit3 className="w-4 h-4 text-[#006782]" />
+                  <span>Modificar Mi Comanda (Anexar, quitar platos, cambiar hora o nota)</span>
                 </button>
-                <button
-                  onClick={() => setShowKdsSyncEditor(true)}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                    showKdsSyncEditor ? 'bg-[#002546] text-white shadow-xs' : 'text-[#42474f] hover:text-[#002546]'
-                  }`}
-                >
-                  <Flame className="w-3.5 h-3.5 text-[#57d1fd]" />
-                  <span>Editar Comanda ({activeOrder.displayNumber})</span>
-                </button>
-              </div>
+              )}
 
-              {showKdsSyncEditor ? (
-                <OrderSyncEditor bcvRate={bcvRate} />
-              ) : (
-                <>
-                  {/* Direct Comanda Quick Action Button */}
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingActiveComanda(true)}
-                    className="w-full py-2.5 px-3.5 bg-white hover:bg-[#eff4ff] border-2 border-[#006782] text-[#006782] rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all active:scale-[0.99]"
-                  >
-                    <Edit3 className="w-4 h-4 text-[#006782]" />
-                    <span>Modificar Mi Comanda (Anexar, quitar platos, cambiar hora o nota)</span>
-                  </button>
-
-              {/* Stepper Timeline (Vertical) */}
-          <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm space-y-3">
-            <div className="flex justify-between items-center pb-2 border-b border-gray-100">
-              <h3 className="text-xs font-bold text-[#002546] uppercase tracking-wider">
-                Estado de tu Orden
-              </h3>
-              <span className="text-xs font-bold text-[#006782]">Paso 2 de 4</span>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              {/* Step 1 */}
-              <div className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              {/* Stepper Timeline (Vertical y Dinámico) */}
+              <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm space-y-3">
+                <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+                  <h3 className="text-xs font-bold text-[#002546] uppercase tracking-wider">
+                    Estado de tu Orden
+                  </h3>
+                  <span className="text-xs font-bold text-[#006782]">
+                    {activeOrder.status === 'delivered'
+                      ? 'Paso 4 de 4 (¡Entregado!)'
+                      : activeOrder.status === 'ready_pass'
+                      ? 'Paso 3 de 4 (¡Listo en Pase!)'
+                      : 'Paso 2 de 4 (En Cocina)'}
+                  </span>
                 </div>
-                <div className="flex-1">
-                  <div className="flex justify-between">
-                    <span className="font-bold text-[#002546]">Comanda Confirmada</span>
-                    <span className="text-[11px] text-gray-500">1:32 PM</span>
+
+                <div className="space-y-4 text-xs">
+                  {/* Step 1: Comanda Confirmada */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex justify-between">
+                        <span className="font-bold text-[#002546]">Comanda Confirmada</span>
+                        <span className="text-[11px] text-emerald-700 font-bold">Registrada</span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Comanda {activeOrder.displayNumber} ingresada en cocina central</p>
+                    </div>
                   </div>
-                  <p className="text-[11px] text-gray-500 mt-0.5">Registrado en sistema con caja central</p>
-                </div>
-              </div>
 
-              {/* Step 2 (Active) */}
-              <div className="flex items-start gap-3 bg-[#eff4ff] p-2.5 rounded-xl border border-[#a4c9fc]">
-                <div className="w-7 h-7 rounded-full bg-[#002546] text-[#57d1fd] flex items-center justify-center shrink-0 animate-pulse">
-                  <Flame className="w-4 h-4" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between">
-                    <span className="font-bold text-[#002546]">En Cocina & Fuego</span>
-                    <span className="text-[11px] font-bold text-[#006782]">En Proceso</span>
+                  {/* Step 2: En Cocina & Fuego */}
+                  <div className={`flex items-start gap-3 p-2 rounded-xl transition-all ${
+                    activeOrder.status === 'in_fire' || activeOrder.status === 'pending' || activeOrder.status === 'plated'
+                      ? 'bg-[#eff4ff] border border-[#a4c9fc]'
+                      : 'opacity-80'
+                  }`}>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                      activeOrder.status === 'ready_pass' || activeOrder.status === 'delivered'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-[#002546] text-[#57d1fd] animate-pulse'
+                    }`}>
+                      {activeOrder.status === 'ready_pass' || activeOrder.status === 'delivered' ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      ) : (
+                        <Flame className="w-4 h-4" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex justify-between">
+                        <span className="font-bold text-[#002546]">En Cocina & Fuego Vivo</span>
+                        <span className={`text-[11px] font-bold ${
+                          activeOrder.status === 'ready_pass' || activeOrder.status === 'delivered'
+                            ? 'text-emerald-700'
+                            : 'text-[#006782]'
+                        }`}>
+                          {activeOrder.status === 'ready_pass' || activeOrder.status === 'delivered' ? 'Completado' : 'En Proceso'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-600 mt-0.5">Fogón y pailas del Chef preparando tus platos</p>
+                    </div>
                   </div>
-                  <p className="text-[11px] text-gray-600 mt-0.5">Paila #2 y Freidora #1 marchando a fuego vivo</p>
-                </div>
-              </div>
 
-              {/* Step 3 */}
-              <div className="flex items-start gap-3 opacity-60">
-                <div className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center shrink-0">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-gray-700">En Pasaplatos & Control Calidad</span>
-                    <span className="text-[11px] text-gray-400">Pendiente</span>
+                  {/* Step 3: En Pasaplatos & Control Calidad */}
+                  <div className={`flex items-start gap-3 p-2 rounded-xl transition-all ${
+                    activeOrder.status === 'ready_pass'
+                      ? 'bg-emerald-50 border border-emerald-300 shadow-xs'
+                      : activeOrder.status === 'delivered'
+                      ? 'opacity-80'
+                      : 'opacity-50'
+                  }`}>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                      activeOrder.status === 'delivered'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : activeOrder.status === 'ready_pass'
+                        ? 'bg-emerald-600 text-white animate-bounce-subtle'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {activeOrder.status === 'delivered' ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      ) : (
+                        <Sparkles className="w-4 h-4" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex justify-between">
+                        <span className="font-bold text-[#002546]">En Pasaplatos & Listo</span>
+                        <span className={`text-[11px] font-bold ${
+                          activeOrder.status === 'ready_pass'
+                            ? 'text-emerald-700 animate-pulse'
+                            : activeOrder.status === 'delivered'
+                            ? 'text-emerald-700'
+                            : 'text-gray-400'
+                        }`}>
+                          {activeOrder.status === 'ready_pass' ? '¡LISTO PARA SALIR!' : activeOrder.status === 'delivered' ? 'Listo' : 'Pendiente'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Emplatado, toques de limón y verificación final</p>
+                    </div>
                   </div>
-                  <p className="text-[11px] text-gray-500 mt-0.5">Toque de limón caribeño y guarniciones crujientes</p>
-                </div>
-              </div>
 
-              {/* Step 4 */}
-              <div className="flex items-start gap-3 opacity-60">
-                <div className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center shrink-0">
-                  <ShoppingBag className="w-4 h-4" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-gray-700">Mesonero Yender en camino</span>
-                    <span className="text-[11px] text-gray-400">Paso final</span>
+                  {/* Step 4: Mesonero en camino / Entregado */}
+                  <div className={`flex items-start gap-3 p-2 rounded-xl transition-all ${
+                    activeOrder.status === 'delivered'
+                      ? 'bg-emerald-50 border border-emerald-300'
+                      : activeOrder.status === 'ready_pass'
+                      ? 'bg-[#eff4ff] border border-[#a4c9fc]'
+                      : 'opacity-50'
+                  }`}>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                      activeOrder.status === 'delivered'
+                        ? 'bg-emerald-600 text-white'
+                        : activeOrder.status === 'ready_pass'
+                        ? 'bg-[#002546] text-[#57d1fd] animate-pulse'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {activeOrder.status === 'delivered' ? (
+                        <CheckCircle2 className="w-4 h-4 text-white" />
+                      ) : (
+                        <ShoppingBag className="w-4 h-4" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex justify-between">
+                        <span className="font-bold text-[#002546]">
+                          {activeOrder.status === 'delivered' ? '¡Servido en tu Mesa!' : 'Mesonero en camino a la arena'}
+                        </span>
+                        <span className={`text-[11px] font-bold ${
+                          activeOrder.status === 'delivered' ? 'text-emerald-700' : activeOrder.status === 'ready_pass' ? 'text-[#006782]' : 'text-gray-400'
+                        }`}>
+                          {activeOrder.status === 'delivered' ? 'Entregado' : activeOrder.status === 'ready_pass' ? 'En Camino' : 'Paso Final'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        {activeOrder.status === 'delivered'
+                          ? '¡Buen provecho! Platillos entregados directamente en tu toldo.'
+                          : 'Bandeja térmica con servicio directo a tu toldo.'}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-[11px] text-gray-500 mt-0.5">Bandeja térmica con servicio directo a la arena</p>
                 </div>
               </div>
-            </div>
-          </div>
 
           {/* Mesonero Card & Quick Action Buzzer */}
           <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm space-y-3">
@@ -996,11 +1047,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               </button>
             )}
           </div>
-                </>
-              )}
-            </>
-          )}
-        </div>
+        </>
+      )}
+    </div>
       )}
 
       {/* Comanda Editor Modal for Client */}

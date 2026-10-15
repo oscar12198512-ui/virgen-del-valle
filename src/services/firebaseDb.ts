@@ -99,34 +99,55 @@ export async function getAppStateOnce(): Promise<AppStateData | null> {
 }
 
 /**
- * Agrega o actualiza una orden directamente en Firestore.
+ * Agrega o actualiza una orden directamente en Firestore de forma instantánea.
  */
-export async function pushOrderToFirestore(newOrder: Order): Promise<void> {
-  const snapshot = await getDoc(STATE_DOC_REF);
-  let currentOrders: Order[] = [];
-  if (snapshot.exists()) {
-    const data = snapshot.data() as AppStateData;
-    currentOrders = data.orders || [];
+export async function pushOrderToFirestore(newOrder: Order, currentOrders?: Order[]): Promise<void> {
+  const orderDocRef = doc(db, 'orders', newOrder.id);
+  const saveIndividual = setDoc(orderDocRef, {
+    ...newOrder,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+
+  let list = currentOrders;
+  if (!list) {
+    const snapshot = await getDoc(STATE_DOC_REF);
+    list = snapshot.exists() ? (snapshot.data() as AppStateData).orders || [] : [];
   }
-  const existingIdx = currentOrders.findIndex((o) => o.id === newOrder.id);
+
+  const existingIdx = list.findIndex((o) => o.id === newOrder.id);
   let updatedOrders: Order[];
   if (existingIdx >= 0) {
-    updatedOrders = [...currentOrders];
+    updatedOrders = [...list];
     updatedOrders[existingIdx] = newOrder;
   } else {
-    updatedOrders = [newOrder, ...currentOrders];
+    updatedOrders = [newOrder, ...list];
   }
-  await saveAppState({ orders: updatedOrders });
 
-  try {
-    await setDoc(doc(db, 'orders', newOrder.id), {
-      ...newOrder,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-  } catch (err) {
-    console.warn('Error al guardar en colección orders:', err);
-  }
+  const saveState = saveAppState({ orders: updatedOrders });
+  await Promise.all([saveIndividual, saveState]);
 }
+
+/**
+ * Actualiza el estado de una comanda inmediatamente en Firestore (sin esperas ni rebotes).
+ */
+export async function updateOrderStatusInFirestore(
+  orderId: string,
+  newStatus: string,
+  allOrders: Order[]
+): Promise<void> {
+  const orderDocRef = doc(db, 'orders', orderId);
+  const updateIndividual = setDoc(orderDocRef, {
+    status: newStatus,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+
+  const nowIso = new Date().toISOString();
+  const updatedOrders = allOrders.map((o) => (o.id === orderId ? { ...o, status: newStatus as any, updatedAt: nowIso } : o));
+  const updateState = saveAppState({ orders: updatedOrders });
+
+  await Promise.all([updateIndividual, updateState]);
+}
+
 
 // -------------------------------------------------------------
 // GESTIÓN DE USUARIOS Y STAFF EN FIRESTORE

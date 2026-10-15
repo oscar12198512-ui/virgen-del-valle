@@ -52,6 +52,7 @@ import {
   saveAppState,
   getAppStateOnce,
   pushOrderToFirestore,
+  updateOrderStatusInFirestore,
   subscribeToUsers,
   fetchUsersFromFirestore
 } from './services/firebaseDb';
@@ -110,7 +111,14 @@ export const App: React.FC = () => {
   const [drawerBills, setDrawerBills] = useState<BillDenominationCount>(INITIAL_DRAWER_BILLS);
   const [selectedSpotId, setSelectedSpotId] = useState<string>('');
   const [approachingAlertCount, setApproachingAlertCount] = useState<number>(0);
-  const [clientActiveOrder, setClientActiveOrder] = useState<Order | null>(null);
+  const [clientActiveOrder, setClientActiveOrder] = useState<Order | null>(() => {
+    try {
+      const saved = localStorage.getItem('playa_buche_client_active_order');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
   const [giveaway, setGiveaway] = useState<GiveawayState>(() => {
     try {
@@ -241,7 +249,22 @@ export const App: React.FC = () => {
         (state) => {
           if (Array.isArray(state.menuItems) && state.menuItems.length) setMenuItems(state.menuItems);
           if (Array.isArray(state.spots) && state.spots.length) setSpots(state.spots);
-          if (Array.isArray(state.orders)) setOrders(state.orders);
+          if (Array.isArray(state.orders)) {
+            setOrders(state.orders);
+            setClientActiveOrder((prev) => {
+              const targetId = prev?.id || localStorage.getItem('playa_buche_client_active_order_id');
+              if (targetId) {
+                const match = state.orders.find((o) => o.id === targetId);
+                if (match) {
+                  try {
+                    localStorage.setItem('playa_buche_client_active_order', JSON.stringify(match));
+                  } catch {}
+                  return match;
+                }
+              }
+              return prev;
+            });
+          }
           if (state.excursion && state.excursion.id) setExcursion(state.excursion);
           if (state.bankConfig) setBankConfig(state.bankConfig);
           if (Array.isArray(state.waitersClosings)) setWaitersClosings(state.waitersClosings);
@@ -480,10 +503,55 @@ export const App: React.FC = () => {
           nativeNotificationService.sendNotification(title, message);
         }
       }
+
+      if (prev && prev.status !== 'delivered' && ord.status === 'delivered') {
+        const isClientTarget =
+          currentRole === 'client' &&
+          (ord.id === clientActiveOrder?.id || ord.spotId === selectedSpotId || ord.origin === 'client_qr');
+        const isStaff =
+          currentRole === 'admin' || currentRole === 'kitchen' || currentRole === 'waiter';
+
+        if (isClientTarget || isStaff) {
+          soundService.playSuccess();
+          soundService.buzzSmartBand();
+
+          const title = isClientTarget ? '✨ ¡Comanda Servida en tu Toldo!' : `✅ ¡Comanda ${ord.displayNumber} Entregada!`;
+          const message = isClientTarget
+            ? `¡Buen provecho! Tu pedido ${ord.displayNumber} ha sido servido en ${ord.spotName}.`
+            : `Mesonero entregó la comanda ${ord.displayNumber} para ${ord.spotName}.`;
+
+          setRealtimeToast({
+            id: 'toast-deliv-' + ord.id + '-' + Date.now(),
+            title,
+            message,
+            targetRole: currentRole,
+            spotName: ord.spotName,
+            displayNumber: ord.displayNumber,
+          });
+
+          nativeNotificationService.sendNotification(title, message);
+        }
+      }
     });
 
     prevOrdersRef.current = orders;
-  }, [orders, currentRole]);
+  }, [orders, currentRole, clientActiveOrder, selectedSpotId]);
+
+  // Auto-enlazar comanda activa de toldo para comensal si aún no tiene una seleccionada
+  useEffect(() => {
+    if (!clientActiveOrder && selectedSpotId && orders.length > 0) {
+      const match = orders.find(
+        (o) => o.spotId === selectedSpotId && o.paymentStatus !== 'paid' && o.status !== 'cancelled'
+      );
+      if (match) {
+        setClientActiveOrder(match);
+        try {
+          localStorage.setItem('playa_buche_client_active_order_id', match.id);
+          localStorage.setItem('playa_buche_client_active_order', JSON.stringify(match));
+        } catch {}
+      }
+    }
+  }, [selectedSpotId, orders, clientActiveOrder]);
 
   const handleAuthenticated = (user: User) => {
     const token = (user as User & { sessionToken?: string }).sessionToken || `token-${user.id}-${Date.now()}`;
@@ -563,31 +631,60 @@ export const App: React.FC = () => {
       soundService.playReadyPassAlert();
     } else if (newStatus === 'in_fire') {
       soundService.playFireAlert();
+    } else if (newStatus === 'delivered') {
+      soundService.playSuccess();
     }
-    setOrders((previous) =>
-      previous.map((order) => {
-        if (order.id !== orderId) return order;
-        const updatedAt = new Date().toISOString();
-        const updates: Partial<Order> = { status: newStatus, updatedAt };
-        if ((newStatus === 'ready_pass' || newStatus === 'delivered') && !order.readyAt) {
-          const createdMs = order.createdAt ? new Date(order.createdAt).getTime() : 0;
-          const elapsedMs = createdMs ? Date.now() - createdMs : 0;
-          updates.readyAt = updatedAt;
-          updates.prepDurationMinutes =
-            elapsedMs > 0 && elapsedMs < 12 * 60 * 60 * 1000
-              ? Math.max(1, Math.round(elapsedMs / 60000))
-              : order.elapsedSeconds
-                ? Math.max(1, Math.round(order.elapsedSeconds / 60))
-                : 1;
-        }
-        return { ...order, ...updates };
-      })
-    );
+    const updatedAt = new Date().toISOString();
+    const nextOrders = orders.map((order) => {
+      if (order.id !== orderId) return order;
+      const updates: Partial<Order> = { status: newStatus, updatedAt };
+      if ((newStatus === 'ready_pass' || newStatus === 'delivered') && !order.readyAt) {
+        const createdMs = order.createdAt ? new Date(order.createdAt).getTime() : 0;
+        const elapsedMs = createdMs ? Date.now() - createdMs : 0;
+        updates.readyAt = updatedAt;
+        updates.prepDurationMinutes =
+          elapsedMs > 0 && elapsedMs < 12 * 60 * 60 * 1000
+            ? Math.max(1, Math.round(elapsedMs / 60000))
+            : order.elapsedSeconds
+              ? Math.max(1, Math.round(order.elapsedSeconds / 60))
+              : 1;
+      }
+      return { ...order, ...updates };
+    });
+    setOrders(nextOrders);
+
+    setClientActiveOrder((prev) => {
+      if (prev?.id === orderId) {
+        const updated = nextOrders.find((o) => o.id === orderId) || prev;
+        try {
+          localStorage.setItem('playa_buche_client_active_order', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      }
+      return prev;
+    });
+
+    if (isFirebaseConfigured()) {
+      updateOrderStatusInFirestore(orderId, newStatus, nextOrders).catch((error) => {
+        console.warn('Error al actualizar estado en Firestore:', error);
+      });
+    }
   };
 
   const handleUpdateOrder = (updatedOrder: Order) => {
-    setOrders((previous) => previous.map((order) => (order.id === updatedOrder.id ? updatedOrder : order)));
-    if (clientActiveOrder?.id === updatedOrder.id) setClientActiveOrder(updatedOrder);
+    const nextOrders = orders.map((order) => (order.id === updatedOrder.id ? updatedOrder : order));
+    setOrders(nextOrders);
+    if (clientActiveOrder?.id === updatedOrder.id) {
+      setClientActiveOrder(updatedOrder);
+      try {
+        localStorage.setItem('playa_buche_client_active_order', JSON.stringify(updatedOrder));
+      } catch {}
+    }
+    if (isFirebaseConfigured()) {
+      updateOrderStatusInFirestore(updatedOrder.id, updatedOrder.status, nextOrders).catch((error) => {
+        console.warn('Error al actualizar orden en Firestore:', error);
+      });
+    }
   };
 
   const handleUpdateBcvRate = useCallback((newRate: number) => {
@@ -629,15 +726,17 @@ export const App: React.FC = () => {
     };
 
     setClientActiveOrder(newOrder);
+    try {
+      localStorage.setItem('playa_buche_client_active_order_id', newOrder.id);
+      localStorage.setItem('playa_buche_client_active_order', JSON.stringify(newOrder));
+    } catch {}
     soundService.playBell();
 
     if (isFirebaseConfigured()) {
-      try {
-        await pushOrderToFirestore(newOrder);
-      } catch (error) {
-        console.warn('No se pudo guardar la orden en Firestore:', error);
-      }
       setOrders((previous) => [newOrder, ...previous]);
+      pushOrderToFirestore(newOrder, orders).catch((error) => {
+        console.warn('No se pudo guardar la orden en Firestore:', error);
+      });
       return;
     }
 

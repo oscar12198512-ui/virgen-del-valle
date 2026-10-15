@@ -2225,7 +2225,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
             {/* Sello Corporativo Medallón Virgen del Valle & Buche */}
             <div className="mt-2 pt-2 bg-[#f8f9ff] p-3 rounded-xl flex items-center gap-3 border border-gray-100">
               <div className="relative w-12 h-12 rounded-full shrink-0 flex items-center justify-center overflow-hidden">
-                <img src="/logo.png" alt="Playa Buche" className="w-12 h-12 object-contain" />
+                <img src="./logo.png" alt="Playa Buche" className="w-12 h-12 object-contain" />
               </div>
               <div className="flex flex-col">
                 <span className="text-xs font-bold text-[#002546]">Inversiones Virgen del Valle C.A.</span>

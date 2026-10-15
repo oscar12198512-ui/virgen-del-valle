@@ -64,8 +64,10 @@ export const AppInstallModal: React.FC<AppInstallModalProps> = ({ isOpen, onClos
           )}
 
           <a
-            href="./playa-buche.apk"
+            href="https://github.com/oscar12198512-ui/virgen-del-valle/raw/main/public/playa-buche.apk"
             download="playa-buche.apk"
+            target="_blank"
+            rel="noreferrer"
             className="w-full h-11 rounded-xl bg-[#57d1fd] text-[#002546] font-black text-xs flex items-center justify-center gap-2 shadow-md hover:bg-[#38bdf8] active:scale-98 transition-all"
           >
             <Download className="w-4 h-4" /> Descargar APK Directo (.apk)

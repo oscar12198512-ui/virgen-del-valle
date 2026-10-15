@@ -72,7 +72,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-10 h-10 rounded-full bg-transparent flex items-center justify-center shrink-0">
             <img
-              src="/logo.png"
+              src="./logo.png"
               alt="Playa Buche"
               className="w-10 h-10 object-contain drop-shadow-xs"
               onError={(e) => {

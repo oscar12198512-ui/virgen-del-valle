@@ -17,3 +17,4 @@ signing/
 /*.apk
 /*.aab
 !public/playa-buche.apk
+.firebase/

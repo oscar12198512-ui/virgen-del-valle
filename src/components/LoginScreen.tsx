@@ -724,7 +724,7 @@ const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
       <div className="p-5 bg-[#002546] text-white flex items-center gap-3.5">
         <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center overflow-hidden border border-white/20 p-1 flex-shrink-0">
           <img
-            src="/logo.png"
+            src="./logo.png"
             alt="Playa Buche"
             className="w-full h-full object-contain rounded-xl"
             onError={(e) => {
