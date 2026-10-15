@@ -14,7 +14,7 @@
     "db:migrate": "node server/migrate.js",
     "firebase:seed": "node scripts/seed-firebase.mjs",
     "firebase:sync": "npx esbuild src/data/initialData.ts --format=esm --outfile=scripts/initialData.mjs && node scripts/sync-firebase.mjs",
-    "cap:sync": "npm run build && npx cap sync"
+    "cap:sync": "npm run build && npx cap sync && node scripts/clean-assets.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",

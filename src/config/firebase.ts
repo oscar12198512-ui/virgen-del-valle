@@ -19,10 +19,11 @@ const firebaseConfig = {
 // Initialize Firebase
 export const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Configuración para forzar respuestas limpias del servidor en prototipos (modo prueba en vivo sin interferencia de caché)
+// Configuración para forzar respuestas limpias del servidor y compatibilidad total con documentos
 export const db = (() => {
   try {
     return initializeFirestore(firebaseApp, {
+      ignoreUndefinedProperties: true,
       localCache: undefined // Obliga a la app a comunicarse de forma estricta y limpia con los servidores de Firebase
     });
   } catch {

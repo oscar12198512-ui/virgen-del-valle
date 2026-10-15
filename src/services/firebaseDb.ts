@@ -273,6 +273,23 @@ export function subscribeToOrders(
 }
 
 /**
+ * Limpia recursivamente cualquier campo con valor undefined para cumplir
+ * estrictamente con los requisitos de la base de datos de Firestore.
+ */
+export function sanitizeFirestoreDoc<T extends Record<string, any>>(obj: T): T {
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) continue;
+    if (value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+      result[key] = sanitizeFirestoreDoc(value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+/**
  * Guarda o actualiza una orden de forma atómica en Firestore.
  * Notifica de inmediato a todos los dispositivos conectados.
  * Optimiza el tamaño del documento: sanea platos para no duplicar Base64 pesados ni blobs de imágenes.
@@ -300,11 +317,11 @@ export async function saveOrderToFirestore(order: Order): Promise<void> {
     return cleaned;
   });
 
-  const cleanOrder = {
+  const cleanOrder = sanitizeFirestoreDoc({
     ...order,
     items: sanitizedItems,
     updatedAt: new Date().toISOString()
-  };
+  });
   await setDoc(orderDocRef, cleanOrder, { merge: true });
 }
 
@@ -325,15 +342,12 @@ export async function updateOrderStatusInFirestore(
   additionalUpdates?: Partial<Order>
 ): Promise<void> {
   const orderDocRef = doc(db, 'orders', orderId);
-  await setDoc(
-    orderDocRef,
-    {
-      status: newStatus,
-      updatedAt: new Date().toISOString(),
-      ...(additionalUpdates || {})
-    },
-    { merge: true }
-  );
+  const updateData = sanitizeFirestoreDoc({
+    status: newStatus,
+    updatedAt: new Date().toISOString(),
+    ...(additionalUpdates || {})
+  });
+  await setDoc(orderDocRef, updateData, { merge: true });
 }
 
 /**

@@ -729,6 +729,96 @@ export const AdminView: React.FC<AdminViewProps> = ({
         </div>
       </div>
 
+      {/* Feed en Vivo de Comandas Recibidas (Visible en Cualquier Pestaña para el Dueño) */}
+      {activeKitchenOrders.length > 0 && (
+        <div className="bg-white rounded-2xl p-3 border-2 border-orange-400 shadow-md flex flex-col gap-2.5 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-600"></span>
+              </span>
+              <span className="text-xs font-black text-[#002546] uppercase tracking-wide">
+                🔥 {activeKitchenOrders.length} {activeKitchenOrders.length === 1 ? 'Comanda Activa' : 'Comandas Activas'} en Vivo
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setAdminTab('order_sync');
+                setKdsSubView('monitor');
+              }}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-[#002546] text-white hover:bg-[#00386b] transition-colors cursor-pointer"
+            >
+              Abrir Monitor KDS →
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
+            {activeKitchenOrders.slice(0, 5).map((ord) => {
+              const isQr = ord.origin === 'client_qr';
+              const isReady = ord.status === 'ready_pass';
+              return (
+                <div
+                  key={ord.id}
+                  className={`flex items-center justify-between p-2 rounded-xl border text-xs transition-all ${
+                    isReady
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                      : isQr
+                      ? 'bg-blue-50/70 border-blue-200 text-blue-950'
+                      : 'bg-amber-50/70 border-amber-200 text-amber-950'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono font-black text-xs text-[#002546]">
+                        {ord.displayNumber}
+                      </span>
+                      <span className="font-bold text-[11px] text-[#006782]">
+                        {ord.spotName}
+                      </span>
+                      <span className="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold uppercase bg-white/80 border">
+                        {isQr ? '📱 QR Cliente' : ord.origin === 'excursion' ? '⚓ Excursión' : '🧑‍🍳 Mesonero'}
+                      </span>
+                      <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                        isReady ? 'bg-emerald-600 text-white' : 'bg-orange-500 text-white'
+                      }`}>
+                        {isReady ? 'Listo para servir' : 'En cocina'}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-gray-600 truncate mt-0.5">
+                      {ord.customerName} • {ord.items.map((i) => `${i.quantity}x ${i.name}`).join(', ')}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    <div className="text-right">
+                      <div className="font-mono font-bold text-xs text-[#002546]">
+                        ${ord.totalUsd.toFixed(2)}
+                      </div>
+                      <div className="text-[9px] text-gray-500 font-mono">
+                        {(ord.totalUsd * bcvRate).toFixed(0)} Bs
+                      </div>
+                    </div>
+                    {onUpdateOrderStatus && !isReady && (
+                      <button
+                        onClick={() => {
+                          onUpdateOrderStatus(ord.id, 'ready_pass');
+                          soundService.playReadyPassAlert();
+                        }}
+                        className="px-2 py-1 rounded-lg text-[10px] font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer"
+                        title="Marcar como lista para servir"
+                      >
+                        ✓ Listo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Global Kitchen Urgent Alert Banner for the Owner (Visible across all tabs) */}
       {topKitchenAlert && (
         <div
@@ -786,6 +876,36 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
       {/* Top Toggle Navigation Bar */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none bg-[#eff4ff] p-1.5 rounded-2xl border border-[#d2e4ff]">
+        <button
+          onClick={() => {
+            setAdminTab('order_sync');
+            setKdsSubView('monitor');
+          }}
+          className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all ${
+            adminTab === 'order_sync'
+              ? 'bg-[#002546] text-white shadow-xs ring-2 ring-orange-400'
+              : 'text-[#42474f] hover:text-[#002546] hover:bg-white/60 bg-orange-100/60'
+          }`}
+        >
+          <Flame
+            className={`w-3.5 h-3.5 shrink-0 ${
+              activeKitchenOrders.length > 0 ? 'text-orange-500 animate-pulse' : 'text-[#57d1fd]'
+            }`}
+          />
+          <span>Comandas KDS</span>
+          {activeKitchenOrders.length > 0 && (
+            <span
+              className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                urgentOrders.length > 0
+                  ? 'bg-rose-500 text-white animate-pulse'
+                  : 'bg-orange-500 text-white'
+              }`}
+            >
+              {activeKitchenOrders.length}
+            </span>
+          )}
+        </button>
+
         <button
           onClick={() => setAdminTab('giveaway')}
           className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all ${
@@ -857,34 +977,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
         >
           <Radio className="w-3.5 h-3.5 text-[#57d1fd] shrink-0" />
           <span>Contingencia Mesh</span>
-        </button>
-        <button
-          onClick={() => setAdminTab('order_sync')}
-          className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all ${
-            adminTab === 'order_sync'
-              ? 'bg-[#002546] text-white shadow-xs ring-1 ring-[#57d1fd]'
-              : 'text-[#42474f] hover:text-[#002546] hover:bg-white/60'
-          }`}
-        >
-          <Flame
-            className={`w-3.5 h-3.5 shrink-0 ${
-              urgentOrders.length > 0 ? 'text-rose-400 animate-pulse' : 'text-[#57d1fd]'
-            }`}
-          />
-          <span>Comandas KDS</span>
-          {activeKitchenOrders.length > 0 && (
-            <span
-              className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black ${
-                urgentOrders.length > 0
-                  ? 'bg-rose-500 text-white animate-pulse'
-                  : alert30Orders.length > 0
-                  ? 'bg-amber-400 text-amber-950'
-                  : 'bg-[#bbe9ff] text-[#002546]'
-              }`}
-            >
-              {activeKitchenOrders.length}
-            </span>
-          )}
         </button>
         <button
           onClick={() => setAdminTab('logistics')}

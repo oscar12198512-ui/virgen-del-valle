@@ -298,6 +298,7 @@ export const App: React.FC = () => {
   } | null>(null);
   const [viewRole, setViewRole] = useState<UserRole | null>(null);
   const prevOrdersRef = useRef<Order[]>([]);
+  const ordersHydratedRef = useRef<boolean>(false);
 
   const directLoginRequested = new URLSearchParams(window.location.search).get('login') === '1';
 
@@ -629,31 +630,30 @@ export const App: React.FC = () => {
 
   // Alertas sonoras, hápticas y notificaciones dirigidas al ingresar órdenes o pasar a ready_pass
   useEffect(() => {
-    if (!dbHydratedRef.current || prevOrdersRef.current.length === 0) {
+    if (!ordersHydratedRef.current) {
+      ordersHydratedRef.current = true;
       prevOrdersRef.current = orders;
       return;
     }
 
-    if (orders.length > prevOrdersRef.current.length) {
-      const prevIds = new Set(prevOrdersRef.current.map((o) => o.id));
-      const newOrders = orders.filter((o) => !prevIds.has(o.id));
-      if (newOrders.length > 0) {
+    const prevIds = new Set(prevOrdersRef.current.map((o) => o.id));
+    const newOrders = orders.filter((o) => !prevIds.has(o.id));
+    if (newOrders.length > 0) {
+      if (currentRole === 'admin' || currentRole === 'kitchen' || currentRole === 'waiter') {
         soundService.playNewIncomingOrderAlert();
         soundService.buzzSmartBand();
         newOrders.forEach((newOrd) => {
-          if (currentRole === 'admin' || currentRole === 'kitchen' || currentRole === 'waiter') {
-            const title = `🔔 ¡Nuevo Pedido ${newOrd.displayNumber}!`;
-            const message = `Llegó orden en ${newOrd.spotName} • Total: $${newOrd.totalUsd.toFixed(2)}`;
-            setRealtimeToast({
-              id: 'toast-new-' + newOrd.id + '-' + Date.now(),
-              title,
-              message,
-              targetRole: currentRole,
-              spotName: newOrd.spotName,
-              displayNumber: newOrd.displayNumber,
-            });
-            nativeNotificationService.sendNotification(title, message);
-          }
+          const title = `🔔 ¡Nueva Comanda ${newOrd.displayNumber}!`;
+          const message = `Llegó comanda en ${newOrd.spotName} • Total: $${newOrd.totalUsd.toFixed(2)}`;
+          setRealtimeToast({
+            id: 'toast-new-' + newOrd.id + '-' + Date.now(),
+            title,
+            message,
+            targetRole: currentRole,
+            spotName: newOrd.spotName,
+            displayNumber: newOrd.displayNumber,
+          });
+          nativeNotificationService.sendNotification(title, message);
         });
       }
     }
@@ -810,9 +810,58 @@ export const App: React.FC = () => {
     setIdentityResolved(true);
     setIsDbHydrated(true);
     dbHydratedRef.current = true;
-    setViewRole(null);
-    if (window.location.search) window.history.replaceState({}, document.title, window.location.pathname);
+    if (window.location.search && !window.location.search.includes('spot')) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   };
+
+  // Manejo de parámetros de URL para comensales QR (?spot=14, ?spotId=spot-14, ?role=...)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const paramSpot = params.get('spot');
+      const paramSpotId = params.get('spotId');
+      const paramRole = params.get('role');
+
+      if (paramSpotId) {
+        setSelectedSpotId(paramSpotId);
+      } else if (paramSpot && spots.length > 0) {
+        const found = spots.find(
+          (s) => s.id === paramSpot || s.number === paramSpot || s.name.toLowerCase().includes(paramSpot.toLowerCase())
+        );
+        if (found) setSelectedSpotId(found.id);
+      }
+
+      if ((paramSpot || paramSpotId) && !currentUser && !sessionToken) {
+        const spotNum = paramSpot || paramSpotId?.replace('spot-', '') || '14';
+        const guestComensal: User = {
+          id: `usr-client-spot-${spotNum}`,
+          name: `Comensal Toldo #${spotNum}`,
+          email: `toldo${spotNum}@playabuche.com`,
+          role: 'client',
+          status: 'active',
+          sessionToken: `token-guest-${Date.now()}`
+        };
+        handleAuthenticated(guestComensal);
+        setViewRole('client');
+      } else if (paramRole && ALL_ROLES.includes(paramRole as UserRole)) {
+        if (!currentUser && !sessionToken) {
+          const testUser: User = {
+            id: `usr-${paramRole}-demo`,
+            name: paramRole === 'admin' ? 'Dueño Playa Buche' : paramRole === 'kitchen' ? 'Cocina KDS' : 'Mesonero Playa',
+            email: `${paramRole}@playabuche.com`,
+            role: paramRole as UserRole,
+            status: 'active',
+            sessionToken: `token-${paramRole}-demo`
+          };
+          handleAuthenticated(testUser);
+        }
+        setViewRole(paramRole as UserRole);
+      }
+    } catch (e) {
+      console.warn('Error procesando parámetros de URL:', e);
+    }
+  }, [spots, currentUser, sessionToken]);
 
   const handleLogout = async () => {
     const token = sessionToken;
@@ -1287,11 +1336,11 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentRole === 'admin' && currentUser.role === 'admin' && (
+        {currentRole === 'admin' && (currentUser?.role === 'admin' || !currentUser) && (
           <AdminView
             apiBase={API_BASE}
             authHeaders={authHeaders}
-            currentUserId={currentUser.id}
+            currentUserId={currentUser?.id || 'admin-master'}
             onUsersChanged={setUsers}
             bcvRate={bcvRate}
             onUpdateBcvRate={handleUpdateBcvRate}
