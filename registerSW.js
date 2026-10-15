@@ -1,1 +1,0 @@
-if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/virgen-del-valle/sw.js', { scope: '/virgen-del-valle/' })})}
