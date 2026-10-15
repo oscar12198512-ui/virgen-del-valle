@@ -55,6 +55,7 @@ import {
   saveOrderToFirestore,
   updateOrderStatusInFirestore,
   subscribeToOrders,
+  SubscribeOrdersOptions,
   subscribeToUsers,
   fetchUsersFromFirestore
 } from './services/firebaseDb';
@@ -388,18 +389,37 @@ export const App: React.FC = () => {
   // Sincronización de datos (Firebase Firestore Real-Time / Fallback REST API)
   useEffect(() => {
     if (isFirebaseConfigured()) {
-      // Suscripción en tiempo real con Firestore para colección orders (pedidos instantáneos)
+      // Suscripción en tiempo real con Firestore para colección orders con filtros por rol (Evita saturación de red en Venezuela)
+      const userNow = currentUser;
+      const roleNow = effectiveRole;
+      const clientTargetOrderId = clientActiveOrder?.id || (() => {
+        try {
+          return localStorage.getItem(getClientOrderStorageKey(userNow)) || undefined;
+        } catch {
+          return undefined;
+        }
+      })();
+
+      const subOptions: SubscribeOrdersOptions = {
+        role: roleNow,
+        waiterId: roleNow === 'waiter' ? userNow?.id : undefined,
+        clientOrderId: roleNow === 'client' ? clientTargetOrderId : undefined,
+        clientUserId: roleNow === 'client' && userNow?.id ? userNow.id : undefined,
+        limitCount: roleNow === 'admin' ? 80 : (roleNow === 'waiter' ? 60 : 40)
+      };
+
       const unsubOrders = subscribeToOrders(
+        subOptions,
         (firestoreOrders) => {
           if (Array.isArray(firestoreOrders)) {
             setOrders(firestoreOrders);
-            const userNow = currentUserRef.current;
+            const userCurrent = currentUserRef.current;
             setClientActiveOrder((prev) => {
-              const idKey = getClientOrderStorageKey(userNow);
-              const dataKey = getClientOrderDataStorageKey(userNow);
+              const idKey = getClientOrderStorageKey(userCurrent);
+              const dataKey = getClientOrderDataStorageKey(userCurrent);
               const targetId = prev?.id || localStorage.getItem(idKey);
               if (targetId) {
-                const match = firestoreOrders.find((o) => o.id === targetId && isOrderOwnedByClient(o, userNow, targetId));
+                const match = firestoreOrders.find((o) => o.id === targetId && isOrderOwnedByClient(o, userCurrent, targetId));
                 if (match) {
                   try {
                     localStorage.setItem(dataKey, JSON.stringify(match));
@@ -408,9 +428,9 @@ export const App: React.FC = () => {
                 }
               }
               // Si el usuario actual tiene una orden abierta pero prev no la tenía
-              if (userNow?.email || userNow?.id) {
+              if (userCurrent?.email || userCurrent?.id) {
                 const ownedOpenOrder = firestoreOrders.find(
-                  (o) => isOrderOwnedByClient(o, userNow, null) && o.paymentStatus !== 'verified' && !o.isSettled && o.status !== 'cancelled'
+                  (o) => isOrderOwnedByClient(o, userCurrent, null) && o.paymentStatus !== 'verified' && !o.isSettled && o.status !== 'cancelled'
                 );
                 if (ownedOpenOrder) {
                   try {
@@ -420,7 +440,7 @@ export const App: React.FC = () => {
                 }
               }
               // Si la comanda previa ya no pertenece a este usuario, descartarla
-              if (prev && !isOrderOwnedByClient(prev, userNow, targetId)) {
+              if (prev && !isOrderOwnedByClient(prev, userCurrent, targetId)) {
                 return null;
               }
               return prev;
@@ -473,10 +493,13 @@ export const App: React.FC = () => {
         }
       );
 
-      // Suscripción a usuarios de Firestore si tiene rol administrativo/staff
-      const unsubUsers = subscribeToUsers((firestoreUsers) => {
-        if (Array.isArray(firestoreUsers)) setUsers(firestoreUsers);
-      });
+      // Suscripción a usuarios de Firestore solo si tiene rol administrativo/staff
+      let unsubUsers = () => {};
+      if (signedInRole && STAFF_ROLES.includes(signedInRole)) {
+        unsubUsers = subscribeToUsers((firestoreUsers) => {
+          if (Array.isArray(firestoreUsers)) setUsers(firestoreUsers);
+        });
+      }
 
       return () => {
         unsubOrders();
@@ -511,7 +534,7 @@ export const App: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [API_BASE, sessionToken]);
+  }, [API_BASE, sessionToken, signedInRole, effectiveRole, currentUser?.id, clientActiveOrder?.id]);
 
   // Estado operativo autenticado para API REST (cuando no se usa Firebase)
   useEffect(() => {
