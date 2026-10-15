@@ -1,5 +1,10 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  getFirestore
+} from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 // Firebase configuration for Playa Buche POS
@@ -16,8 +21,18 @@ const firebaseConfig = {
 // Initialize Firebase
 export const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Firestore
-export const db = getFirestore(firebaseApp);
+// Initialize Firestore con almacenamiento local persistente (Offline Persistence)
+export const db = (() => {
+  try {
+    return initializeFirestore(firebaseApp, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager() // Permite compartir la caché entre varias pestañas del navegador
+      })
+    });
+  } catch {
+    return getFirestore(firebaseApp);
+  }
+})();
 
 // Initialize Auth
 export const auth = getAuth(firebaseApp);

@@ -5,6 +5,7 @@ import {
   onSnapshot,
   collection,
   query,
+  orderBy,
   getDocs,
   deleteDoc,
   updateDoc,
@@ -105,6 +106,7 @@ const ORDERS_COLLECTION = collection(db, 'orders');
 
 /**
  * Escucha cambios en tiempo real en la colección 'orders'.
+ * Utiliza onSnapshot con query y orderBy('createdAt', 'desc') integrado con la caché offline persistente.
  * Garantiza que todo pedido creado por un cliente, mesonero o excursión
  * aparezca de inmediato en la pantalla del dueño y cocina sin condiciones de carrera.
  */
@@ -112,25 +114,37 @@ export function subscribeToOrders(
   onUpdate: (orders: Order[]) => void,
   onError?: (error: Error) => void
 ): Unsubscribe {
+  const ordersQuery = query(ORDERS_COLLECTION, orderBy('createdAt', 'desc'));
+
   return onSnapshot(
-    ORDERS_COLLECTION,
+    ordersQuery,
     (snapshot) => {
       const ordersList: Order[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
         ordersList.push({ id: docSnap.id, ...data } as Order);
       });
-      // Ordenar por fecha de creación descendente (más recientes primero)
-      ordersList.sort((a, b) => {
-        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return timeB - timeA;
-      });
       onUpdate(ordersList);
     },
     (error) => {
-      console.error('Error al escuchar colección orders en Firestore:', error);
-      if (onError) onError(error);
+      console.warn('Advertencia en query ordenada de orders, usando listener directo a colección:', error);
+      return onSnapshot(
+        ORDERS_COLLECTION,
+        (fallbackSnap) => {
+          const fallbackList: Order[] = [];
+          fallbackSnap.forEach((docSnap) => {
+            const data = docSnap.data();
+            fallbackList.push({ id: docSnap.id, ...data } as Order);
+          });
+          fallbackList.sort((a, b) => {
+            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return timeB - timeA;
+          });
+          onUpdate(fallbackList);
+        },
+        onError
+      );
     }
   );
 }
