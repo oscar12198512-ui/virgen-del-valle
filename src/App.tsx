@@ -442,7 +442,7 @@ export const App: React.FC = () => {
             bcvRate: state.bcvRate || 0,
             excursion: state.excursion?.id || '',
             bankConfig: state.bankConfig?.pagoMovilPhone || '',
-            giveaway: state.giveaway?.status || ''
+            giveaway: state.giveaway ? `${state.giveaway.id}_${state.giveaway.isActive}_${state.giveaway.participants?.length || 0}` : ''
           });
           lastReceivedStateHashRef.current = incomingHash;
 
