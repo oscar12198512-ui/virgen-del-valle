@@ -79,14 +79,8 @@ service cloud.firestore {
     // 3. COMANDAS Y PEDIDOS EN TIEMPO REAL (orders)
     // =========================================================================
     match /orders/{orderId} {
-      // Consulta puntual por ID de orden para seguimiento en vivo del comensal
-      allow get: if true;
-
-      // Listado masivo protegido: Personal operativo o cliente sobre sus propios pedidos
-      allow list: if isStaff() || (
-        isAuthenticated() && 
-        resource.data.clientUserId == request.auth.uid
-      );
+      // Lectura en tiempo real: comensales en toldos y personal operativo reciben las comandas al instante
+      allow read: if true;
 
       // Creación: Personal o comensales con validación estricta de estructura y coherencia económica
       // Bloquea inyección de estado 'verified' o 'isSettled' al crear y garantiza montos no negativos
