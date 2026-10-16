@@ -531,24 +531,24 @@
         <div class="finding-header">
           <div class="finding-title-group">
             <span class="status-tag tag-ok">RESUELTO</span>
-            <span class="finding-title">2. Flujo de Autenticación blindado: Fallback y Bypass eliminados</span>
+            <span class="finding-title">2. Autenticación y Acceso: Puertas traseras de Modo Pruebas y Bypass eliminados</span>
           </div>
-          <span class="finding-file">src/services/firebaseAuth.ts & LoginScreen.tsx</span>
+          <span class="finding-file">src/services/firebaseAuth.ts, LoginScreen.tsx & App.tsx</span>
         </div>
         <div class="finding-body">
           <div class="finding-section">
             <h4>Estado de la Corrección</h4>
-            <p><strong>✅ MITIGADO Y BLINDADO (16-Oct-2026):</strong> Se eliminaron todos los fallbacks que generaban sesiones falsas o asignaban rol <code>admin</code> ante errores de inicio de sesión.</p>
+            <p><strong>✅ MITIGADO Y BLINDADO (16-Oct-2026):</strong> Se eliminaron todos los fallbacks que generaban sesiones falsas, se suprimió el bloque visual "Acceso Rápido • Modo Pruebas" en LoginScreen y se eliminó la auto-autenticación de prueba vía parámetro de URL <code>?role=...</code> en App.tsx.</p>
           </div>
           <div class="finding-section">
             <h4>Protecciones Aplicadas</h4>
-            <p>El sistema ahora rechaza tajantemente credenciales inválidas y lanza errores tipificados en español. Se bloqueó la auto-asignación de roles privilegiados durante el registro, limitando cuentas nuevas a clientes o personal bajo aprobación del dueño.</p>
+            <p>El sistema ahora exige obligatoriamente credenciales reales verificadas por Firebase Auth para roles operativos y administrativos. Se bloqueó la auto-asignación de roles privilegiados durante el registro, limitando cuentas nuevas a clientes o personal bajo aprobación del dueño.</p>
           </div>
           <div class="recommendation-box">
             <h4>🛡️ Medidas de Seguridad Activas:</h4>
             <ul>
-              <li>Imposible iniciar sesión como administrador sin clave válida verificada por Firebase.</li>
-              <li>Eliminada la detección arbitraria de roles por subcadena de correo.</li>
+              <li>Imposible iniciar sesión como Dueño, Cocina o Mesonero sin credenciales legítimas.</li>
+              <li>Eliminado el selector visual de acceso directo y el bypass de query params.</li>
               <li>Auto-registro protegido contra escalación de privilegios.</li>
             </ul>
           </div>
