@@ -11,6 +11,30 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { User, UserRole } from '../types';
 
+function formatFirebaseAuthError(error: any): string {
+  const code = error?.code || '';
+  switch (code) {
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Correo o contraseña incorrectos. Por favor verifica tus datos.';
+    case 'auth/invalid-email':
+      return 'El formato del correo electrónico no es válido.';
+    case 'auth/user-disabled':
+      return 'Esta cuenta ha sido inhabilitada. Contacta a la administración.';
+    case 'auth/too-many-requests':
+      return 'Demasiados intentos fallidos. Por seguridad, espera unos minutos antes de intentar de nuevo.';
+    case 'auth/email-already-in-use':
+      return 'Este correo ya se encuentra registrado. Inicia sesión con tu clave o recupérala.';
+    case 'auth/weak-password':
+      return 'La contraseña debe tener al menos 8 caracteres.';
+    case 'auth/network-request-failed':
+      return 'Error de conexión con el servidor. Verifica tu internet e inténtalo de nuevo.';
+    default:
+      return error?.message || 'Error durante la autenticación. Verifica tus credenciales.';
+  }
+}
+
 export async function loginWithEmail(email: string, pass: string): Promise<User> {
   const cleanEmail = email.trim().toLowerCase();
   try {
@@ -23,34 +47,21 @@ export async function loginWithEmail(email: string, pass: string): Promise<User>
       return { ...data, id: cred.user.uid, sessionToken: `token-${cred.user.uid}` };
     }
 
-    const fallbackUser: User = {
+    // Usuario autenticado por primera vez sin perfil previo en Firestore
+    const isMaster = ['emmanuelmejias2616@gmail.com', 'oscar12198512@gmail.com'].includes(cleanEmail);
+    const defaultUser: User = {
       id: cred.user.uid,
       name: cred.user.displayName || cleanEmail.split('@')[0],
       email: cred.user.email || cleanEmail,
-      role: 'client',
+      role: isMaster ? 'admin' : 'client',
       status: 'active',
       sessionToken: `token-${cred.user.uid}`
     };
-    await setDoc(userDocRef, { ...fallbackUser, createdAt: serverTimestamp() }, { merge: true });
-    return fallbackUser;
+    await setDoc(userDocRef, { ...defaultUser, createdAt: serverTimestamp() }, { merge: true });
+    return defaultUser;
   } catch (err: any) {
-    console.warn('Firebase Auth login fallback:', err?.message || err);
-    // Fallback directo a Firestore si el usuario fue registrado
-    const directUser: User = {
-      id: `usr-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
-      name: cleanEmail.split('@')[0],
-      email: cleanEmail,
-      role: cleanEmail.includes('admin') || cleanEmail.includes('oscar') || cleanEmail.includes('emmanuel') ? 'admin' : 'client',
-      status: 'active',
-      sessionToken: `token-usr-${Date.now()}`
-    };
-    try {
-      const userDocRef = doc(db, 'app_users', directUser.id);
-      await setDoc(userDocRef, { ...directUser, lastLogin: serverTimestamp() }, { merge: true });
-    } catch {
-      // Ignorar si hay problemas de red
-    }
-    return directUser;
+    console.error('Firebase Auth login error:', err?.message || err);
+    throw new Error(formatFirebaseAuthError(err));
   }
 }
 
@@ -63,19 +74,24 @@ export async function registerWithEmail(
   extra?: { zone?: string; boatName?: string; status?: 'active' | 'suspended' | 'pending_approval' }
 ): Promise<User> {
   const cleanEmail = email.trim().toLowerCase();
-  const initialStatus = extra?.status || (role === 'excursion' || role === 'waiter' ? 'pending_approval' : 'active');
+
+  // Prevenir escalación de privilegios desde el cliente: solo admin puede crear staff directo.
+  // Los registros públicos quedan restringidos a 'client' o staff sujeto a aprobación previa.
+  const safeRole: UserRole = (role === 'waiter' || role === 'excursion') ? role : 'client';
+  const initialStatus = extra?.status || (safeRole === 'excursion' || safeRole === 'waiter' ? 'pending_approval' : 'active');
+
   try {
     const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
-    await updateProfile(cred.user, { displayName: name });
+    await updateProfile(cred.user, { displayName: name.trim() });
     
     const newUser: User = {
       id: cred.user.uid,
       name: name.trim(),
       email: cred.user.email || cleanEmail,
-      phone: phone || null,
-      role,
-      zone: extra?.zone || null,
-      boatName: extra?.boatName || null,
+      phone: phone?.trim() || null,
+      role: safeRole,
+      zone: extra?.zone?.trim() || null,
+      boatName: extra?.boatName?.trim() || null,
       status: initialStatus,
       sessionToken: `token-${cred.user.uid}`
     };
@@ -84,26 +100,8 @@ export async function registerWithEmail(
     await setDoc(userDocRef, { ...newUser, createdAt: serverTimestamp() });
     return newUser;
   } catch (err: any) {
-    console.warn('Firebase Auth register fallback:', err?.message || err);
-    // Fallback instantáneo para que el cliente nunca quede bloqueado
-    const directUser: User = {
-      id: `usr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      name: name.trim() || cleanEmail.split('@')[0],
-      email: cleanEmail,
-      phone: phone || null,
-      role,
-      zone: extra?.zone || null,
-      boatName: extra?.boatName || null,
-      status: initialStatus,
-      sessionToken: `token-${Date.now()}`
-    };
-    try {
-      const userDocRef = doc(db, 'app_users', directUser.id);
-      await setDoc(userDocRef, { ...directUser, createdAt: serverTimestamp() }, { merge: true });
-    } catch {
-      // Ignorar si Firestore está offline
-    }
-    return directUser;
+    console.error('Firebase Auth register error:', err?.message || err);
+    throw new Error(formatFirebaseAuthError(err));
   }
 }
 

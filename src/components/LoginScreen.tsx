@@ -123,21 +123,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           onAuthenticated(user);
           return;
         }
+        throw new Error(data.message || 'Correo o contraseña incorrectos.');
       }
 
-      // Fallback seguro inmediato
-      const clean = email.trim().toLowerCase();
-      const fallback: User = {
-        id: `usr-${clean.replace(/[^a-z0-9]/g, '_')}`,
-        name: clean.split('@')[0],
-        email: clean,
-        role: clean.includes('admin') || clean.includes('oscar') || clean.includes('emmanuel') ? 'admin' : 'client',
-        status: 'active',
-        sessionToken: `token-${Date.now()}`
-      };
-      onAuthenticated(fallback);
+      throw new Error('Servicio de autenticación no disponible. Verifica tu conexión.');
     } catch (err: any) {
-      console.error(err);
+      console.error('Error de inicio de sesión:', err);
       setMessage(err?.message || 'Error al iniciar sesión. Verifica tu correo y contraseña.');
     } finally {
       setBusy(false);
@@ -232,31 +223,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           onAuthenticated(apiUser);
           return;
         }
+        throw new Error(data.message || 'No se pudo completar el registro.');
       }
 
-      // Fallback seguro
-      const clean = email.trim().toLowerCase();
-      const directUser: User = {
-        id: `usr-${Date.now()}`,
-        name: name.trim() || clean.split('@')[0],
-        email: clean,
-        phone: phone.trim() || null,
-        role: selectedRole,
-        boatName: selectedRole === 'excursion' ? boatName.trim() : null,
-        zone: selectedRole === 'waiter' ? zone.trim() : null,
-        status: initialStatus,
-        sessionToken: `token-${Date.now()}`,
-        giveawayTicket: assignedTicket
-      };
-
-      if (initialStatus === 'pending_approval') {
-        setRegistrationSuccess({ role: selectedRole, name: directUser.name });
-        return;
-      }
-
-      onAuthenticated(directUser);
+      throw new Error('Servicio de registro no disponible. Inténtalo de nuevo.');
     } catch (err: any) {
-      console.error(err);
+      console.error('Error de registro:', err);
       setMessage(err?.message || 'No se pudo completar el registro. Intenta de nuevo.');
     } finally {
       setBusy(false);

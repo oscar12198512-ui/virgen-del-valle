@@ -29,13 +29,20 @@ export async function validatePagoMovilScreenshot(
 ): Promise<OcrValidationResult> {
   if (!API) return MANUAL_REVIEW;
   try {
+    const token =
+      sessionStorage.getItem('virgen_del_valle_session') ||
+      (() => {
+        try {
+          return localStorage.getItem('playa_buche_token') || '';
+        } catch {
+          return '';
+        }
+      })();
     const response = await fetch(API + '/api/ai/validate-payment', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(sessionStorage.getItem('virgen_del_valle_session')
-          ? { Authorization: `Bearer ${sessionStorage.getItem('virgen_del_valle_session')}` }
-          : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ imageBase64, expectedRef, expectedAmountBs }),
     });

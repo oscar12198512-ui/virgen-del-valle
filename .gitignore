@@ -6,6 +6,8 @@ dev-dist/
 android/
 release/
 signing/
+*secrets_info*
+*keystore_base64*
 .DS_Store
 *.log
 *.jks

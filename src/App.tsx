@@ -584,9 +584,11 @@ export const App: React.FC = () => {
     };
   }, [API_BASE, sessionToken, signedInRole, authHeaders, clearSession]);
 
-  // Persistencia de cambios de personal operativo (Firestore) - Excluye orders que se sincronizan atómicamente
+  // Persistencia de cambios de estado operativo global (Firestore)
+  // SEGURIDAD CRÍTICA: Restringido estrictamente a administradores (Dueño / Admin).
+  // Previene que comensales, mesoneros o cocina sobreescriban precios, cuentas de pago o tasas.
   useEffect(() => {
-    if (!isDbHydrated || !signedInRole || !STAFF_ROLES.includes(signedInRole)) return;
+    if (!isDbHydrated || signedInRole !== 'admin') return;
     const currentHash = JSON.stringify({
       menuItems: menuItems.length,
       spots: spots.length,
@@ -1003,12 +1005,12 @@ export const App: React.FC = () => {
     try {
       localStorage.setItem('playa_buche_bcv_rate', String(validRate));
     } catch {}
-    if (isFirebaseConfigured()) {
+    if (isFirebaseConfigured() && currentUser?.role === 'admin') {
       saveAppState({ bcvRate: validRate }).catch((error) => {
         console.warn('Error al guardar tasa en Firestore:', error);
       });
     }
-  }, []);
+  }, [currentUser]);
 
   const handleClientPlaceOrder = async (
     items: OrderItem[],
@@ -1016,7 +1018,27 @@ export const App: React.FC = () => {
     requestedTime?: string,
     orderNote?: string
   ) => {
-    const subtotal = items.reduce((total, item) => total + item.quantity * item.unitPriceUsd, 0);
+    // Recalcular y validar estrictamente contra el catálogo oficial en memoria
+    let calculatedSubtotal = 0;
+    const validatedItems: OrderItem[] = items.map((item) => {
+      const official = menuItems.find((m) => m.id === item.menuItemId || m.id === item.id);
+      const unitPriceUsd = official ? Number(official.priceUsd) : (Number(item.unitPriceUsd) || 0);
+      const qty = Math.max(1, Math.min(50, Math.floor(Number(item.quantity) || 1)));
+      calculatedSubtotal += qty * unitPriceUsd;
+
+      return {
+        ...item,
+        id: item.id || `ci-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        menuItemId: official ? official.id : item.menuItemId,
+        name: official ? official.name : item.name,
+        quantity: qty,
+        unitPriceUsd,
+        waiterShareUsd: official?.waiterShareUsd || 0,
+        specialNote: (item.specialNote || '').slice(0, 200),
+      };
+    });
+
+    const subtotal = Math.round(calculatedSubtotal * 100) / 100;
     const nowIso = new Date().toISOString();
     const customerEmail = currentUser?.email ? currentUser.email.toLowerCase().trim() : undefined;
     const customerId = currentUser?.id || `client-${Date.now()}`;
@@ -1031,12 +1053,12 @@ export const App: React.FC = () => {
       customerId,
       customerEmail,
       clientUserId: currentUser?.id,
-      items,
+      items: validatedItems,
       subtotalUsd: subtotal,
       tipPercent: 0,
       tipUsd: 0,
       totalUsd: subtotal,
-      totalBs: subtotal * bcvRate,
+      totalBs: Math.round(subtotal * bcvRate * 100) / 100,
       status: 'in_fire',
       paymentStatus: 'pending',
       createdAt: nowIso,
@@ -1048,7 +1070,7 @@ export const App: React.FC = () => {
 
     if (isFirebaseConfigured()) {
       try {
-        await saveOrderToFirestore(newOrder);
+        await saveOrderToFirestore(newOrder, menuItems, bcvRate);
         setOrders((previous) => [newOrder, ...previous]);
         setClientActiveOrder(newOrder);
         try {
@@ -1145,12 +1167,12 @@ export const App: React.FC = () => {
     try {
       localStorage.setItem('playa_buche_giveaway', JSON.stringify(nextGiveaway));
     } catch {}
-    if (isFirebaseConfigured()) {
+    if (isFirebaseConfigured() && currentUser?.role === 'admin') {
       saveAppState({ giveaway: nextGiveaway }).catch((err) => {
         console.warn('Error al guardar sorteo en Firestore:', err);
       });
     }
-  }, []);
+  }, [currentUser]);
 
   const handleRegisterGiveawayParticipant = useCallback(
     (info: { fullName: string; email: string; phone?: string; userId?: string }) => {
@@ -1185,7 +1207,7 @@ export const App: React.FC = () => {
         try {
           localStorage.setItem('playa_buche_giveaway', JSON.stringify(next));
         } catch {}
-        if (isFirebaseConfigured()) {
+        if (isFirebaseConfigured() && currentUser?.role === 'admin') {
           saveAppState({ giveaway: next }).catch((err) => {
             console.warn('Error al registrar participante en Firestore:', err);
           });

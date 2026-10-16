@@ -220,7 +220,7 @@ const INITIAL_STAFF = [
     id: 'admin-emmanuel',
     name: 'Emmanuel Mejías',
     email: 'emmanuelmejias2616@gmail.com',
-    phone: '04127939128',
+    phone: process.env.OWNER_PHONE || '+584120000000',
     role: 'admin',
     status: 'active',
   },

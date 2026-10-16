@@ -221,7 +221,7 @@ async function ensureOwner() {
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   await pool.query(
     "INSERT INTO app_users (name, phone, email, role, password_hash, status) VALUES ($1,$2,$3,'admin',$4,'active')",
-    [process.env.OWNER_NAME || 'Emmanuel Mejías', process.env.OWNER_PHONE || null, email, passwordHash]
+    [process.env.OWNER_NAME || 'Administrador', process.env.OWNER_PHONE || null, email, passwordHash]
   );
   console.log(`Owner account created for ${email}.`);
 }
@@ -335,9 +335,96 @@ app.post('/api/orders', requireAuth, requireRole('client'), async (req, res) => 
   if (!order || typeof order !== 'object' || Array.isArray(order) || !Array.isArray(order.items) || !order.items.length) {
     return fail(res, 400, 'Pedido inválido.');
   }
+  if (order.items.length > 50) {
+    return fail(res, 400, 'El pedido excede el límite máximo de 50 ítems.');
+  }
+
   const ownerId = req.authUser.external_id || req.authUser.id;
-  const safeOrder = { ...order, id: String(order.id || `ord-${crypto.randomBytes(6).toString('hex')}`), clientUserId: ownerId };
+
   try {
+    // Consultar estado oficial en la base de datos (catálogo de platos y tasa de cambio)
+    const { rows: stateRows } = await pool.query("SELECT state FROM app_state WHERE id=1");
+    const appState = stateRows[0]?.state || {};
+    const officialMenuItems = Array.isArray(appState.menuItems) ? appState.menuItems : [];
+    const bcvRate = typeof appState.bcvRate === 'number' && appState.bcvRate > 0 ? appState.bcvRate : 1;
+
+    // Validación y recálculo estricto en servidor de cada ítem del pedido
+    const validatedItems = [];
+    let subtotalUsd = 0;
+
+    for (const rawItem of order.items) {
+      if (!rawItem || typeof rawItem !== 'object') {
+        return fail(res, 400, 'Elemento de pedido inválido.');
+      }
+      const targetId = String(rawItem.menuItemId || rawItem.id || '').trim();
+      const officialItem = officialMenuItems.find(
+        (m) => m && (m.id === targetId || (m.name && m.name.toLowerCase() === String(rawItem.name || '').toLowerCase()))
+      );
+
+      // Si el catálogo oficial está poblado en BD, exigir que el plato exista y esté disponible
+      if (officialMenuItems.length > 0) {
+        if (!officialItem) {
+          return fail(res, 400, `El plato "${rawItem.name || targetId}" no existe en el catálogo.`);
+        }
+        if (officialItem.isAvailable === false) {
+          return fail(res, 400, `El plato "${officialItem.name}" no está disponible actualmente.`);
+        }
+      }
+
+      const qty = Math.max(1, Math.min(50, Math.floor(Number(rawItem.quantity) || 1)));
+      // El precio unitario es OBLIGATORIAMENTE el del catálogo oficial
+      const unitPriceUsd = officialItem ? Number(officialItem.priceUsd) || 0 : (Number(rawItem.unitPriceUsd) || 0);
+      const waiterShareUsd = officialItem?.waiterShareUsd !== undefined ? Number(officialItem.waiterShareUsd) || 0 : 0;
+      const itemName = officialItem ? officialItem.name : String(rawItem.name || 'Plato Playero').slice(0, 80);
+
+      validatedItems.push({
+        id: String(rawItem.id || `ci-${crypto.randomBytes(4).toString('hex')}`),
+        menuItemId: officialItem ? officialItem.id : targetId,
+        name: itemName,
+        quantity: qty,
+        unitPriceUsd,
+        waiterShareUsd,
+        specialNote: String(rawItem.specialNote || '').trim().slice(0, 200),
+        status: 'queue',
+        prepTimerSeconds: 0,
+        imageUrl: officialItem?.imageUrl && !officialItem.imageUrl.startsWith('data:') ? officialItem.imageUrl : undefined
+      });
+
+      subtotalUsd += qty * unitPriceUsd;
+    }
+
+    subtotalUsd = Math.round(subtotalUsd * 100) / 100;
+    const totalUsd = subtotalUsd; // Bloquea propinas o descuentos arbitrarios inyectados desde el cliente
+    const totalBs = Math.round(totalUsd * bcvRate * 100) / 100;
+    const nowIso = new Date().toISOString();
+
+    const safeOrder = {
+      id: String(order.id || `ord-${crypto.randomBytes(6).toString('hex')}`),
+      displayNumber: String(order.displayNumber || `#${Math.floor(200 + Math.random() * 800)}`),
+      origin: 'client_qr',
+      spotId: String(order.spotId || 'general').slice(0, 50),
+      spotName: String(order.spotName || 'Toldo Playa').slice(0, 80),
+      customerName: String(order.customerName || req.authUser.name || 'Cliente').slice(0, 80),
+      customerPhone: order.customerPhone ? String(order.customerPhone).slice(0, 30) : undefined,
+      customerEmail: req.authUser.email || order.customerEmail || undefined,
+      customerId: ownerId,
+      clientUserId: ownerId,
+      items: validatedItems,
+      subtotalUsd,
+      tipPercent: 0,
+      tipUsd: 0,
+      totalUsd,
+      totalBs,
+      status: 'in_fire',
+      paymentStatus: 'pending',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      estimatedDeliveryTime: String(order.estimatedDeliveryTime || 'Ahora').slice(0, 50),
+      orderNote: order.orderNote ? String(order.orderNote).trim().slice(0, 300) : undefined,
+      kitchenStep: 2,
+      isSettled: false,
+    };
+
     const result = await pool.query(
       `INSERT INTO app_state (id,state) VALUES (1, jsonb_build_object('orders', jsonb_build_array($1::jsonb)))
        ON CONFLICT (id) DO UPDATE SET
@@ -348,7 +435,8 @@ app.post('/api/orders', requireAuth, requireRole('client'), async (req, res) => 
       [JSON.stringify(safeOrder)]
     );
     return res.status(201).json({ ok: true, order: safeOrder, orders: result.rows[0]?.orders || [] });
-  } catch {
+  } catch (error) {
+    console.error('Error al registrar pedido:', error);
     return fail(res, 500, 'No se pudo registrar el pedido.');
   }
 });
@@ -369,7 +457,33 @@ app.patch('/api/orders/:orderId', requireAuth, async (req, res) => {
     if (!isOwnerOfOrder && !OPERATIONAL_ROLES.includes(req.authUser.role)) {
       return fail(res, 403, 'No tienes permisos para este pedido.');
     }
-    const merged = { ...existing, ...patch, id: existing.id };
+
+    let merged;
+    if (!OPERATIONAL_ROLES.includes(req.authUser.role)) {
+      // Clientes: Restringir estrictamente a comprobante de pago o nota.
+      // Prohibido alterar ítems, cantidades, precios unitarios, totales o paymentStatus.
+      merged = {
+        ...existing,
+        paymentMethod: patch.paymentMethod || existing.paymentMethod,
+        paymentReference: patch.paymentReference ? String(patch.paymentReference).slice(0, 50) : existing.paymentReference,
+        paymentScreenshot: patch.paymentScreenshot || existing.paymentScreenshot,
+        orderNote: patch.orderNote ? String(patch.orderNote).slice(0, 300) : existing.orderNote,
+        id: existing.id,
+        items: existing.items,
+        subtotalUsd: existing.subtotalUsd,
+        tipPercent: existing.tipPercent,
+        tipUsd: existing.tipUsd,
+        totalUsd: existing.totalUsd,
+        totalBs: existing.totalBs,
+        status: existing.status,
+        paymentStatus: existing.paymentStatus,
+        isSettled: existing.isSettled,
+        updatedAt: new Date().toISOString()
+      };
+    } else {
+      merged = { ...existing, ...patch, id: existing.id, updatedAt: new Date().toISOString() };
+    }
+
     await pool.query(
       `UPDATE app_state SET
          state = jsonb_set(COALESCE(state,'{}'::jsonb), '{orders}',
@@ -661,11 +775,20 @@ const manualReview = (note) => ({
   notes: note,
 });
 
-app.post('/api/ai/validate-payment', async (req, res) => {
-  const imageBase64 = String(req.body?.imageBase64 || '');
-  const expectedRef = String(req.body?.expectedRef || '').trim();
-  const expectedAmountBs = Number(req.body?.expectedAmountBs || 0);
-  if (!imageBase64) return fail(res, 400, 'Falta el comprobante.');
+app.post(
+  '/api/ai/validate-payment',
+  requireAuth,
+  rateLimit(5 * 60 * 1000, 5, (req) => req.authUser?.id || req.ip),
+  async (req, res) => {
+    const imageBase64 = String(req.body?.imageBase64 || '');
+    const expectedRef = String(req.body?.expectedRef || '').trim().slice(0, 50);
+    const expectedAmountBs = Math.max(0, Number(req.body?.expectedAmountBs) || 0);
+    if (!imageBase64) return fail(res, 400, 'Falta el comprobante.');
+
+    // Limitar tamaño de imagen a ~5 MB (aproximadamente 7 MB en base64) para prevenir DoS
+    if (imageBase64.length > 7 * 1024 * 1024) {
+      return fail(res, 413, 'El comprobante excede el tamaño máximo permitido (5 MB).');
+    }
 
   const client = getGeminiClient();
   if (!client) {

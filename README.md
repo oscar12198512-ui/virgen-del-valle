@@ -53,7 +53,7 @@ Variables usadas por la API:
 ## Producción (Render)
 
 1. Sincroniza el Blueprint de `render.yaml`.
-2. En el web service define `OWNER_INITIAL_PASSWORD` (valor secreto). El resto ya está en el blueprint.
+2. En el web service define `OWNER_NAME`, `OWNER_PHONE`, `OWNER_EMAIL` y `OWNER_INITIAL_PASSWORD` (valores protegidos con `sync: false`).
 3. Opcional: `SMTP_*` para activar la recuperación por correo y `GEMINI_API_KEY` para la lectura de comprobantes.
 4. El build de la web service ejecuta `npm ci --omit=dev && npm run db:migrate`.
 

@@ -34,11 +34,13 @@ services:
       - key: VITE_FIREBASE_MEASUREMENT_ID
         value: "G-705S44KGDC"
       - key: OWNER_NAME
-        value: "Emmanuel Mejías"
+        sync: false
       - key: OWNER_PHONE
-        value: "04127939128"
+        sync: false
       - key: OWNER_EMAIL
-        value: "Emmanuelmejias2616@gmail.com"
+        sync: false
+      - key: OWNER_INITIAL_PASSWORD
+        sync: false
 
   - type: static
     name: virgen-del-valle-web

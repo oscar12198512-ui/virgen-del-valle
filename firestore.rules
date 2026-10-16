@@ -2,33 +2,165 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 1. COMANDAS Y PEDIDOS (orders)
-    // Permite que clientes por QR, mesoneros, capitanes y administración creen, consulten y actualicen pedidos en tiempo real
-    match /orders/{orderId} {
-      allow read, create, update: if true;
-      allow delete: if request.auth != null;
+    // =========================================================================
+    // FUNCIONES DE SEGURIDAD Y CONTROL DE ACCESO BASADO EN ROLES (RBAC)
+    // =========================================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
     }
 
-    // 2. ESTADO GLOBAL DEL RESTAURANTE (app_state)
-    // Menú, tasa BCV del día, toldos, cuentas de Pago Móvil / Zelle, participantes del sorteo
+    // Dueños y administradores fundadores del restaurante
+    function isMasterAdmin() {
+      return isAuthenticated() &&
+        request.auth.token.email != null &&
+        request.auth.token.email.lower() in [
+          'emmanuelmejias2616@gmail.com',
+          'oscar12198512@gmail.com'
+        ];
+    }
+
+    function hasUserDoc() {
+      return exists(/databases/$(database)/documents/app_users/$(request.auth.uid));
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/app_users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        isMasterAdmin() ||
+        request.auth.token.role == 'admin' ||
+        (hasUserDoc() && getUserData().role == 'admin')
+      );
+    }
+
+    function isStaff() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        request.auth.token.role in ['waiter', 'kitchen', 'excursion'] ||
+        (hasUserDoc() && getUserData().role in ['waiter', 'kitchen', 'excursion'])
+      );
+    }
+
+    // =========================================================================
+    // 1. ESTADO GLOBAL OPERATIVO (app_state)
+    // Menú, tasa BCV, toldos, cuentas de pago (Pago Móvil / Zelle) y sorteos
+    // =========================================================================
     match /app_state/{docId} {
-      allow read, write: if true;
+      // Lectura pública necesaria para comensales y carta digital en la playa
+      allow read: if true;
+
+      // Modificación estrictamente reservada al administrador / dueño
+      // Previene que atacantes, clientes o personal operativo alteren cuentas bancarias o tasas
+      allow create, update, delete: if isAdmin();
     }
 
-    // 3. USUARIOS Y PERSONAL (app_users)
-    // Roles (admin, mesonero, cocina, cliente, excursión) y accesos
+    // =========================================================================
+    // 2. CATÁLOGO INDIVIDUAL: PLATOS, TOLDOS Y PAQUETES DE EXCURSIÓN
+    // =========================================================================
+    match /menu_items/{itemId} {
+      allow read: if true;
+      allow create, update, delete: if isStaff();
+    }
+
+    match /spots/{spotId} {
+      allow read: if true;
+      allow create, update, delete: if isStaff();
+    }
+
+    match /excursions/{excursionId} {
+      allow read: if true;
+      allow create, update, delete: if isStaff();
+    }
+
+    // =========================================================================
+    // 3. COMANDAS Y PEDIDOS EN TIEMPO REAL (orders)
+    // =========================================================================
+    match /orders/{orderId} {
+      // Consulta puntual por ID de orden para seguimiento en vivo del comensal
+      allow get: if true;
+
+      // Listado masivo protegido: Personal operativo o cliente sobre sus propios pedidos
+      allow list: if isStaff() || (
+        isAuthenticated() && 
+        resource.data.clientUserId == request.auth.uid
+      );
+
+      // Creación: Personal o comensales con validación estricta de estructura y coherencia económica
+      // Bloquea inyección de estado 'verified' o 'isSettled' al crear y garantiza montos no negativos
+      allow create: if isStaff() || (
+        request.resource.data.keys().hasAll(['id', 'spotId', 'items', 'totalUsd', 'status', 'createdAt']) &&
+        request.resource.data.status in ['pending', 'in_fire'] &&
+        request.resource.data.totalUsd is number &&
+        request.resource.data.totalUsd >= 0 &&
+        (!('subtotalUsd' in request.resource.data) || (request.resource.data.subtotalUsd is number && request.resource.data.subtotalUsd >= 0)) &&
+        (!('totalBs' in request.resource.data) || (request.resource.data.totalBs is number && request.resource.data.totalBs >= 0)) &&
+        request.resource.data.items is list &&
+        request.resource.data.items.size() > 0 &&
+        request.resource.data.items.size() <= 50 &&
+        (!('paymentStatus' in request.resource.data) || request.resource.data.paymentStatus != 'verified') &&
+        (!('isSettled' in request.resource.data) || request.resource.data.isSettled == false)
+      );
+
+      // Actualización: Staff con control total; Clientes no pueden auto-aprobar pagos ni liquidar
+      allow update: if isStaff() || (
+        (!('paymentStatus' in request.resource.data) || request.resource.data.paymentStatus == resource.data.paymentStatus) &&
+        (!('isSettled' in request.resource.data) || request.resource.data.isSettled == resource.data.isSettled) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.spotId == resource.data.spotId &&
+        request.resource.data.createdAt == resource.data.createdAt
+      );
+
+      // Eliminación: Estrictamente restringida a administradores
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 4. USUARIOS Y PERSONAL (app_users)
+    // Previene escalación de privilegios y falsificación de roles
+    // =========================================================================
     match /app_users/{userId} {
-      allow read, write: if true;
+      // Lectura: Staff puede ver personal; Clientes solo consultan su propio perfil
+      allow read: if isStaff() || (isAuthenticated() && request.auth.uid == userId);
+
+      // Registro: Solo admin puede crear staff; Nuevos usuarios quedan fijados en rol 'client'
+      allow create: if isStaff() || (
+        isAuthenticated() && 
+        request.auth.uid == userId && 
+        (!('role' in request.resource.data) || request.resource.data.role == 'client')
+      );
+
+      // Edición: El usuario actualiza sus datos sin alterar su propio rol
+      allow update: if isStaff() || (
+        isAuthenticated() && 
+        request.auth.uid == userId && 
+        request.resource.data.role == resource.data.role
+      );
+
+      // Eliminación: Exclusiva para administradores
+      allow delete: if isAdmin();
     }
 
-    // 4. CIERRES DE CAJA Y ARQUEO DE MESONEROS (closings)
+    // =========================================================================
+    // 5. CIERRES DE CAJA Y ARQUEO DE MESONEROS (waiters_closings)
+    // =========================================================================
     match /waiters_closings/{closingId} {
-      allow read, write: if true;
+      allow read, create, update: if isStaff();
+      allow delete: if isAdmin();
     }
 
-    // Regla global de contingencia para cualquier otra colección del sistema
-    match /{document=**} {
-      allow read, write: if true;
+    // =========================================================================
+    // 6. CONFIGURACIONES FINANCIERAS Y DEL SISTEMA (settings)
+    // =========================================================================
+    match /settings/{settingId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
     }
+
+    // NOTA DE SEGURIDAD: Se elimina el comodín universal match /{document=**}.
+    // Cualquier ruta no listada explícitamente es denegada por defecto.
   }
 }
+

@@ -154,7 +154,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   ) => {
     setIsSubmittingOrder(true);
     try {
-      await onPlaceOrder(finalItems, selectedSpot, deliveryTime, orderNoteText);
+      // Re-verificar cada plato contra el catálogo oficial antes de enviar
+      const verifiedItems: OrderItem[] = finalItems.map((item) => {
+        const m = menuItems.find((mi) => mi.id === item.menuItemId || mi.id === item.id);
+        return {
+          ...item,
+          name: m ? m.name : item.name,
+          unitPriceUsd: m ? m.priceUsd : item.unitPriceUsd,
+          waiterShareUsd: m?.waiterShareUsd || 0,
+        };
+      });
+      await onPlaceOrder(verifiedItems, selectedSpot, deliveryTime, orderNoteText);
       setIsBreakdownModalOpen(false);
       setCart({});
       setActiveSubTab('tracking');

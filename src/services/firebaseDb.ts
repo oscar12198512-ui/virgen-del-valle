@@ -290,46 +290,117 @@ export function sanitizeFirestoreDoc<T extends Record<string, any>>(obj: T): T {
 }
 
 /**
- * Guarda o actualiza una orden de forma atómica en Firestore.
- * Notifica de inmediato a todos los dispositivos conectados.
- * Optimiza el tamaño del documento: sanea platos para no duplicar Base64 pesados ni blobs de imágenes.
+ * Valida y recalcula de forma estricta los precios y totales de una comanda
+ * contra el catálogo oficial de platos para prevenir manipulación del cliente.
  */
-export async function saveOrderToFirestore(order: Order): Promise<void> {
-  const orderDocRef = doc(db, 'orders', order.id);
+export async function validateAndRecalculateOrder(
+  order: Order,
+  menuItemsList?: MenuItem[],
+  rate?: number
+): Promise<Order> {
+  let catalog = menuItemsList;
+  let activeRate = rate;
 
-  // Sanitización de items para mantener documentos ultra livianos (< 2 KB)
+  // Si no se proporcionaron menuItems en memoria, consultar app_state de Firestore
+  if (!catalog || catalog.length === 0) {
+    try {
+      const snap = await getDoc(STATE_DOC_REF);
+      if (snap.exists()) {
+        const data = snap.data() as AppStateData;
+        catalog = data.menuItems || [];
+        if (!activeRate && data.bcvRate) {
+          activeRate = data.bcvRate;
+        }
+      }
+    } catch (e) {
+      console.warn('No se pudo verificar catálogo en Firestore, usando datos disponibles:', e);
+    }
+  }
+
+  const officialItems = catalog || [];
+  let calculatedSubtotal = 0;
+
   const sanitizedItems: OrderItem[] = (order.items || []).map((item) => {
+    // Buscar plato oficial en el catálogo por ID o nombre
+    const official = officialItems.find(
+      (m) => m && (m.id === item.menuItemId || m.id === item.id || (m.name && m.name.toLowerCase() === item.name.toLowerCase()))
+    );
+
+    // Si existe en el catálogo oficial, forzar el precio unitario legítimo
+    const unitPriceUsd = official ? Number(official.priceUsd) : (Number(item.unitPriceUsd) || 0);
+    const officialName = official ? official.name : item.name;
+    const waiterShare = official?.waiterShareUsd !== undefined ? official.waiterShareUsd : (item.waiterShareUsd || 0);
+    const quantity = Math.max(1, Math.min(50, Math.floor(Number(item.quantity) || 1)));
+
+    calculatedSubtotal += quantity * unitPriceUsd;
+
     const cleaned: OrderItem = {
-      id: item.id,
-      menuItemId: item.menuItemId,
-      name: item.name,
-      quantity: Number(item.quantity) || 1,
-      unitPriceUsd: Number(item.unitPriceUsd) || 0,
-      waiterShareUsd: item.waiterShareUsd || 0,
-      specialNote: item.specialNote || '',
+      id: item.id || `ci-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      menuItemId: official ? official.id : item.menuItemId,
+      name: officialName,
+      quantity,
+      unitPriceUsd,
+      waiterShareUsd: waiterShare,
+      specialNote: (item.specialNote || '').slice(0, 200),
       status: item.status || 'queue',
-      prepTimerSeconds: item.prepTimerSeconds || 0
+      prepTimerSeconds: item.prepTimerSeconds || 0,
     };
-    // Mantener imageUrl solo si es URL corta relativa o HTTP ligera, nunca base64 pesada
-    if (item.imageUrl && !item.imageUrl.startsWith('data:')) {
+
+    if (official?.imageUrl && !official.imageUrl.startsWith('data:')) {
+      cleaned.imageUrl = official.imageUrl;
+    } else if (item.imageUrl && !item.imageUrl.startsWith('data:')) {
       cleaned.imageUrl = item.imageUrl;
     }
+
     return cleaned;
   });
 
-  const cleanOrder = sanitizeFirestoreDoc({
+  const subtotalUsd = Math.round(calculatedSubtotal * 100) / 100;
+  const tipUsd = Math.max(0, Number(order.tipUsd) || 0);
+  const totalUsd = Math.round((subtotalUsd + tipUsd) * 100) / 100;
+  const conversionRate = activeRate && activeRate > 0 ? activeRate : (order.totalBs && order.totalUsd ? order.totalBs / order.totalUsd : 1);
+  const totalBs = Math.round(totalUsd * conversionRate * 100) / 100;
+
+  return {
     ...order,
     items: sanitizedItems,
+    subtotalUsd,
+    totalUsd,
+    totalBs,
     updatedAt: new Date().toISOString()
-  });
+  };
+}
+
+/**
+ * Guarda o actualiza una orden de forma atómica en Firestore.
+ * Notifica de inmediato a todos los dispositivos conectados.
+ * Optimiza el tamaño del documento: sanea platos para no duplicar Base64 pesados ni blobs de imágenes,
+ * y recalcula obligatoriamente los precios contra el catálogo para prevenir manipulación.
+ */
+export async function saveOrderToFirestore(
+  order: Order,
+  officialMenuItems?: MenuItem[],
+  bcvRate?: number
+): Promise<void> {
+  const orderDocRef = doc(db, 'orders', order.id);
+
+  // Recalcular y validar precios contra catálogo oficial para prevenir manipulación
+  const validatedOrder = await validateAndRecalculateOrder(order, officialMenuItems, bcvRate);
+
+  const cleanOrder = sanitizeFirestoreDoc(validatedOrder);
   await setDoc(orderDocRef, cleanOrder, { merge: true });
 }
 
 /**
  * Agrega una nueva comanda atómicamente a Firestore.
  */
-export async function pushOrderToFirestore(newOrder: Order, _currentOrders?: Order[]): Promise<void> {
-  await saveOrderToFirestore(newOrder);
+export async function pushOrderToFirestore(
+  newOrder: Order,
+  _currentOrders?: Order[],
+  officialMenuItems?: MenuItem[],
+  bcvRate?: number
+): Promise<void> {
+  await saveOrderToFirestore(newOrder, officialMenuItems, bcvRate);
 }
 
 /**
