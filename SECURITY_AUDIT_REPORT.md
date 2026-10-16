@@ -57,17 +57,18 @@ DEPLOY RECOMENDADO: SÍ (100% de hallazgos críticos y medios corregidos)
 
 ---
 
-### 2. 🔐 FASE 4: Autenticación — Escalación de Privilegios y Bypass en Fallback de Auth
-* **Archivo / Componente:** [`src/services/firebaseAuth.ts`](file:///c:/Users/Admin/OneDrive/Desktop/virgen-del-valle/src/services/firebaseAuth.ts) y [`src/components/LoginScreen.tsx`](file:///c:/Users/Admin/OneDrive/Desktop/virgen-del-valle/src/components/LoginScreen.tsx)
+### 2. 🔐 FASE 4: Autenticación — Escalación de Privilegios, Backdoors Demo y Bypass en Login
+* **Archivo / Componente:** [`src/services/firebaseAuth.ts`](file:///c:/Users/Admin/OneDrive/Desktop/virgen-del-valle/src/services/firebaseAuth.ts), [`src/components/LoginScreen.tsx`](file:///c:/Users/Admin/OneDrive/Desktop/virgen-del-valle/src/components/LoginScreen.tsx) y [`src/App.tsx`](file:///c:/Users/Admin/OneDrive/Desktop/virgen-del-valle/src/App.tsx)
 * **Nivel de Riesgo Original:** 🔴 **CRÍTICO**
 * **Estado Actual:** 🟢 **RESUELTO / MITIGADO** (16-Oct-2026)
 * **Descripción del problema original:**
-  En `loginWithEmail` y `LoginScreen.tsx`, ante cualquier fallo de Firebase Auth o de la API (incluso contraseña incorrecta o error de red), un bloque `catch` creaba un usuario simulado y le otorgaba rol de `admin` si el correo contenía las palabras `"admin"`, `"oscar"` o `"emmanuel"`, escribiéndolo directamente en Firestore y evadiendo la autenticación.
+  En `loginWithEmail` y `LoginScreen.tsx`, ante cualquier fallo de Firebase Auth o de la API (incluso contraseña incorrecta o error de red), un bloque `catch` creaba un usuario simulado y le otorgaba rol de `admin` si el correo contenía las palabras `"admin"`, `"oscar"` o `"emmanuel"`. Además, en `LoginScreen.tsx` existía un componente de "Acceso Rápido • Modo Pruebas" con botones para entrar directamente como Dueño, Cocina o Mesonero sin credenciales, y en `src/App.tsx` el parámetro de URL `?role=admin` auto-autenticaba como administrador sin verificar permisos.
 * **Solución Implementada:**
   1. **Eliminación Total de Fallbacks de Bypass:** Se suprimió la generación de sesiones ficticias y la asignación condicional de roles por subcadenas de texto.
-  2. **Manejo Estricto de Excepciones:** Si las credenciales son incorrectas o la cuenta no existe, el sistema propaga la excepción con mensajes traducidos de Firebase Auth (`formatFirebaseAuthError`), denegando el acceso.
-  3. **Protección de Registro:** En `registerWithEmail`, se normaliza cualquier intento de auto-asignación de roles (`role: 'admin'` o `'kitchen'` es forzado a `'client'`), previniendo la escalación de privilegios desde el formulario de registro.
-  4. **Limpieza en UI:** Se eliminaron los fallbacks vulnerables homólogos en `LoginScreen.tsx` tanto para el flujo de login como de registro.
+  2. **Remoción de Puertas Traseras de Modo Pruebas:** Se eliminó por completo el bloque visual de botones de acceso directo en `LoginScreen.tsx`. Nadie puede entrar sin correo y contraseña válidos.
+  3. **Eliminación del Auto-Auth por Query Params:** En `src/App.tsx` se eliminó la auto-autenticación de `testUser` vía `?role=...`; los roles ahora exigen obligatoriamente sesión activa y validada.
+  4. **Manejo Estricto de Excepciones:** Si las credenciales son incorrectas o la cuenta no existe, el sistema propaga la excepción con mensajes traducidos de Firebase Auth (`formatFirebaseAuthError`), denegando el acceso.
+  5. **Protección de Registro:** En `registerWithEmail`, se normaliza cualquier intento de auto-asignación de roles (`role: 'admin'` o `'kitchen'` es forzado a `'client'`), previniendo la escalación de privilegios desde el formulario de registro.
 
 ---
 
