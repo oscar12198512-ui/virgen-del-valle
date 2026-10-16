@@ -244,7 +244,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     try {
       if (isFirebaseConfigured()) {
         await sendResetPassword(target);
-        setRecoveryMessage('Se envió un correo para restablecer tu clave.');
+        setRecoveryMessage('Se envió un enlace a tu correo. Revisa tu bandeja de entrada y tu carpeta de Spam / Correo no deseado.');
         return;
       }
       const response = await fetch(API + '/api/auth/request-reset', {

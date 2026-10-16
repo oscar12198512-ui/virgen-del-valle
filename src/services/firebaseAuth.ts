@@ -44,7 +44,9 @@ export async function loginWithEmail(email: string, pass: string): Promise<User>
     
     if (userDoc.exists()) {
       const data = userDoc.data() as User;
-      return { ...data, id: cred.user.uid, sessionToken: `token-${cred.user.uid}` };
+      const isMaster = ['emmanuelmejias2616@gmail.com', 'oscar12198512@gmail.com'].includes(cleanEmail);
+      const role: UserRole = isMaster ? 'admin' : (data.role || 'client');
+      return { ...data, role, id: cred.user.uid, sessionToken: `token-${cred.user.uid}` };
     }
 
     // Usuario autenticado por primera vez sin perfil previo en Firestore
@@ -119,18 +121,24 @@ export function subscribeToAuthState(callback: (user: User | null) => void) {
       callback(null);
       return;
     }
+    const cleanEmail = (firebaseUser.email || '').trim().toLowerCase();
+    const isMaster = ['emmanuelmejias2616@gmail.com', 'oscar12198512@gmail.com'].includes(cleanEmail);
+
     try {
       const userDocRef = doc(db, 'app_users', firebaseUser.uid);
       const userDoc = await getDoc(userDocRef);
       if (userDoc.exists()) {
-        callback({ id: firebaseUser.uid, ...userDoc.data() } as User);
+        const data = userDoc.data() as User;
+        const role: UserRole = isMaster ? 'admin' : (data.role || 'client');
+        callback({ ...data, role, id: firebaseUser.uid, sessionToken: `token-${firebaseUser.uid}` });
       } else {
         callback({
           id: firebaseUser.uid,
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuario',
-          email: firebaseUser.email || '',
-          role: 'client',
-          status: 'active'
+          name: firebaseUser.displayName || cleanEmail.split('@')[0] || 'Usuario',
+          email: cleanEmail,
+          role: isMaster ? 'admin' : 'client',
+          status: 'active',
+          sessionToken: `token-${firebaseUser.uid}`
         });
       }
     } catch (e) {
@@ -138,9 +146,10 @@ export function subscribeToAuthState(callback: (user: User | null) => void) {
       callback({
         id: firebaseUser.uid,
         name: firebaseUser.displayName || 'Usuario',
-        email: firebaseUser.email || '',
-        role: 'client',
-        status: 'active'
+        email: cleanEmail,
+        role: isMaster ? 'admin' : 'client',
+        status: 'active',
+        sessionToken: `token-${firebaseUser.uid}`
       });
     }
   });
