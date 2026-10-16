@@ -847,18 +847,9 @@ export const App: React.FC = () => {
         handleAuthenticated(guestComensal);
         setViewRole('client');
       } else if (paramRole && ALL_ROLES.includes(paramRole as UserRole)) {
-        if (!currentUser && !sessionToken) {
-          const testUser: User = {
-            id: `usr-${paramRole}-demo`,
-            name: paramRole === 'admin' ? 'Dueño Playa Buche' : paramRole === 'kitchen' ? 'Cocina KDS' : 'Mesonero Playa',
-            email: `${paramRole}@playabuche.com`,
-            role: paramRole as UserRole,
-            status: 'active',
-            sessionToken: `token-${paramRole}-demo`
-          };
-          handleAuthenticated(testUser);
+        if (currentUser) {
+          setViewRole(paramRole as UserRole);
         }
-        setViewRole(paramRole as UserRole);
       }
     } catch (e) {
       console.warn('Error procesando parámetros de URL:', e);
