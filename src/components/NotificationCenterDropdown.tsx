@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Bell,
   X,
@@ -12,12 +12,18 @@ import {
   Play,
   Check,
   ChevronRight,
-  Sparkles,
-  Utensils
+  Trash2,
+  CheckCheck
 } from 'lucide-react';
 import { soundService } from '../services/soundService';
 import { UserRole, Order, User } from '../types';
 import { getOrderDeliveryTiming } from '../utils/deliveryTiming';
+import {
+  loadReadNotificationIds,
+  saveReadNotificationIds,
+  loadDismissedNotificationIds,
+  saveDismissedNotificationIds,
+} from '../services/notificationStorage';
 
 export interface AppNotification {
   id: string;
@@ -39,6 +45,7 @@ interface NotificationCenterDropdownProps {
   onSelectOrder?: (orderId: string) => void;
   onNavigateToView?: (role: UserRole) => void;
   approachingAlertCount?: number;
+  onDismissBoatAlert?: () => void;
 }
 
 export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProps> = ({
@@ -50,20 +57,28 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
   onSelectOrder,
   onNavigateToView,
   approachingAlertCount = 0,
+  onDismissBoatAlert,
 }) => {
   const [soundMuted, setSoundMuted] = useState(false);
+  const [readIds, setReadIds] = useState<Set<string>>(() => loadReadNotificationIds(currentUser?.id));
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => loadDismissedNotificationIds(currentUser?.id));
+
+  useEffect(() => {
+    setReadIds(loadReadNotificationIds(currentUser?.id));
+    setDismissedIds(loadDismissedNotificationIds(currentUser?.id));
+  }, [currentUser?.id, isOpen]);
 
   if (!isOpen) return null;
 
   const now = new Date();
   const isKitchenOrAdmin = currentRole === 'admin' || currentRole === 'kitchen';
 
-  // Generate dynamic live notifications based on actual orders & boat events
-  const dynamicNotifications: AppNotification[] = [];
+  // Generar notificaciones dinámicas basadas en pedidos y eventos operativos
+  const rawNotifications: AppNotification[] = [];
 
   // 1. Boat approaching alerts (SOLO para Dueño y Cocina)
   if (isKitchenOrAdmin && approachingAlertCount > 0) {
-    dynamicNotifications.push({
+    rawNotifications.push({
       id: 'boat-notif',
       type: 'boat_approaching',
       title: 'Lancha de Excursión en Aproximación',
@@ -76,26 +91,27 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
 
   // 2. Urgent 10 min & 30 min preparation alerts (SOLO para Dueño y Cocina)
   if (isKitchenOrAdmin) {
-    orders.forEach((o) => {
+    (orders || []).forEach((o) => {
+      if (!o) return;
       if (o.status !== 'delivered' && o.status !== 'ready_pass' && o.status !== 'cancelled') {
         const timing = getOrderDeliveryTiming(o, now);
         if (timing.minutesRemaining <= 10 && timing.minutesRemaining > 0) {
-          dynamicNotifications.push({
+          rawNotifications.push({
             id: 'urgent-10-' + o.id,
             type: 'urgent_10',
-            title: `🚨 Pase Inminente: Comanda ${o.displayNumber}`,
-            message: `${o.spotName} • Restan solo ${timing.minutesRemaining} min para entrega`,
+            title: `🚨 Pase Inminente: Comanda ${o.displayNumber || ''}`,
+            message: `${o.spotName || 'Mesa'} • Restan solo ${timing.minutesRemaining} min para entrega`,
             timestamp: timing.formattedTargetTime,
             orderId: o.id,
             isRead: false,
             targetRole: 'kitchen',
           });
         } else if (timing.minutesRemaining <= 30 && timing.minutesRemaining > 10) {
-          dynamicNotifications.push({
+          rawNotifications.push({
             id: 'alert-30-' + o.id,
             type: 'alert_30',
-            title: `⏰ Montar en Cocina: Comanda ${o.displayNumber}`,
-            message: `${o.spotName} • Faltan ${timing.minutesRemaining} min. Iniciar montaje de platos`,
+            title: `⏰ Montar en Cocina: Comanda ${o.displayNumber || ''}`,
+            message: `${o.spotName || 'Mesa'} • Faltan ${timing.minutesRemaining} min. Iniciar montaje de platos`,
             timestamp: timing.formattedTargetTime,
             orderId: o.id,
             isRead: false,
@@ -106,13 +122,15 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
     });
 
     // 3. New / In-fire orders (SOLO para Dueño y Cocina)
-    orders.slice(0, 3).forEach((o) => {
+    (orders || []).slice(0, 3).forEach((o) => {
+      if (!o) return;
       if (o.status === 'in_fire') {
-        dynamicNotifications.push({
+        const itemsCount = Array.isArray(o.items) ? o.items.length : 0;
+        rawNotifications.push({
           id: 'new-ord-' + o.id,
           type: 'new_order',
-          title: `🔥 Comanda en Fuego: ${o.displayNumber}`,
-          message: `${o.spotName} • ${o.items.length} platos en preparación`,
+          title: `🔥 Comanda en Fuego: ${o.displayNumber || ''}`,
+          message: `${o.spotName || 'Mesa'} • ${itemsCount} platos en preparación`,
           timestamp: o.createdAt ? new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Reciente',
           orderId: o.id,
           isRead: true,
@@ -123,16 +141,13 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
   }
 
   // 4. Ready orders: Filtradas estrictamente por rol destinatario
-  orders.forEach((o) => {
+  (orders || []).forEach((o) => {
+    if (!o) return;
     if (o.status === 'ready_pass') {
       const isClientOrder = o.origin === 'client_qr';
       const isExcursionOrder = o.origin === 'excursion';
       const isWaiterOrder = !isClientOrder && !isExcursionOrder;
 
-      // Si es Dueño o Cocina, ve todas las listas
-      // Si es Cliente, ve SOLO las listas de clientes
-      // Si es Mesonero, ve SOLO las listas de mesoneros
-      // Si es Excursión, ve SOLO las listas de excursión
       const shouldInclude =
         isKitchenOrAdmin ||
         (currentRole === 'client' && isClientOrder) ||
@@ -140,21 +155,21 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
         (currentRole === 'excursion' && isExcursionOrder);
 
       if (shouldInclude) {
-        dynamicNotifications.push({
+        rawNotifications.push({
           id: 'ready-pass-' + o.id,
           type: 'ready_order',
           title:
             isClientOrder
-              ? `🎉 ¡Tu Pedido está LISTO!: ${o.displayNumber}`
+              ? `🎉 ¡Tu Pedido está LISTO!: ${o.displayNumber || ''}`
               : isExcursionOrder
-              ? `⚓ Excursión LISTA en Cocina: ${o.displayNumber}`
-              : `🍽️ Comanda LISTA para Retirar: ${o.displayNumber}`,
+              ? `⚓ Excursión LISTA en Cocina: ${o.displayNumber || ''}`
+              : `🍽️ Comanda LISTA para Retirar: ${o.displayNumber || ''}`,
           message:
             isClientOrder
-              ? `Servicio para ${o.spotName} listo en cocina para llevar a tu toldo.`
+              ? `Servicio para ${o.spotName || 'tu toldo'} listo en cocina para llevar a tu toldo.`
               : isExcursionOrder
-              ? `Raciones listas para despacho en muelle (${o.spotName}).`
-              : `${o.spotName} • Mesonero ${o.waiterName || ''}: Retirar plato en pase de cocina.`,
+              ? `Raciones listas para despacho en muelle (${o.spotName || ''}).`
+              : `${o.spotName || ''} • Mesonero ${o.waiterName || ''}: Retirar plato en pase de cocina.`,
           timestamp: o.readyAt ? new Date(o.readyAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Listo',
           orderId: o.id,
           isRead: false,
@@ -163,6 +178,61 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
       }
     }
   });
+
+  // Filtrar las notificaciones descartadas por el usuario
+  const dynamicNotifications: AppNotification[] = rawNotifications
+    .filter((n) => !dismissedIds.has(n.id))
+    .map((n) => ({
+      ...n,
+      isRead: n.isRead || readIds.has(n.id),
+    }));
+
+  const unreadCount = dynamicNotifications.filter((n) => !n.isRead).length;
+
+  const handleDismissNotification = (notifId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setDismissedIds((prev) => {
+      const next = new Set<string>(prev);
+      next.add(notifId);
+      saveDismissedNotificationIds(next, currentUser?.id);
+      return next;
+    });
+
+    if (notifId === 'boat-notif' && onDismissBoatAlert) {
+      onDismissBoatAlert();
+    }
+  };
+
+  const handleMarkAsRead = (notifId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setReadIds((prev) => {
+      const next = new Set<string>(prev);
+      next.add(notifId);
+      saveReadNotificationIds(next, currentUser?.id);
+      return next;
+    });
+  };
+
+  const handleMarkAllAsRead = () => {
+    setReadIds((prev) => {
+      const next = new Set<string>(prev);
+      dynamicNotifications.forEach((n) => next.add(n.id));
+      saveReadNotificationIds(next, currentUser?.id);
+      return next;
+    });
+  };
+
+  const handleClearAllDismissed = () => {
+    setDismissedIds((prev) => {
+      const next = new Set<string>(prev);
+      dynamicNotifications.forEach((n) => next.add(n.id));
+      saveDismissedNotificationIds(next, currentUser?.id);
+      return next;
+    });
+    if (onDismissBoatAlert) {
+      onDismissBoatAlert();
+    }
+  };
 
   const handlePlaySound = (type: AppNotification['type']) => {
     if (type === 'urgent_10') soundService.playUrgent10MinAlert();
@@ -174,6 +244,9 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
   };
 
   const handleClickNotification = (notif: AppNotification) => {
+    // Al hacer clic, marcarla como leída automáticamente
+    handleMarkAsRead(notif.id);
+
     if (notif.orderId && onSelectOrder) {
       onSelectOrder(notif.orderId);
       onClose();
@@ -203,8 +276,8 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
                   : 'Centro de Notificaciones'}
               </h3>
               <span className="text-[10px] text-[#bbe9ff]">
-                {dynamicNotifications.length}{' '}
-                {dynamicNotifications.length === 1 ? 'aviso disponible' : 'avisos disponibles'}
+                {unreadCount > 0 ? `${unreadCount} sin leer` : 'Todo al día'} • {dynamicNotifications.length}{' '}
+                {dynamicNotifications.length === 1 ? 'total' : 'totales'}
               </span>
             </div>
           </div>
@@ -225,11 +298,37 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
             <button
               onClick={onClose}
               className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+              title="Cerrar panel"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
+
+        {/* Subheader: Acciones rápidas (Marcar todas leídas / Limpiar) */}
+        {dynamicNotifications.length > 0 && (
+          <div className="px-3 py-1.5 bg-[#f0f5fa] border-b border-gray-100 flex items-center justify-between text-[11px]">
+            <button
+              type="button"
+              onClick={handleMarkAllAsRead}
+              disabled={unreadCount === 0}
+              className="font-bold text-[#006782] hover:text-[#002546] disabled:text-gray-400 disabled:cursor-default flex items-center gap-1 transition-colors"
+            >
+              <CheckCheck className="w-3.5 h-3.5" />
+              <span>Marcar todas leídas</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleClearAllDismissed}
+              className="font-bold text-gray-500 hover:text-rose-700 flex items-center gap-1 transition-colors"
+              title="Quitar todos los avisos del listado visual"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Limpiar todo</span>
+            </button>
+          </div>
+        )}
 
         {/* Notification List */}
         <div className="p-2 space-y-2 max-h-96 overflow-y-auto">
@@ -256,74 +355,111 @@ export const NotificationCenterDropdown: React.FC<NotificationCenterDropdownProp
               </p>
             </div>
           ) : (
-            dynamicNotifications.map((notif) => (
-              <div
-                key={notif.id}
-                onClick={() => handleClickNotification(notif)}
-                className={`p-3 rounded-2xl border transition-all cursor-pointer hover:shadow-xs flex items-start justify-between gap-2 ${
-                  notif.type === 'urgent_10'
-                    ? 'bg-rose-50/70 border-rose-300 hover:bg-rose-50'
-                    : notif.type === 'alert_30'
-                    ? 'bg-amber-50/70 border-amber-300 hover:bg-amber-50'
-                    : notif.type === 'ready_order'
-                    ? 'bg-emerald-50/80 border-emerald-400 hover:bg-emerald-50'
-                    : notif.type === 'boat_approaching'
-                    ? 'bg-sky-50/70 border-sky-300 hover:bg-sky-50'
-                    : 'bg-white border-gray-200 hover:bg-[#eff4ff]/50'
-                }`}
-              >
-                <div className="flex items-start gap-2.5">
-                  <div
-                    className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
-                      notif.type === 'urgent_10'
-                        ? 'bg-rose-600 text-white animate-pulse'
-                        : notif.type === 'alert_30'
-                        ? 'bg-amber-500 text-white'
-                        : notif.type === 'ready_order'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : notif.type === 'boat_approaching'
-                        ? 'bg-sky-600 text-white'
-                        : 'bg-[#002546] text-white'
-                    }`}
-                  >
-                    {notif.type === 'urgent_10' ? (
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                    ) : notif.type === 'alert_30' ? (
-                      <Clock className="w-3.5 h-3.5" />
-                    ) : notif.type === 'ready_order' ? (
-                      <Check className="w-3.5 h-3.5" />
-                    ) : notif.type === 'boat_approaching' ? (
-                      <Ship className="w-3.5 h-3.5" />
-                    ) : (
-                      <Flame className="w-3.5 h-3.5 text-amber-400" />
-                    )}
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-[#002546] leading-tight">{notif.title}</h4>
-                    <p className="text-[11px] text-gray-600 mt-0.5">{notif.message}</p>
-                    <span className="text-[10px] text-gray-400 block mt-1 font-mono">
-                      {notif.timestamp}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col items-end gap-1">
-                  {!soundMuted && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePlaySound(notif.type);
-                      }}
-                      title="Probar sonido"
-                      className="p-1 rounded-md text-gray-400 hover:text-[#002546] transition-colors"
+            dynamicNotifications.map((notif) => {
+              const isRead = notif.isRead;
+              return (
+                <div
+                  key={notif.id}
+                  onClick={() => handleClickNotification(notif)}
+                  className={`p-3 rounded-2xl border transition-all cursor-pointer hover:shadow-xs flex items-start justify-between gap-2 group ${
+                    isRead
+                      ? 'bg-gray-50/70 border-gray-200 opacity-75 hover:opacity-100 hover:bg-white'
+                      : notif.type === 'urgent_10'
+                      ? 'bg-rose-50/80 border-rose-300 hover:bg-rose-50'
+                      : notif.type === 'alert_30'
+                      ? 'bg-amber-50/80 border-amber-300 hover:bg-amber-50'
+                      : notif.type === 'ready_order'
+                      ? 'bg-emerald-50/90 border-emerald-400 hover:bg-emerald-50'
+                      : notif.type === 'boat_approaching'
+                      ? 'bg-sky-50/80 border-sky-300 hover:bg-sky-50'
+                      : 'bg-white border-gray-200 hover:bg-[#eff4ff]/50'
+                  }`}
+                >
+                  <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                    <div
+                      className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                        notif.type === 'urgent_10'
+                          ? 'bg-rose-600 text-white animate-pulse'
+                          : notif.type === 'alert_30'
+                          ? 'bg-amber-500 text-white'
+                          : notif.type === 'ready_order'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : notif.type === 'boat_approaching'
+                          ? 'bg-sky-600 text-white'
+                          : 'bg-[#002546] text-white'
+                      }`}
                     >
-                      <Play className="w-3 h-3" />
-                    </button>
-                  )}
-                  <ChevronRight className="w-3.5 h-3.5 text-gray-400 mt-1" />
+                      {notif.type === 'urgent_10' ? (
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                      ) : notif.type === 'alert_30' ? (
+                        <Clock className="w-3.5 h-3.5" />
+                      ) : notif.type === 'ready_order' ? (
+                        <Check className="w-3.5 h-3.5" />
+                      ) : notif.type === 'boat_approaching' ? (
+                        <Ship className="w-3.5 h-3.5" />
+                      ) : (
+                        <Flame className="w-3.5 h-3.5 text-amber-400" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className={`text-xs font-bold leading-tight truncate ${isRead ? 'text-gray-700' : 'text-[#002546]'}`}>
+                          {notif.title}
+                        </h4>
+                        {!isRead && (
+                          <span className="w-2 h-2 rounded-full bg-[#006782] shrink-0" title="No leída"></span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-600 mt-0.5 leading-snug">{notif.message}</p>
+                      <span className="text-[10px] text-gray-400 block mt-1 font-mono">
+                        {notif.timestamp}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Acciones individuales: Probar sonido, Marcar leída, Descartar */}
+                  <div className="flex flex-col items-end gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1">
+                      {!soundMuted && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePlaySound(notif.type);
+                          }}
+                          title="Probar sonido"
+                          className="p-1 rounded-md text-gray-400 hover:text-[#002546] hover:bg-gray-100 transition-colors"
+                        >
+                          <Play className="w-3 h-3" />
+                        </button>
+                      )}
+
+                      {!isRead && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleMarkAsRead(notif.id, e)}
+                          title="Marcar como leída"
+                          className="p-1 rounded-md text-[#006782] hover:bg-[#dce9ff] transition-colors"
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={(e) => handleDismissNotification(notif.id, e)}
+                        title="Quitar esta notificación"
+                        className="p-1 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <ChevronRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-500 mt-0.5" />
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 

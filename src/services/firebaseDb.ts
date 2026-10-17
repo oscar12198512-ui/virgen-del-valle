@@ -196,14 +196,13 @@ export function subscribeToOrders(
   }
 
   // 3. CASO COCINA (KDS):
-  // Solo escucha pedidos activos en fuego o listos para entrega.
-  // No descarga pedidos viejos entregados o cancelados hace días.
+  // Escucha las órdenes más recientes (activas e histórico de despacho)
+  // Sin requerir índice compuesto propenso a fallas en la nube
   if (options.role === 'kitchen') {
     const kitchenQuery = query(
       ORDERS_COLLECTION,
-      where('status', 'in', ['pending', 'in_fire', 'plated', 'ready_pass']),
       orderBy('createdAt', 'desc'),
-      limit(options.limitCount || 40)
+      limit(options.limitCount || 60)
     );
 
     return onSnapshot(
@@ -214,17 +213,8 @@ export function subscribeToOrders(
         onUpdate(list);
       },
       (error) => {
-        console.warn('Advertencia en query filtrada de cocina, usando fallback limitado:', error);
-        const fallback = query(ORDERS_COLLECTION, orderBy('createdAt', 'desc'), limit(40));
-        return onSnapshot(
-          fallback,
-          (snap) => {
-            const list: Order[] = [];
-            snap.forEach((d) => list.push({ id: d.id, ...d.data() } as Order));
-            onUpdate(list);
-          },
-          onError
-        );
+        console.warn('Error al escuchar órdenes en cocina KDS:', error);
+        if (onError) onError(error);
       }
     );
   }

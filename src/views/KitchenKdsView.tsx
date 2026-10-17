@@ -6,6 +6,10 @@ import {
   OrderDeliveryTimingInfo,
 } from '../utils/deliveryTiming';
 import {
+  loadKitchenAcknowledgedAlerts,
+  saveKitchenAcknowledgedAlert,
+} from '../services/notificationStorage';
+import {
   Flame,
   CheckCircle,
   Clock,
@@ -72,21 +76,26 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
   // Total items in fire aggregator for station chefs (Fritura, Plancha, etc.)
   const itemsInFireSummary = useMemo(() => {
     const map: Record<string, number> = {};
-    orders
-      .filter((o) => o.status === 'in_fire' || o.status === 'pending')
+    (orders || [])
+      .filter((o) => o && (o.status === 'in_fire' || o.status === 'pending'))
       .forEach((o) => {
-        o.items.forEach((item) => {
-          map[item.name] = (map[item.name] || 0) + item.quantity;
+        (Array.isArray(o.items) ? o.items : []).forEach((item) => {
+          if (item && item.name) {
+            map[item.name] = (map[item.name] || 0) + (Number(item.quantity) || 1);
+          }
         });
       });
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
   }, [orders]);
 
   const handleToggleAllItems = (order: Order) => {
-    const allChecked = order.items.every((i) => checkedItems[i.id]);
+    if (!order || !Array.isArray(order.items)) return;
+    const allChecked = order.items.every((i) => i && checkedItems[i.id]);
     const nextState = { ...checkedItems };
     order.items.forEach((i) => {
-      nextState[i.id] = !allChecked;
+      if (i && i.id) {
+        nextState[i.id] = !allChecked;
+      }
     });
     setCheckedItems(nextState);
     soundService.playBell();
@@ -103,7 +112,10 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
   // Check active orders for 30m and 10m delivery alerts
   useEffect(() => {
     const now = new Date();
-    orders.forEach((order) => {
+    const acknowledged = loadKitchenAcknowledgedAlerts();
+
+    (orders || []).forEach((order) => {
+      if (!order) return;
       // Only monitor active kitchen orders
       if (order.status !== 'in_fire' && order.status !== 'pending' && order.status !== 'plated') {
         return;
@@ -113,15 +125,17 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
 
       // 1. Alert when 10 minutes or less remain for delivery (Priority alert)
       if (timing.minutesRemaining <= 10 && timing.minutesRemaining > 0) {
-        if (!notified10m[order.id]) {
+        const key10m = `${order.id}_10m`;
+        if (!notified10m[order.id] && !acknowledged.has(key10m)) {
           setNotified10m((prev) => ({ ...prev, [order.id]: true }));
+          saveKitchenAcknowledgedAlert(key10m);
           soundService.playUrgent10MinAlert();
           soundService.buzzSmartBand();
           setActiveKitchenAlert({
             type: '10m',
             orderId: order.id,
-            displayNumber: order.displayNumber,
-            spotName: order.spotName,
+            displayNumber: String(order.displayNumber || ''),
+            spotName: String(order.spotName || 'Mesa'),
             minutesRemaining: timing.minutesRemaining,
             formattedTime: timing.formattedTargetTime,
           });
@@ -129,15 +143,17 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
       }
       // 2. Alert when 30 minutes or less remain for delivery (Mount plate in kitchen)
       else if (timing.minutesRemaining <= 30 && timing.minutesRemaining > 10) {
-        if (!notified30m[order.id]) {
+        const key30m = `${order.id}_30m`;
+        if (!notified30m[order.id] && !acknowledged.has(key30m)) {
           setNotified30m((prev) => ({ ...prev, [order.id]: true }));
+          saveKitchenAcknowledgedAlert(key30m);
           soundService.playMountPlate30MinAlert();
           soundService.buzzSmartBand();
           setActiveKitchenAlert({
             type: '30m',
             orderId: order.id,
-            displayNumber: order.displayNumber,
-            spotName: order.spotName,
+            displayNumber: String(order.displayNumber || ''),
+            spotName: String(order.spotName || 'Mesa'),
             minutesRemaining: timing.minutesRemaining,
             formattedTime: timing.formattedTargetTime,
           });
@@ -179,12 +195,13 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
   };
 
   // List of all completed orders that have reached ready_pass or delivered
-  const completedOrdersList = orders
+  const completedOrdersList = (orders || [])
+    .filter(Boolean)
     .map((o) => ({
       order: o,
       durationMinutes: getOrderPrepDurationMinutes(o),
     }))
-    .filter((entry): entry is { order: Order; durationMinutes: number } => entry.durationMinutes !== null);
+    .filter((entry): entry is { order: Order; durationMinutes: number } => typeof entry.durationMinutes === 'number' && !isNaN(entry.durationMinutes));
 
   const completedCount = completedOrdersList.length;
   const totalMinutes = completedOrdersList.reduce((acc, curr) => acc + curr.durationMinutes, 0);
@@ -291,14 +308,14 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
     }
   };
 
-  const inFireCount = orders.filter((o) => o.status === 'in_fire' || o.status === 'pending').length;
-  const readyCount = orders.filter((o) => o.status === 'ready_pass' || o.status === 'plated').length;
+  const inFireCount = (orders || []).filter((o) => o && (o.status === 'in_fire' || o.status === 'pending')).length;
+  const readyCount = (orders || []).filter((o) => o && (o.status === 'ready_pass' || o.status === 'plated')).length;
 
   const now = new Date();
 
   // Active orders with delivery timing calculated
-  const activeOrdersWithTiming = orders
-    .filter((o) => o.status === 'in_fire' || o.status === 'pending' || o.status === 'plated')
+  const activeOrdersWithTiming = (orders || [])
+    .filter((o) => o && (o.status === 'in_fire' || o.status === 'pending' || o.status === 'plated'))
     .map((o) => ({ order: o, timing: getOrderDeliveryTiming(o, now) }));
 
   const countAlert10m = activeOrdersWithTiming.filter(
@@ -310,17 +327,25 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
   ).length;
 
   // STRICT USER INTENT: Organize orders by scheduled delivery time (earliest delivery time FIRST)
-  const filteredOrders = orders
+  const filteredOrders = (orders || [])
     .filter((o) => {
+      if (!o) return false;
+      const dNum = String(o.displayNumber || '').toLowerCase();
+      const sName = String(o.spotName || '').toLowerCase();
+      const cName = String(o.customerName || '').toLowerCase();
+      const itemsList = Array.isArray(o.items) ? o.items : [];
+      const query = searchQuery.trim().toLowerCase();
+
       const matchesSearch =
-        o.displayNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        o.spotName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        o.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        o.items.some((i) => i.name.toLowerCase().includes(searchQuery.toLowerCase()));
+        !query ||
+        dNum.includes(query) ||
+        sName.includes(query) ||
+        cName.includes(query) ||
+        itemsList.some((i) => i && String(i.name || '').toLowerCase().includes(query));
 
       if (!matchesSearch) return false;
 
-      if (zoneFilter === 'beach' && (o.origin === 'excursion' || o.spotName.toLowerCase().includes('lancha') || o.spotName.toLowerCase().includes('muelle'))) return false;
+      if (zoneFilter === 'beach' && (o.origin === 'excursion' || sName.includes('lancha') || sName.includes('muelle'))) return false;
       if (zoneFilter === 'excursion' && o.origin !== 'excursion') return false;
       if (zoneFilter === 'qr' && (o.origin === 'excursion' || o.waiterName)) return false;
 
@@ -484,7 +509,12 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
               <Volume2 className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setActiveKitchenAlert(null)}
+              onClick={() => {
+                if (activeKitchenAlert) {
+                  saveKitchenAcknowledgedAlert(`${activeKitchenAlert.orderId}_${activeKitchenAlert.type}`);
+                }
+                setActiveKitchenAlert(null);
+              }}
               className={`p-1.5 rounded-lg text-xs font-bold ${
                 activeKitchenAlert.type === '10m'
                   ? 'hover:bg-white/20 text-white/80 hover:text-white'
@@ -852,25 +882,33 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
                   )}
 
                   {/* Order Items Header & Batch Action */}
-                  <div className="flex justify-between items-center pt-1">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-                      Platos de la Comanda:
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleAllItems(order)}
-                      className="text-[10px] font-bold text-[#006782] hover:text-[#002546] bg-[#eff4ff] hover:bg-[#dce9ff] px-2 py-0.5 rounded-md flex items-center gap-1 transition-colors"
-                    >
-                      <CheckSquare className="w-3 h-3 text-[#006782]" />
-                      <span>{order.items.every((i) => checkedItems[i.id]) ? 'Desmarcar todos' : 'Marcar todos listos'}</span>
-                    </button>
-                  </div>
+                  {(() => {
+                    const orderItems = Array.isArray(order.items) ? order.items : [];
+                    const allItemsChecked = orderItems.length > 0 && orderItems.every((i) => i && checkedItems[i.id]);
 
-                  {/* Order Items */}
-                  <div className="space-y-2">
-                    {order.items.map((item) => {
-                      const isChecked = Boolean(checkedItems[item.id]);
-                      return (
+                    return (
+                      <>
+                        <div className="flex justify-between items-center pt-1">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                            Platos de la Comanda ({orderItems.length}):
+                          </span>
+                          {orderItems.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAllItems(order)}
+                              className="text-[10px] font-bold text-[#006782] hover:text-[#002546] bg-[#eff4ff] hover:bg-[#dce9ff] px-2 py-0.5 rounded-md flex items-center gap-1 transition-colors"
+                            >
+                              <CheckSquare className="w-3 h-3 text-[#006782]" />
+                              <span>{allItemsChecked ? 'Desmarcar todos' : 'Marcar todos listos'}</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Order Items */}
+                        <div className="space-y-2">
+                          {orderItems.map((item) => {
+                            const isChecked = Boolean(checkedItems[item.id]);
+                            return (
                         <div
                           key={item.id}
                           onClick={() => handleToggleItem(item.id)}
@@ -911,6 +949,9 @@ export const KitchenKdsView: React.FC<KitchenKdsViewProps> = ({
                       );
                     })}
                   </div>
+                    </>
+                  );
+                })()}
 
                   {/* Order General Note / Alergias / Contornos Especiales */}
                   {order.orderNote && (

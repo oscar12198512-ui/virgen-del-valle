@@ -39,8 +39,8 @@ service cloud.firestore {
     function isStaff() {
       return isAuthenticated() && (
         isAdmin() ||
-        request.auth.token.role in ['waiter', 'kitchen', 'excursion'] ||
-        (hasUserDoc() && getUserData().role in ['waiter', 'kitchen', 'excursion'])
+        request.auth.token.role in ['waiter', 'kitchen', 'cocina', 'cocinero', 'chef', 'excursion'] ||
+        (hasUserDoc() && getUserData().role in ['waiter', 'kitchen', 'cocina', 'cocinero', 'chef', 'excursion'])
       );
     }
 

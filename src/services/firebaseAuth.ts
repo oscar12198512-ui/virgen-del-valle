@@ -10,6 +10,7 @@ import {
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { User, UserRole } from '../types';
+import { normalizeUserRole } from '../utils/roleUtils';
 
 function formatFirebaseAuthError(error: any): string {
   const code = error?.code || '';
@@ -45,7 +46,7 @@ export async function loginWithEmail(email: string, pass: string): Promise<User>
     if (userDoc.exists()) {
       const data = userDoc.data() as User;
       const isMaster = ['emmanuelmejias2616@gmail.com', 'oscar12198512@gmail.com'].includes(cleanEmail);
-      const role: UserRole = isMaster ? 'admin' : (data.role || 'client');
+      const role: UserRole = isMaster ? 'admin' : normalizeUserRole(data.role);
       return { ...data, role, id: cred.user.uid, sessionToken: `token-${cred.user.uid}` };
     }
 
@@ -129,7 +130,7 @@ export function subscribeToAuthState(callback: (user: User | null) => void) {
       const userDoc = await getDoc(userDocRef);
       if (userDoc.exists()) {
         const data = userDoc.data() as User;
-        const role: UserRole = isMaster ? 'admin' : (data.role || 'client');
+        const role: UserRole = isMaster ? 'admin' : normalizeUserRole(data.role);
         callback({ ...data, role, id: firebaseUser.uid, sessionToken: `token-${firebaseUser.uid}` });
       } else {
         callback({

@@ -60,6 +60,9 @@ import {
   fetchUsersFromFirestore
 } from './services/firebaseDb';
 import { subscribeToAuthState, logoutFirebase } from './services/firebaseAuth';
+import { normalizeUserRole } from './utils/roleUtils';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { loadDismissedNotificationIds, loadReadNotificationIds } from './services/notificationStorage';
 
 const SESSION_KEY = 'virgen_del_valle_session';
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -205,7 +208,12 @@ export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
       const saved = localStorage.getItem('playa_buche_user');
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      if (parsed) {
+        parsed.role = normalizeUserRole(parsed.role);
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -299,6 +307,16 @@ export const App: React.FC = () => {
   const [viewRole, setViewRole] = useState<UserRole | null>(null);
   const prevOrdersRef = useRef<Order[]>([]);
   const ordersHydratedRef = useRef<boolean>(false);
+  const seenToastKeysRef = useRef<Set<string>>(new Set());
+
+  // Auto-descartar aviso flotante (Toast) en pantalla tras 6 segundos para no invadir la pantalla
+  useEffect(() => {
+    if (!realtimeToast) return;
+    const timer = setTimeout(() => {
+      setRealtimeToast(null);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [realtimeToast]);
 
   const directLoginRequested = new URLSearchParams(window.location.search).get('login') === '1';
 
@@ -307,7 +325,7 @@ export const App: React.FC = () => {
     [sessionToken]
   );
 
-  const signedInRole: UserRole | null = currentUser?.role ?? null;
+  const signedInRole: UserRole | null = currentUser?.role ? normalizeUserRole(currentUser.role) : null;
   const effectiveRole: UserRole = signedInRole ?? 'client';
   // El dueño puede inspeccionar cualquier módulo; el resto solo el suyo.
   const availableRoles = useMemo(
@@ -338,9 +356,10 @@ export const App: React.FC = () => {
     if (isFirebaseConfigured()) {
       const unsubscribe = subscribeToAuthState((user) => {
         if (user) {
-          setCurrentUser(user);
+          const normUser = { ...user, role: normalizeUserRole(user.role) };
+          setCurrentUser(normUser);
           try {
-            localStorage.setItem('playa_buche_user', JSON.stringify(user));
+            localStorage.setItem('playa_buche_user', JSON.stringify(normUser));
           } catch {}
         }
         setIdentityResolved(true);
@@ -642,9 +661,14 @@ export const App: React.FC = () => {
     const newOrders = orders.filter((o) => !prevIds.has(o.id));
     if (newOrders.length > 0) {
       if (currentRole === 'admin' || currentRole === 'kitchen' || currentRole === 'waiter') {
-        soundService.playNewIncomingOrderAlert();
-        soundService.buzzSmartBand();
         newOrders.forEach((newOrd) => {
+          const key = `new_${newOrd.id}`;
+          if (seenToastKeysRef.current.has(key)) return;
+          seenToastKeysRef.current.add(key);
+
+          soundService.playNewIncomingOrderAlert();
+          soundService.buzzSmartBand();
+
           const title = `🔔 ¡Nueva Comanda ${newOrd.displayNumber}!`;
           const message = `Llegó comanda en ${newOrd.spotName} • Total: $${newOrd.totalUsd.toFixed(2)}`;
           setRealtimeToast({
@@ -663,6 +687,10 @@ export const App: React.FC = () => {
     orders.forEach((ord) => {
       const prev = prevOrdersRef.current.find((p) => p.id === ord.id);
       if (prev && prev.status !== 'ready_pass' && ord.status === 'ready_pass') {
+        const key = `ready_${ord.id}`;
+        if (seenToastKeysRef.current.has(key)) return;
+        seenToastKeysRef.current.add(key);
+
         const targetRole: UserRole =
           ord.origin === 'client_qr'
             ? 'client'
@@ -718,6 +746,10 @@ export const App: React.FC = () => {
       }
 
       if (prev && prev.status !== 'delivered' && ord.status === 'delivered') {
+        const key = `deliv_${ord.id}`;
+        if (seenToastKeysRef.current.has(key)) return;
+        seenToastKeysRef.current.add(key);
+
         const isClientOwner =
           currentRole === 'client' &&
           isOrderOwnedByClient(ord, currentUser, clientActiveOrder?.id);
@@ -885,28 +917,61 @@ export const App: React.FC = () => {
 
   const now = new Date();
   const isKitchenOrAdmin = currentRole === 'admin' || currentRole === 'kitchen';
+  const dismissedNotifIds = useMemo(() => loadDismissedNotificationIds(currentUser?.id), [currentUser?.id, orders, isNotificationCenterOpen]);
+  const readNotifIds = useMemo(() => loadReadNotificationIds(currentUser?.id), [currentUser?.id, orders, isNotificationCenterOpen]);
+
   const alertOrdersCount = orders.filter((order) => {
+    if (!order) return false;
+    const readyNotifId = `ready-pass-${order.id}`;
+    const urgent10Id = `urgent-10-${order.id}`;
+    const alert30Id = `alert-30-${order.id}`;
+
     if (isKitchenOrAdmin) {
       if (order.status === 'delivered' || order.status === 'cancelled') return false;
-      if (order.status === 'ready_pass') return true;
+      if (order.status === 'ready_pass') {
+        return !dismissedNotifIds.has(readyNotifId) && !readNotifIds.has(readyNotifId);
+      }
       const timing = getOrderDeliveryTiming(order, now);
-      return timing.minutesRemaining <= 30 && timing.minutesRemaining > 0;
+      if (timing.minutesRemaining <= 10 && timing.minutesRemaining > 0) {
+        return !dismissedNotifIds.has(urgent10Id) && !readNotifIds.has(urgent10Id);
+      }
+      if (timing.minutesRemaining <= 30 && timing.minutesRemaining > 10) {
+        return !dismissedNotifIds.has(alert30Id) && !readNotifIds.has(alert30Id);
+      }
+      return false;
     }
     // Clientes solo reciben notificación si su orden propia está lista
     if (currentRole === 'client') {
-      return order.status === 'ready_pass' && isOrderOwnedByClient(order, currentUser, clientActiveOrder?.id);
+      return (
+        order.status === 'ready_pass' &&
+        isOrderOwnedByClient(order, currentUser, clientActiveOrder?.id) &&
+        !dismissedNotifIds.has(readyNotifId) &&
+        !readNotifIds.has(readyNotifId)
+      );
     }
     // Mesoneros solo reciben notificación si la comanda está lista en cocina
     if (currentRole === 'waiter') {
-      return order.status === 'ready_pass' && isOrderOwnedByWaiter(order, currentUser, spots);
+      return (
+        order.status === 'ready_pass' &&
+        isOrderOwnedByWaiter(order, currentUser, spots) &&
+        !dismissedNotifIds.has(readyNotifId) &&
+        !readNotifIds.has(readyNotifId)
+      );
     }
     // Excursiones solo reciben notificación si su orden marítima está lista
     if (currentRole === 'excursion') {
-      return order.status === 'ready_pass' && isOrderOwnedByExcursion(order, currentUser, excursion);
+      return (
+        order.status === 'ready_pass' &&
+        isOrderOwnedByExcursion(order, currentUser, excursion) &&
+        !dismissedNotifIds.has(readyNotifId) &&
+        !readNotifIds.has(readyNotifId)
+      );
     }
     return false;
   }).length;
-  const totalNotificationCount = alertOrdersCount + (isKitchenOrAdmin ? approachingAlertCount : 0);
+
+  const hasBoatAlert = isKitchenOrAdmin && approachingAlertCount > 0 && !dismissedNotifIds.has('boat-notif') && !readNotifIds.has('boat-notif');
+  const totalNotificationCount = alertOrdersCount + (hasBoatAlert ? 1 : 0);
 
   const handleSendOrderToKitchen = async (newOrder: Order) => {
     soundService.playNewIncomingOrderAlert();
@@ -1311,97 +1376,107 @@ export const App: React.FC = () => {
 
       <main className="flex-1 w-full max-w-2xl mx-auto px-2 sm:px-4 pt-20 pb-24">
         {currentRole === 'waiter' && (
-          <WaitersView
-            waiterUser={currentUser}
-            menuItems={menuItems}
-            spots={spots}
-            orders={orders}
-            bcvRate={bcvRate}
-            onSendOrderToKitchen={handleSendOrderToKitchen}
-            onOpenPaymentModal={setActivePagoMovilOrder}
-            onUpdateOrder={handleUpdateOrder}
-            onOpenCalculator={handleOpenCalculator}
-            onOpenToldoQrModal={() => setIsToldoQrModalOpen(true)}
-          />
+          <ErrorBoundary fallbackTitle="Comandera de Mesoneros">
+            <WaitersView
+              waiterUser={currentUser}
+              menuItems={menuItems}
+              spots={spots}
+              orders={orders}
+              bcvRate={bcvRate}
+              onSendOrderToKitchen={handleSendOrderToKitchen}
+              onOpenPaymentModal={setActivePagoMovilOrder}
+              onUpdateOrder={handleUpdateOrder}
+              onOpenCalculator={handleOpenCalculator}
+              onOpenToldoQrModal={() => setIsToldoQrModalOpen(true)}
+            />
+          </ErrorBoundary>
         )}
 
         {currentRole === 'excursion' && (
-          <ExcursionsView
-            currentUser={currentUser}
-            excursion={excursion}
-            bcvRate={bcvRate}
-            menuItems={menuItems}
-            onUpdateExcursion={setExcursion}
-            onSendApproachingAlert={() => setApproachingAlertCount((previous) => previous + 1)}
-            orders={orders}
-            onUpdateOrderStatus={handleUpdateOrderStatus}
-            onSendOrderToKitchen={handleSendOrderToKitchen}
-            onUpdateOrder={handleUpdateOrder}
-          />
+          <ErrorBoundary fallbackTitle="Módulo de Excursiones">
+            <ExcursionsView
+              currentUser={currentUser}
+              excursion={excursion}
+              bcvRate={bcvRate}
+              menuItems={menuItems}
+              onUpdateExcursion={setExcursion}
+              onSendApproachingAlert={() => setApproachingAlertCount((previous) => previous + 1)}
+              orders={orders}
+              onUpdateOrderStatus={handleUpdateOrderStatus}
+              onSendOrderToKitchen={handleSendOrderToKitchen}
+              onUpdateOrder={handleUpdateOrder}
+            />
+          </ErrorBoundary>
         )}
 
         {currentRole === 'kitchen' && (
-          <KitchenKdsView
-            orders={orders}
-            onUpdateOrderStatus={handleUpdateOrderStatus}
-            onUpdateOrder={handleUpdateOrder}
-            approachingAlertCount={approachingAlertCount}
-          />
+          <ErrorBoundary fallbackTitle="Monitor de Cocina KDS">
+            <KitchenKdsView
+              orders={orders}
+              onUpdateOrderStatus={handleUpdateOrderStatus}
+              onUpdateOrder={handleUpdateOrder}
+              approachingAlertCount={approachingAlertCount}
+            />
+          </ErrorBoundary>
         )}
 
         {currentRole === 'admin' && (currentUser?.role === 'admin' || !currentUser) && (
-          <AdminView
-            apiBase={API_BASE}
-            authHeaders={authHeaders}
-            currentUserId={currentUser?.id || 'admin-master'}
-            onUsersChanged={setUsers}
-            bcvRate={bcvRate}
-            onUpdateBcvRate={handleUpdateBcvRate}
-            bankConfig={bankConfig}
-            onUpdateBankConfig={setBankConfig}
-            menuItems={menuItems}
-            onToggleMenuAvailability={(itemId) =>
-              setMenuItems((previous) => previous.map((item) => (item.id === itemId ? { ...item, isAvailable: !item.isAvailable } : item)))
-            }
-            onAddMenuItem={(item) => setMenuItems((previous) => [item, ...previous])}
-            onUpdateMenuItem={(item) => setMenuItems((previous) => previous.map((entry) => (entry.id === item.id ? item : entry)))}
-            onDeleteMenuItem={(itemId) => setMenuItems((previous) => previous.filter((item) => item.id !== itemId))}
-            waitersClosings={waitersClosings}
-            onSettleWaiter={(closing) => setWaitersClosings((previous) => previous.map((entry) => (entry.id === closing.id ? closing : entry)))}
-            onUpdateWaiterClosing={(closing) => setWaitersClosings((previous) => previous.map((entry) => (entry.id === closing.id ? closing : entry)))}
-            onOpenPazYSalvo={setActivePazYSalvoClosing}
-            drawerBills={drawerBills}
-            onUpdateDrawerBills={setDrawerBills}
-            staffUsers={users}
-            onOpenFiscalInvoice={() => setIsFiscalInvoiceOpen(true)}
-            orders={orders}
-            onUpdateOrderStatus={handleUpdateOrderStatus}
-            onUpdateOrder={handleUpdateOrder}
-            approachingAlertCount={approachingAlertCount}
-            spots={spots}
-            onOpenToldoQrModal={() => setIsToldoQrModalOpen(true)}
-            giveaway={giveaway}
-            onUpdateGiveaway={handleUpdateGiveaway}
-          />
+          <ErrorBoundary fallbackTitle="Panel de Administración">
+            <AdminView
+              apiBase={API_BASE}
+              authHeaders={authHeaders}
+              currentUserId={currentUser?.id || 'admin-master'}
+              onUsersChanged={setUsers}
+              bcvRate={bcvRate}
+              onUpdateBcvRate={handleUpdateBcvRate}
+              bankConfig={bankConfig}
+              onUpdateBankConfig={setBankConfig}
+              menuItems={menuItems}
+              onToggleMenuAvailability={(itemId) =>
+                setMenuItems((previous) => previous.map((item) => (item.id === itemId ? { ...item, isAvailable: !item.isAvailable } : item)))
+              }
+              onAddMenuItem={(item) => setMenuItems((previous) => [item, ...previous])}
+              onUpdateMenuItem={(item) => setMenuItems((previous) => previous.map((entry) => (entry.id === item.id ? item : entry)))}
+              onDeleteMenuItem={(itemId) => setMenuItems((previous) => previous.filter((item) => item.id !== itemId))}
+              waitersClosings={waitersClosings}
+              onSettleWaiter={(closing) => setWaitersClosings((previous) => previous.map((entry) => (entry.id === closing.id ? closing : entry)))}
+              onUpdateWaiterClosing={(closing) => setWaitersClosings((previous) => previous.map((entry) => (entry.id === closing.id ? closing : entry)))}
+              onOpenPazYSalvo={setActivePazYSalvoClosing}
+              drawerBills={drawerBills}
+              onUpdateDrawerBills={setDrawerBills}
+              staffUsers={users}
+              onOpenFiscalInvoice={() => setIsFiscalInvoiceOpen(true)}
+              orders={orders}
+              onUpdateOrderStatus={handleUpdateOrderStatus}
+              onUpdateOrder={handleUpdateOrder}
+              approachingAlertCount={approachingAlertCount}
+              spots={spots}
+              onOpenToldoQrModal={() => setIsToldoQrModalOpen(true)}
+              giveaway={giveaway}
+              onUpdateGiveaway={handleUpdateGiveaway}
+            />
+          </ErrorBoundary>
         )}
 
         {currentRole === 'client' && (
-          <ClientsView
-            spots={spots}
-            menuItems={menuItems}
-            activeOrder={clientActiveOrder}
-            clientName={currentUser?.name || 'Cliente'}
-            bcvRate={bcvRate}
-            selectedSpotId={selectedSpotId}
-            onSelectSpot={setSelectedSpotId}
-            onPlaceOrder={handleClientPlaceOrder}
-            onOpenPaymentModal={setActivePagoMovilOrder}
-            onOpenFiscalInvoice={() => setIsFiscalInvoiceOpen(true)}
-            onUpdateOrder={handleUpdateOrder}
-            giveaway={giveaway}
-            giveawayTicket={currentUser?.giveawayTicket}
-            onOpenGiveaway={handleOpenGiveaway}
-          />
+          <ErrorBoundary fallbackTitle="Carta Digital para Clientes">
+            <ClientsView
+              spots={spots}
+              menuItems={menuItems}
+              activeOrder={clientActiveOrder}
+              clientName={currentUser?.name || 'Cliente'}
+              bcvRate={bcvRate}
+              selectedSpotId={selectedSpotId}
+              onSelectSpot={setSelectedSpotId}
+              onPlaceOrder={handleClientPlaceOrder}
+              onOpenPaymentModal={setActivePagoMovilOrder}
+              onOpenFiscalInvoice={() => setIsFiscalInvoiceOpen(true)}
+              onUpdateOrder={handleUpdateOrder}
+              giveaway={giveaway}
+              giveawayTicket={currentUser?.giveawayTicket}
+              onOpenGiveaway={handleOpenGiveaway}
+            />
+          </ErrorBoundary>
         )}
       </main>
 
@@ -1469,6 +1544,7 @@ export const App: React.FC = () => {
         currentRole={currentRole}
         currentUser={currentUser}
         approachingAlertCount={approachingAlertCount}
+        onDismissBoatAlert={() => setApproachingAlertCount(0)}
         onNavigateToView={(role) => {
           setIsNotificationCenterOpen(false);
           handleSelectRole(role);
