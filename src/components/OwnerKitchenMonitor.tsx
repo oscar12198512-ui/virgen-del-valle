@@ -886,7 +886,7 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
                               <Check className="w-3.5 h-3.5 text-emerald-200" />
                               <span>Al Historial</span>
                             </button>
-                          ) : order.status === 'delivered' ? (
+                          ) : (order.status as string) === 'delivered' ? (
                             <button
                               onClick={() => handleOwnerStatusChange(order.id, 'ready_pass')}
                               className="px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 bg-gray-200 hover:bg-gray-300 text-gray-800"

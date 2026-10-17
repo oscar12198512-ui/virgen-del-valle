@@ -614,7 +614,7 @@ export const App: React.FC = () => {
       bcvRate,
       excursion: excursion.id,
       bankConfig: bankConfig.pagoMovilPhone,
-      giveaway: giveaway?.status || ''
+      giveaway: giveaway?.isActive ? 'active' : 'inactive'
     });
 
     // Si el estado local es idéntico al recién recibido de Firestore, no re-escribir

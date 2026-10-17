@@ -17,9 +17,10 @@ import {
 } from 'lucide-react';
 
 interface PreCuentaModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   order: {
+    id?: string;
     displayNumber: string;
     spotName: string;
     customerName?: string;
@@ -29,6 +30,7 @@ interface PreCuentaModalProps {
     tipPercent?: number;
     totalUsd: number;
     createdAt?: string;
+    [key: string]: any;
   } | null;
   bcvRate: number;
 }

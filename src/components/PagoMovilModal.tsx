@@ -117,6 +117,7 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
         isValid: reference.length >= 4,
         confidenceScore: 0.85,
         notes: 'Verificado manualmente.',
+        requiresManualReview: false,
       });
     } finally {
       setIsValidating(false);
@@ -585,9 +586,9 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
                   <FileCheck2 className="w-3.5 h-3.5 text-[#006782]" /> Cédula / RIF:
                 </span>
                 <div className="flex items-center gap-1.5">
-                  <span className="font-bold">{bankConfig.pagoMovilId}</span>
+                  <span className="font-bold">{bankConfig.pagoMovilRif}</span>
                   <button
-                    onClick={() => handleCopy(bankConfig.pagoMovilId, 'id')}
+                    onClick={() => handleCopy(bankConfig.pagoMovilRif, 'id')}
                     className="p-1 hover:bg-[#eff4ff] rounded text-[#006782]"
                     title="Copiar"
                   >
@@ -610,7 +611,7 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
               </span>
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">Titular / Cuenta:</span>
-                <span className="font-bold">{bankConfig.zelleAccountName || 'Inversiones Virgen del Valle C.A.'}</span>
+                <span className="font-bold">{bankConfig.zelleHolder || 'Inversiones Virgen del Valle C.A.'}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">Correo Zelle:</span>

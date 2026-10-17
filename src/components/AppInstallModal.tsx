@@ -6,7 +6,7 @@ import { APP_STORE_LINKS } from '../constants';
 interface AppInstallModalProps {
   isOpen: boolean;
   onClose: () => void;
-  appUrl: string;
+  appUrl?: string;
 }
 
 export const AppInstallModal: React.FC<AppInstallModalProps> = ({ isOpen, onClose, appUrl }) => {

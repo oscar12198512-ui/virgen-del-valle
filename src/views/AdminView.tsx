@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   BankConfig,
   BillDenominationCount,
@@ -462,7 +462,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
   // Dynamic aggregation of waiters closings from orders & staffUsers
   const effectiveWaitersClosings = React.useMemo(() => {
-    const waiterStaff = staffUsers.filter((u) => u.role === 'waiter' && u.status !== 'rejected');
+    const waiterStaff = staffUsers.filter((u) => u.role === 'waiter' && (u.status as string) !== 'rejected' && u.status !== 'suspended');
     const waiterMap = new Map<string, WaiterClosingSummary>();
 
     // Seed from waitersClosings prop
@@ -552,10 +552,33 @@ export const AdminView: React.FC<AdminViewProps> = ({
         0
       );
 
+      // Comprobación de comandas del mesonero y sus platos
+      const dishesMap = new Map<string, { quantity: number; sharePerUnit: number }>();
+      closedOrders.forEach((o) => {
+        (o.items || []).forEach((item) => {
+          const share = item.waiterShareUsd || 0;
+          if (share > 0) {
+            const existing = dishesMap.get(item.name) || { quantity: 0, sharePerUnit: share };
+            dishesMap.set(item.name, {
+              quantity: existing.quantity + (item.quantity || 1),
+              sharePerUnit: share,
+            });
+          }
+        });
+      });
+
+      const dishesBreakdown = Array.from(dishesMap.entries()).map(([name, data]) => ({
+        name,
+        quantity: data.quantity,
+        sharePerUnit: data.sharePerUnit,
+        totalShare: data.quantity * data.sharePerUnit,
+      }));
+      const totalDishShare = dishesBreakdown.reduce((sum, d) => sum + d.totalShare, 0);
+
       const comandas: WaiterComandaItem[] = waiterOrders.map((o) => ({
         id: o.id,
         toldo: o.spotName || 'Toldo',
-        description: o.items.map((i) => `${i.quantity}x ${i.name}`).join(', ') || 'Consumo',
+        description: (o.items || []).map((i) => `${i.quantity}x ${i.name}`).join(', ') || 'Consumo',
         method: o.paymentMethod
           ? o.paymentMethod === 'cash_usd'
             ? 'Efectivo $'
@@ -573,24 +596,46 @@ export const AdminView: React.FC<AdminViewProps> = ({
         isCash: o.paymentMethod === 'cash_usd' || o.paymentMethod === 'cash_bs',
       }));
 
+      // Efectivo real a entregar: Dinero recibido en efectivo menos deducciones de platos y comisión/propina
+      const finalGross = closedOrders.length > 0 ? totalGross : wc.totalCollectedUsd;
+      const finalDigital = closedOrders.length > 0 ? digitalSum : wc.digitalReportedUsd;
+      const finalTip = closedOrders.length > 0 ? tipSum : wc.commissionWaiterUsd;
+      const finalDishShare = totalDishShare > 0 ? totalDishShare : (wc.dishShareWaiterUsd || 0);
+      const computedCashToDeliver = Math.max(
+        0,
+        (closedOrders.length > 0 ? cashSum : Math.max(0, finalGross - finalDigital)) - finalDishShare - finalTip
+      );
+
       result.push({
         ...wc,
         toldosAttendedCount: Math.max(wc.toldosAttendedCount, spotsSet.size),
-        ordersClosedCount: closedOrders.length,
-        totalCollectedUsd: totalGross > 0 ? totalGross : wc.totalCollectedUsd,
-        digitalReportedUsd: digitalSum > 0 ? digitalSum : wc.digitalReportedUsd,
-        commissionWaiterUsd: tipSum > 0 ? tipSum : wc.commissionWaiterUsd,
-        cashToDeliverUsd: Math.max(
-          0,
-          (cashSum > 0 ? cashSum : wc.totalCollectedUsd - digitalSum) -
-            (tipSum > 0 ? tipSum : wc.commissionWaiterUsd)
-        ),
+        ordersClosedCount: closedOrders.length > 0 ? closedOrders.length : wc.ordersClosedCount,
+        totalCollectedUsd: finalGross,
+        digitalReportedUsd: finalDigital,
+        commissionWaiterUsd: finalTip,
+        dishShareWaiterUsd: finalDishShare,
+        dishesBreakdown: dishesBreakdown.length > 0 ? dishesBreakdown : wc.dishesBreakdown,
+        cashToDeliverUsd: computedCashToDeliver,
         comandas: comandas.length > 0 ? comandas : wc.comandas,
       });
     });
 
     return result;
   }, [waitersClosings, staffUsers, orders]);
+
+  // Cuentas por cobrar directamente a clientes que pidieron desde la app (QR comensal)
+  const clientPendingOrders = useMemo(() => {
+    return orders.filter(
+      (o) =>
+        o.origin === 'client_qr' &&
+        o.paymentStatus !== 'verified' &&
+        o.status !== 'cancelled'
+    );
+  }, [orders]);
+
+  const totalClientPendingUsd = useMemo(() => {
+    return clientPendingOrders.reduce((sum, o) => sum + (o.totalUsd || 0), 0);
+  }, [clientPendingOrders]);
 
   const totalCollectedPending = effectiveWaitersClosings.reduce(
     (acc, w) => acc + (w.status === 'pending' ? w.cashToDeliverUsd : 0),
@@ -1100,6 +1145,83 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </div>
           </div>
 
+          {/* Cuentas por Cobrar a Clientes (Pedidos Directos desde la App / QR) */}
+          <div className="bg-white rounded-2xl border border-sky-200 p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">📱</span>
+                <div>
+                  <h3 className="text-xs font-bold text-[#002546] uppercase tracking-wider">
+                    Cuentas por Cobrar • Clientes Directos (App / QR)
+                  </h3>
+                  <span className="text-[11px] text-gray-500">
+                    {clientPendingOrders.length} pedido(s) pendientes de cobro sin pasar por caja
+                  </span>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-base font-extrabold text-[#006782] block">
+                  {formatUsd(totalClientPendingUsd)}
+                </span>
+                <span className="text-[10px] text-gray-500 font-mono">
+                  ≈ {formatBsDirect(totalClientPendingUsd * bcvRate)}
+                </span>
+              </div>
+            </div>
+
+            {clientPendingOrders.length === 0 ? (
+              <p className="text-xs text-gray-400 italic bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                ✅ No hay pedidos de clientes directos pendientes de cobro en este momento.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {clientPendingOrders.map((ord) => (
+                  <div
+                    key={ord.id}
+                    className="p-3 rounded-xl bg-sky-50/50 border border-sky-100 flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-8 h-8 rounded-lg bg-[#002546] text-[#57d1fd] font-bold text-xs flex items-center justify-center shrink-0">
+                        {ord.displayNumber}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-[#002546] truncate">{ord.spotName}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold">
+                            {ord.customerName || 'Cliente QR'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-gray-500 truncate block mt-0.5">
+                          {ord.items.map((i) => `${i.quantity}x ${i.name}`).join(', ')}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right">
+                        <span className="font-extrabold text-[#002546] text-xs font-mono block">
+                          {formatUsd(ord.totalUsd)}
+                        </span>
+                        <span className="text-[10px] text-gray-500 font-mono">
+                          {formatBsDirect(ord.totalBs || ord.totalUsd * bcvRate)}
+                        </span>
+                      </div>
+                      {onUpdateOrderStatus && (
+                        <button
+                          type="button"
+                          onClick={() => onUpdateOrderStatus(ord.id, 'ready_pass')}
+                          className="px-2.5 py-1.5 rounded-lg bg-[#006782] hover:bg-[#005870] text-white font-bold text-[11px] transition-colors"
+                        >
+                          Verificar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Pestañas de Rendición / Liquidación Individual por Mesonero */}
           <div className="flex flex-col space-y-2 pt-1">
             <div className="flex items-center justify-between px-1">
@@ -1148,9 +1270,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       >
                         {closing.waiterName.split(' ')[0]} {closing.waiterName.split(' ')[1]?.[0] || ''}.
                       </span>
-                      <span className="text-[10px] text-[#006782] font-medium truncate max-w-[90px]">
-                        {closing.waiterZone.split('•')[0]}
-                      </span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[10px] text-[#006782] font-medium truncate max-w-[80px]">
+                          {closing.waiterZone.split('•')[0]}
+                        </span>
+                        <span className="text-[11px] font-extrabold font-mono text-[#002546] bg-white/80 px-1 rounded">
+                          {formatUsd(closing.cashToDeliverUsd)}
+                        </span>
+                      </div>
                     </div>
                     {isPending ? (
                       <span className="w-2 h-2 rounded-full bg-amber-500 ml-0.5 animate-pulse" />

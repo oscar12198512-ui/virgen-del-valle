@@ -76,6 +76,7 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
   const [preCuentaModalOrder, setPreCuentaModalOrder] = useState<any | null>(null);
   const [zoomedDish, setZoomedDish] = useState<MenuItem | null>(null);
   const [showAllDishes, setShowAllDishes] = useState<boolean>(false);
+  const [waiterOrderFilter, setWaiterOrderFilter] = useState<'pending_payment' | 'all' | 'paid'>('pending_payment');
   const [highSunMode, setHighSunMode] = useState<boolean>(() => {
     try {
       return localStorage.getItem('playa_buche_high_sun') === 'true';
@@ -263,7 +264,17 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
   });
 
   // Waiter recent orders (aislados estrictamente para este mesonero y sus toldos asignados)
-  const recentOrders = orders.filter((o) => isOrderOwnedByWaiter(o, waiterUser, spots)).slice(0, 10);
+  const allWaiterOrders = orders.filter((o) => isOrderOwnedByWaiter(o, waiterUser, spots));
+  const pendingOrdersCount = allWaiterOrders.filter((o) => !(o.paymentStatus === 'verified' || Boolean(o.isSettled))).length;
+  const paidOrdersCount = allWaiterOrders.filter((o) => o.paymentStatus === 'verified' || Boolean(o.isSettled)).length;
+
+  const recentOrders = allWaiterOrders.filter((o) => {
+    const isPaid = o.paymentStatus === 'verified' || Boolean(o.isSettled);
+    if (waiterOrderFilter === 'pending_payment') return !isPaid;
+    if (waiterOrderFilter === 'paid') return isPaid;
+    return true;
+  }).slice(0, 15);
+
   const waiterReadyPassOrders = orders.filter((o) => o.status === 'ready_pass' && isOrderOwnedByWaiter(o, waiterUser, spots));
 
   return (
@@ -994,13 +1005,54 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
 
       {/* Mis Comandas Recientes */}
       <div className="space-y-2.5">
-        <div className="flex justify-between items-center">
-          <h3 className="text-xs font-bold text-[#002546] uppercase tracking-wider">
-            Mis Comandas Recientes
-          </h3>
-          <span className="text-[11px] text-[#006782] font-semibold">
-            {recentOrders.length} activas en playa
-          </span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-bold text-[#002546] uppercase tracking-wider">
+              Mis Comandas Recientes
+            </h3>
+            {pendingOrdersCount > 0 && (
+              <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
+                {pendingOrdersCount} por cobrar
+              </span>
+            )}
+          </div>
+
+          {/* Filter Pills */}
+          <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-xl self-start sm:self-auto text-[11px]">
+            <button
+              type="button"
+              onClick={() => setWaiterOrderFilter('pending_payment')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                waiterOrderFilter === 'pending_payment'
+                  ? 'bg-[#002546] text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Por Cobrar ({pendingOrdersCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setWaiterOrderFilter('paid')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                waiterOrderFilter === 'paid'
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Cobradas ({paidOrdersCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setWaiterOrderFilter('all')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                waiterOrderFilter === 'all'
+                  ? 'bg-gray-700 text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Todas ({allWaiterOrders.length})
+            </button>
+          </div>
         </div>
 
         <div className="space-y-2.5">

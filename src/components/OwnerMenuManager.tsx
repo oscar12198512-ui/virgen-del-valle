@@ -1097,7 +1097,7 @@ export const OwnerMenuManager: React.FC<OwnerMenuManagerProps> = ({
                           type="number"
                           step="0.50"
                           min="0.50"
-                          required={formMenuTarget !== 'excursions'}
+                          required={(formMenuTarget as string) !== 'excursions'}
                           placeholder="20.00"
                           value={formPriceUsd}
                           onChange={(e) => setFormPriceUsd(e.target.value)}
@@ -1235,7 +1235,7 @@ export const OwnerMenuManager: React.FC<OwnerMenuManagerProps> = ({
                           type="number"
                           step="0.50"
                           min="0.50"
-                          required={formMenuTarget !== 'waiters'}
+                          required={(formMenuTarget as string) !== 'waiters'}
                           placeholder="18.00"
                           value={formPriceExcursionUsd}
                           onChange={(e) => setFormPriceExcursionUsd(e.target.value)}
