@@ -48,3 +48,13 @@ jobs:
           projectId: playa-buche-pos
         continue-on-error: true
 
+      - name: Deploy Firestore Security Rules & Indexes
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PLAYA_BUCHE_POS }}
+        if: env.FIREBASE_SERVICE_ACCOUNT != ''
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > /tmp/sa.json
+          GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json npx firebase deploy --only firestore:rules,firestore:indexes --project playa-buche-pos --non-interactive || echo "Firestore deploy skipped or warning"
+          rm -f /tmp/sa.json
+        continue-on-error: true
+

@@ -825,7 +825,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
                   </div>
 
                   <div className="text-[11px] text-gray-600 divide-y divide-gray-100">
-                    {ord.items.map((it, idx) => (
+                    {(ord.items || []).map((it, idx) => (
                       <div key={idx} className="py-1 flex justify-between items-start">
                         <div>
                           <span className="font-bold text-[#002546]">

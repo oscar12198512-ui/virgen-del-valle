@@ -135,7 +135,7 @@ export const PreCuentaModal: React.FC<PreCuentaModalProps> = ({
               <span>Cant. / Plato</span>
               <span>Importe ($)</span>
             </div>
-            {order.items.map((item, idx) => (
+            {(order.items || []).map((item, idx) => (
               <div key={idx} className="flex justify-between text-xs py-1 border-b border-gray-100">
                 <div className="pr-2">
                   <span className="font-bold text-[#002546]">{item.quantity}x </span>

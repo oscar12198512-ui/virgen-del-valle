@@ -977,17 +977,31 @@ export const App: React.FC = () => {
     soundService.playNewIncomingOrderAlert();
     if (isFirebaseConfigured()) {
       try {
-        await saveOrderToFirestore(newOrder);
-        setOrders((previous) => [newOrder, ...previous]);
+        await saveOrderToFirestore(newOrder, menuItems, bcvRate);
+        setOrders((previous) => {
+          if (previous.some((o) => o.id === newOrder.id)) return previous;
+          return [newOrder, ...previous];
+        });
       } catch (error: any) {
         console.error('Error al enviar comanda a Firestore:', error);
         alert('Error al enviar comanda a Firebase: ' + (error?.message || error));
         throw error;
       }
     } else {
-      setOrders((previous) => [newOrder, ...previous]);
+      setOrders((previous) => {
+        if (previous.some((o) => o.id === newOrder.id)) return previous;
+        return [newOrder, ...previous];
+      });
     }
   };
+
+  const handleOpenPaymentModal = useCallback((order: Order) => {
+    if (order.paymentStatus === 'verified' || Boolean(order.isSettled)) {
+      alert('Esta comanda ya ha sido cobrada y confirmada en el sistema.');
+      return;
+    }
+    setActivePagoMovilOrder(order);
+  }, []);
 
   const handleUpdateOrderStatus = (orderId: string, newStatus: OrderStatus) => {
     if (newStatus === 'ready_pass') {
@@ -1199,7 +1213,7 @@ export const App: React.FC = () => {
     setOrders((previous) => {
       const nextOrders = previous.map(applyPayment);
       if (paidOrderObj && isFirebaseConfigured()) {
-        saveOrderToFirestore(paidOrderObj).catch((error) => {
+        saveOrderToFirestore(paidOrderObj, menuItems, bcvRate).catch((error) => {
           console.warn('Error al sincronizar orden cobrada en Firestore:', error);
         });
       }
@@ -1384,7 +1398,7 @@ export const App: React.FC = () => {
               orders={orders}
               bcvRate={bcvRate}
               onSendOrderToKitchen={handleSendOrderToKitchen}
-              onOpenPaymentModal={setActivePagoMovilOrder}
+              onOpenPaymentModal={handleOpenPaymentModal}
               onUpdateOrder={handleUpdateOrder}
               onOpenCalculator={handleOpenCalculator}
               onOpenToldoQrModal={() => setIsToldoQrModalOpen(true)}
@@ -1469,7 +1483,7 @@ export const App: React.FC = () => {
               selectedSpotId={selectedSpotId}
               onSelectSpot={setSelectedSpotId}
               onPlaceOrder={handleClientPlaceOrder}
-              onOpenPaymentModal={setActivePagoMovilOrder}
+              onOpenPaymentModal={handleOpenPaymentModal}
               onOpenFiscalInvoice={() => setIsFiscalInvoiceOpen(true)}
               onUpdateOrder={handleUpdateOrder}
               giveaway={giveaway}

@@ -46,7 +46,7 @@ export const ComandaEditorModal: React.FC<ComandaEditorModalProps> = ({
 
   // Local state for items being edited
   const [items, setItems] = useState<OrderItem[]>(() =>
-    order.items.map((it) => ({ ...it }))
+    (order.items || []).map((it) => ({ ...it }))
   );
 
   // Time state: supports free-form time input

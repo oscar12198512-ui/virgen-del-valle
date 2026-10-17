@@ -786,7 +786,7 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
 
                   {/* Dishes and Items List */}
                   <div className="bg-[#f8f9ff] rounded-xl p-2.5 border border-gray-100 space-y-1.5">
-                    {order.items.map((item, idx) => (
+                    {(order.items || []).map((item, idx) => (
                       <div key={item.id || idx} className="flex items-start justify-between text-xs gap-2">
                         <div className="flex items-start gap-2">
                           <span className="w-5 h-5 rounded-md bg-[#002546] text-white text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
@@ -1071,7 +1071,7 @@ export const OwnerKitchenMonitor: React.FC<OwnerKitchenMonitorProps> = ({
 
                           {/* Toldos list breakdown */}
                           <div className="flex flex-wrap gap-1.5 pt-2 mt-2 border-t border-gray-100">
-                            {dish.spots.map((s, idx) => (
+                            {(dish.spots || []).map((s, idx) => (
                               <span
                                 key={idx}
                                 className="text-[10px] font-bold bg-sky-50 text-[#006782] border border-sky-200 px-2 py-0.5 rounded-lg"

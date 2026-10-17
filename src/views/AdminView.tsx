@@ -462,12 +462,16 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
   // Dynamic aggregation of waiters closings from orders & staffUsers
   const effectiveWaitersClosings = React.useMemo(() => {
-    const waiterStaff = staffUsers.filter((u) => u.role === 'waiter' && (u.status as string) !== 'rejected' && u.status !== 'suspended');
+    const waiterStaff = (staffUsers || []).filter((u) => u.role === 'waiter' && (u.status as string) !== 'rejected' && u.status !== 'suspended');
     const waiterMap = new Map<string, WaiterClosingSummary>();
 
     // Seed from waitersClosings prop
-    waitersClosings.forEach((wc) => {
-      waiterMap.set(wc.waiterId || wc.id, { ...wc });
+    (waitersClosings || []).forEach((wc) => {
+      waiterMap.set(wc.waiterId || wc.id, {
+        ...wc,
+        dishesBreakdown: wc.dishesBreakdown || [],
+        comandas: wc.comandas || []
+      });
     });
 
     // Ensure all active waiter staff users exist
@@ -500,11 +504,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
     });
 
     // If still empty or additional waiters exist in orders
-    orders.forEach((o) => {
-      const wId = o.waiterId || (o.waiterName ? `waiter-${o.waiterName.toLowerCase().replace(/\s+/g, '-')}` : null);
+    (orders || []).forEach((o) => {
+      const wId = o.waiterId || (o.waiterName ? `waiter-${String(o.waiterName).toLowerCase().replace(/\s+/g, '-')}` : null);
       if (wId && !waiterMap.has(wId)) {
         const wName = o.waiterName || 'Mesonero';
-        const initials = wName.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase() || 'M';
+        const initials = String(wName).split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase() || 'M';
         waiterMap.set(wId, {
           id: `close-${wId}`,
           waiterId: wId,
@@ -528,7 +532,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
     const result: WaiterClosingSummary[] = [];
     waiterMap.forEach((wc) => {
       if (wc.status === 'settled') {
-        result.push(wc);
+        result.push({
+          ...wc,
+          dishesBreakdown: wc.dishesBreakdown || [],
+          comandas: wc.comandas || []
+        });
         return;
       }
 
@@ -614,9 +622,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
         digitalReportedUsd: finalDigital,
         commissionWaiterUsd: finalTip,
         dishShareWaiterUsd: finalDishShare,
-        dishesBreakdown: dishesBreakdown.length > 0 ? dishesBreakdown : wc.dishesBreakdown,
+        dishesBreakdown: dishesBreakdown.length > 0 ? dishesBreakdown : (wc.dishesBreakdown || []),
         cashToDeliverUsd: computedCashToDeliver,
-        comandas: comandas.length > 0 ? comandas : wc.comandas,
+        comandas: comandas.length > 0 ? comandas : (wc.comandas || []),
       });
     });
 
@@ -831,7 +839,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       </span>
                     </div>
                     <div className="text-[10px] text-gray-600 truncate mt-0.5">
-                      {ord.customerName} • {ord.items.map((i) => `${i.quantity}x ${i.name}`).join(', ')}
+                      {ord.customerName} • {(ord.items || []).map((i) => `${i.quantity}x ${i.name}`).join(', ')}
                     </div>
                   </div>
 
@@ -1192,7 +1200,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                           </span>
                         </div>
                         <span className="text-[11px] text-gray-500 truncate block mt-0.5">
-                          {ord.items.map((i) => `${i.quantity}x ${i.name}`).join(', ')}
+                          {(ord.items || []).map((i) => `${i.quantity}x ${i.name}`).join(', ')}
                         </span>
                       </div>
                     </div>
@@ -1541,7 +1549,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                             onClick={() => handleToggleDishes(active.id)}
                             className="text-[11px] font-bold text-amber-800 bg-amber-100/70 hover:bg-amber-200/70 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors"
                           >
-                            <span>{ded.showDishes ? '▲ Ocultar' : '▼ Ver'} Desglose de Platos ({active.dishesBreakdown.length})</span>
+                            <span>{ded.showDishes ? '▲ Ocultar' : '▼ Ver'} Desglose de Platos ({(active.dishesBreakdown || []).length})</span>
                           </button>
 
                           {ded.showDishes && (
@@ -1550,7 +1558,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                                 <span>Plato y Cantidad Vendida</span>
                                 <span>Débito Auto</span>
                               </div>
-                              {active.dishesBreakdown.map((item, idx) => (
+                              {(active.dishesBreakdown || []).map((item, idx) => (
                                 <div key={idx} className="flex justify-between items-center py-1 border-b border-amber-200/40 last:border-0">
                                   <div className="flex items-center gap-1.5">
                                     <span className="font-bold text-[#002546]">{item.quantity}x</span>
@@ -2214,7 +2222,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-1.5 text-xs text-[#002546]">
-                {cargoBoat.items.map((item, idx) => (
+                {(cargoBoat?.items || []).map((item, idx) => (
                   <div key={idx} className="flex items-center gap-1.5 bg-[#eff4ff] px-2.5 py-1.5 rounded-lg border border-[#d2e4ff]">
                     <CheckCircle2 className="w-3.5 h-3.5 text-[#006782] shrink-0" />
                     <span className="truncate font-medium">
@@ -2753,7 +2761,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </div>
 
             <div className="space-y-2">
-              {staffUsers.filter(u => u.role === 'waiter' || u.role === 'excursion').map((staff) => (
+              {(staffUsers || []).filter(u => u.role === 'waiter' || u.role === 'excursion').map((staff) => (
                 <div
                   key={staff.id}
                   className="flex items-center justify-between p-2.5 rounded-xl border border-gray-200 bg-[#f8f9ff] text-xs"
@@ -2845,7 +2853,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       Permisos Operativos Asignados:
                     </span>
                     <div className="space-y-1">
-                      {activeRole.permissions.map((perm, idx) => (
+                      {(activeRole?.permissions || []).map((perm, idx) => (
                         <div key={idx} className="flex items-center gap-1.5 text-[#002546] text-[11px]">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                           <span>{perm}</span>

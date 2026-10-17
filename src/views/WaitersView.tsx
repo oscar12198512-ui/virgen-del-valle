@@ -356,7 +356,7 @@ export const WaitersView: React.FC<WaitersViewProps> = ({
                       </span>
                     </div>
                     <span className="text-[10px] text-gray-500">
-                      {readyOrd.items.map((i) => `${i.quantity}x ${i.name}`).slice(0, 2).join(', ')}
+                      {(readyOrd.items || []).map((i) => `${i.quantity}x ${i.name}`).slice(0, 2).join(', ')}
                     </span>
                   </div>
 
