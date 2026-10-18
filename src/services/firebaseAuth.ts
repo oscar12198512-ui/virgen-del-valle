@@ -45,13 +45,13 @@ export async function loginWithEmail(email: string, pass: string): Promise<User>
     
     if (userDoc.exists()) {
       const data = userDoc.data() as User;
-      const isMaster = ['emmanuelmejias2616@gmail.com', 'oscar12198512@gmail.com'].includes(cleanEmail);
+      const isMaster = ['oscar12198512@gmail.com'].includes(cleanEmail);
       const role: UserRole = isMaster ? 'admin' : normalizeUserRole(data.role);
       return { ...data, role, id: cred.user.uid, sessionToken: `token-${cred.user.uid}` };
     }
 
     // Usuario autenticado por primera vez sin perfil previo en Firestore
-    const isMaster = ['emmanuelmejias2616@gmail.com', 'oscar12198512@gmail.com'].includes(cleanEmail);
+    const isMaster = ['oscar12198512@gmail.com'].includes(cleanEmail);
     const defaultUser: User = {
       id: cred.user.uid,
       name: cred.user.displayName || cleanEmail.split('@')[0],
@@ -123,7 +123,7 @@ export function subscribeToAuthState(callback: (user: User | null) => void) {
       return;
     }
     const cleanEmail = (firebaseUser.email || '').trim().toLowerCase();
-    const isMaster = ['emmanuelmejias2616@gmail.com', 'oscar12198512@gmail.com'].includes(cleanEmail);
+    const isMaster = ['oscar12198512@gmail.com'].includes(cleanEmail);
 
     try {
       const userDocRef = doc(db, 'app_users', firebaseUser.uid);
