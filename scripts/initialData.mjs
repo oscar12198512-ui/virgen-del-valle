@@ -605,32 +605,7 @@ const INITIAL_GIVEAWAY_STATE = {
   ],
   maxParticipants: 200,
   isActive: true,
-  participants: [
-    {
-      ticketNumber: 1,
-      userId: "usr-p01",
-      name: "Carlos Mendoza",
-      email: "carlos.mendoza@gmail.com",
-      phone: "0414-1234567",
-      registeredAt: "2026-10-14 09:15"
-    },
-    {
-      ticketNumber: 2,
-      userId: "usr-p02",
-      name: "Mariana Silva",
-      email: "mariana.silva@hotmail.com",
-      phone: "0424-9876543",
-      registeredAt: "2026-10-14 10:30"
-    },
-    {
-      ticketNumber: 3,
-      userId: "usr-p03",
-      name: "Alejandro G\xF3mez",
-      email: "alejandro.g@gmail.com",
-      phone: "0412-5557788",
-      registeredAt: "2026-10-14 11:05"
-    }
-  ],
+  participants: [],
   winner: null,
   drawnAt: null
 };

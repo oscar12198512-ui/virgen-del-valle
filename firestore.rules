@@ -97,13 +97,16 @@ service cloud.firestore {
         (!('isSettled' in request.resource.data) || request.resource.data.isSettled == false)
       );
 
-      // Actualización: Staff con control total; Clientes no pueden auto-aprobar pagos ni liquidar
+      // Actualización: Staff con control total; Clientes pueden reportar pago (pending_verification) sin auto-aprobarse
       allow update: if isStaff() || (
-        (!('paymentStatus' in request.resource.data) || request.resource.data.paymentStatus == resource.data.paymentStatus) &&
-        (!('isSettled' in request.resource.data) || request.resource.data.isSettled == resource.data.isSettled) &&
         request.resource.data.id == resource.data.id &&
         request.resource.data.spotId == resource.data.spotId &&
-        request.resource.data.createdAt == resource.data.createdAt
+        request.resource.data.createdAt == resource.data.createdAt &&
+        (!('isSettled' in request.resource.data) || request.resource.data.isSettled == resource.data.isSettled || request.resource.data.isSettled == false) &&
+        (
+          (!('paymentStatus' in request.resource.data) || request.resource.data.paymentStatus == resource.data.paymentStatus) ||
+          (resource.data.paymentStatus != 'verified' && request.resource.data.paymentStatus == 'pending_verification')
+        )
       );
 
       // Eliminación: Estrictamente restringida a administradores

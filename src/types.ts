@@ -119,7 +119,7 @@ export interface Order {
   totalUsd: number;
   totalBs: number;
   status: OrderStatus;
-  paymentStatus: 'pending' | 'verified' | 'cash_waiter';
+  paymentStatus: 'pending' | 'verified' | 'cash_waiter' | 'pending_verification';
   paymentMethod?: 'cash_usd' | 'cash_bs' | 'pago_movil' | 'zelle' | 'pos_card' | 'card_pos' | 'mixed_split';
   paymentReference?: string;
   paymentScreenshot?: string;
@@ -157,7 +157,7 @@ export interface ExcursionPackage {
   totalUsd: number;
   isSettled: boolean;
   paymentPreference: 'cash_usd' | 'pago_movil' | 'transfer';
-  paymentStatus?: 'pending' | 'verified' | 'cash_waiter';
+  paymentStatus?: 'pending' | 'verified' | 'cash_waiter' | 'pending_verification';
 }
 
 export interface WaiterComandaItem {

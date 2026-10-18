@@ -418,8 +418,8 @@ export const INITIAL_SPOTS: ToldoSpot[] = [
     typeDesc: 'Frente al agua • 4 Poltronas',
     status: 'selected',
     distanceDesc: '5m del mar',
-    assignedWaiterId: 'u-yender',
-    assignedWaiterName: 'Yender Rodríguez',
+    assignedWaiterId: '',
+    assignedWaiterName: '',
     capacity: 6,
   },
   {
@@ -430,8 +430,8 @@ export const INITIAL_SPOTS: ToldoSpot[] = [
     typeDesc: 'Frente al agua • Mesa de centro',
     status: 'available',
     distanceDesc: '6m del mar',
-    assignedWaiterId: 'u-yender',
-    assignedWaiterName: 'Yender Rodríguez',
+    assignedWaiterId: '',
+    assignedWaiterName: '',
     capacity: 4,
   },
   {
@@ -442,8 +442,8 @@ export const INITIAL_SPOTS: ToldoSpot[] = [
     typeDesc: 'En servicio de mesa',
     status: 'occupied',
     distanceDesc: '8m del mar',
-    assignedWaiterId: 'u-yender',
-    assignedWaiterName: 'Yender Rodríguez',
+    assignedWaiterId: '',
+    assignedWaiterName: '',
     capacity: 4,
   },
   {
@@ -454,8 +454,8 @@ export const INITIAL_SPOTS: ToldoSpot[] = [
     typeDesc: 'Segunda línea de palmeras',
     status: 'available',
     distanceDesc: '14m del mar',
-    assignedWaiterId: 'u-yender',
-    assignedWaiterName: 'Yender Rodríguez',
+    assignedWaiterId: '',
+    assignedWaiterName: '',
     capacity: 6,
   },
   {
@@ -466,8 +466,8 @@ export const INITIAL_SPOTS: ToldoSpot[] = [
     typeDesc: 'Mesa madera teca • 6 personas',
     status: 'available',
     distanceDesc: 'Bar a 8m',
-    assignedWaiterId: 'u-marcos',
-    assignedWaiterName: 'Marcos Alvarado',
+    assignedWaiterId: '',
+    assignedWaiterName: '',
     capacity: 6,
   },
   {
@@ -478,8 +478,8 @@ export const INITIAL_SPOTS: ToldoSpot[] = [
     typeDesc: "Lancha 'Doña Delia' fondeada",
     status: 'occupied',
     distanceDesc: 'Embarcación',
-    assignedWaiterId: 'u-keiver',
-    assignedWaiterName: 'Keiver Pinto',
+    assignedWaiterId: '',
+    assignedWaiterName: '',
     boatName: 'Doña Delia',
     capacity: 12,
   }
@@ -642,32 +642,7 @@ export const INITIAL_GIVEAWAY_STATE: GiveawayState = {
   ],
   maxParticipants: 200,
   isActive: true,
-  participants: [
-    {
-      ticketNumber: 1,
-      userId: 'usr-p01',
-      name: 'Carlos Mendoza',
-      email: 'carlos.mendoza@gmail.com',
-      phone: '0414-1234567',
-      registeredAt: '2026-10-14 09:15'
-    },
-    {
-      ticketNumber: 2,
-      userId: 'usr-p02',
-      name: 'Mariana Silva',
-      email: 'mariana.silva@hotmail.com',
-      phone: '0424-9876543',
-      registeredAt: '2026-10-14 10:30'
-    },
-    {
-      ticketNumber: 3,
-      userId: 'usr-p03',
-      name: 'Alejandro Gómez',
-      email: 'alejandro.g@gmail.com',
-      phone: '0412-5557788',
-      registeredAt: '2026-10-14 11:05'
-    }
-  ],
+  participants: [],
   winner: null,
   drawnAt: null
 };

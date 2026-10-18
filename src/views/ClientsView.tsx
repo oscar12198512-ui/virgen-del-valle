@@ -44,6 +44,7 @@ interface ClientsViewProps {
   giveaway?: GiveawayState;
   giveawayTicket?: number;
   onOpenGiveaway?: () => void;
+  onClearActiveOrder?: () => void;
 }
 
 export const ClientsView: React.FC<ClientsViewProps> = ({
@@ -61,6 +62,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   giveaway,
   giveawayTicket,
   onOpenGiveaway,
+  onClearActiveOrder,
 }) => {
   const [activeZone, setActiveZone] = useState<SpotZone>('beach');
   const [activeSubTab, setActiveSubTab] = useState<'spots' | 'menu' | 'tracking'>('menu');
@@ -970,12 +972,25 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-full bg-[#002546] text-white flex items-center justify-center font-bold text-sm">
-                  YR
+                  {selectedSpot.assignedWaiterName
+                    ? selectedSpot.assignedWaiterName
+                        .split(' ')
+                        .map((n) => n[0])
+                        .slice(0, 2)
+                        .join('')
+                        .toUpperCase()
+                    : 'PB'}
                 </div>
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-[#006782]">Tu Mesonero de Playa</span>
-                  <h4 className="font-bold text-sm text-[#002546]">Yender Rodríguez</h4>
-                  <span className="text-[11px] text-gray-500">Atento a tu toldo • Sector Orilla Este</span>
+                  <span className="text-[10px] uppercase font-bold text-[#006782]">
+                    {selectedSpot.assignedWaiterName ? 'Tu Mesonero Asignado' : 'Servicio en Toldo Playa Buche'}
+                  </span>
+                  <h4 className="font-bold text-sm text-[#002546]">
+                    {selectedSpot.assignedWaiterName || 'Atención Directa Playa'}
+                  </h4>
+                  <span className="text-[11px] text-gray-500">
+                    {selectedSpot.name} • {selectedSpot.typeDesc}
+                  </span>
                 </div>
               </div>
             </div>
@@ -986,7 +1001,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 className="h-11 bg-[#002546] hover:bg-[#0d3b66] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors"
               >
                 <Vibrate className="w-4 h-4 text-[#57d1fd]" />
-                <span>Llamar a Yender</span>
+                <span>
+                  {selectedSpot.assignedWaiterName
+                    ? `Llamar a ${selectedSpot.assignedWaiterName.split(' ')[0]}`
+                    : 'Llamar a Servicio'}
+                </span>
               </button>
               <button
                 onClick={() => handleQuickExtra('Hielo y Limón')}
@@ -999,7 +1018,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
             {buzzerActiveNotice && (
               <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs p-2.5 rounded-xl font-bold text-center animate-fade-in">
-                ¡Vibración enviada a su Smart Band! Yender viene hacia el Toldo #14.
+                {selectedSpot.assignedWaiterName
+                  ? `¡Vibración enviada a su Smart Band! ${selectedSpot.assignedWaiterName.split(' ')[0]} viene hacia tu toldo.`
+                  : '¡Aviso recibido! Un miembro de nuestro equipo se acerca a tu toldo.'}
               </div>
             )}
 
@@ -1010,77 +1031,154 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             )}
           </div>
 
-          {/* Cuenta & Factura Digital */}
-          <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm space-y-3.5">
-            <div className="flex justify-between items-center pb-2 border-b border-gray-100">
-              <div className="flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-[#006782]" />
-                <h3 className="text-xs font-bold text-[#002546] uppercase tracking-wider">
-                  Cuenta & Factura Digital
-                </h3>
-              </div>
-              <span className="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full font-bold">
-                EN MESA
-              </span>
-            </div>
+          {/* Cuenta & Factura Digital con Detección Real de Pago y Cierre */}
+          {(() => {
+            const isSettledOrVerified = Boolean(
+              activeOrder?.paymentStatus === 'verified' || activeOrder?.isSettled
+            );
+            const isPendingVerification = Boolean(
+              activeOrder?.paymentStatus === 'pending_verification'
+            );
 
-            <div className="space-y-2 text-xs text-gray-700">
-              {activeOrder?.items && activeOrder.items.length > 0 ? (
-                activeOrder.items.map((it) => (
-                  <div key={it.id} className="flex justify-between items-center">
-                    <span>{it.quantity}x {it.name}</span>
-                    <span className="font-bold">{formatUsd(it.quantity * it.unitPriceUsd)}</span>
+            return (
+              <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm space-y-3.5">
+                <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-[#006782]" />
+                    <h3 className="text-xs font-bold text-[#002546] uppercase tracking-wider">
+                      Cuenta & Factura Digital
+                    </h3>
                   </div>
-                ))
-              ) : (
-                <p className="text-gray-400 italic text-center py-2">Sin platos añadidos aún</p>
-              )}
-            </div>
+                  {isSettledOrVerified ? (
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full font-extrabold flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      CUENTA CERRADA
+                    </span>
+                  ) : isPendingVerification ? (
+                    <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full font-extrabold flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-amber-700" />
+                      PAGO EN VERIFICACIÓN
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full font-bold">
+                      EN MESA
+                    </span>
+                  )}
+                </div>
 
-            <div className="bg-[#eff4ff] border border-[#a4c9fc] rounded-xl p-3.5 space-y-1">
-              <div className="flex justify-between items-baseline">
-                <span className="text-xs font-bold uppercase text-[#006782]">
-                  Total a Pagar Bimonetario:
-                </span>
-                <span className="text-2xl font-extrabold text-[#002546]">
-                  {formatUsd(activeOrder?.totalUsd || 0)} <span className="text-xs font-semibold text-[#006782]">USD</span>
-                </span>
+                <div className="space-y-2 text-xs text-gray-700">
+                  {activeOrder?.items && activeOrder.items.length > 0 ? (
+                    activeOrder.items.map((it) => (
+                      <div key={it.id} className="flex justify-between items-center">
+                        <span>{it.quantity}x {it.name}</span>
+                        <span className="font-bold">{formatUsd(it.quantity * it.unitPriceUsd)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-gray-400 italic text-center py-2">Sin platos añadidos aún</p>
+                  )}
+                </div>
+
+                <div className="bg-[#eff4ff] border border-[#a4c9fc] rounded-xl p-3.5 space-y-1">
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-xs font-bold uppercase text-[#006782]">
+                      {isSettledOrVerified ? 'Total Pagado y Liquidado:' : 'Total a Pagar Bimonetario:'}
+                    </span>
+                    <span className="text-2xl font-extrabold text-[#002546]">
+                      {formatUsd(activeOrder?.totalUsd || 0)} <span className="text-xs font-semibold text-[#006782]">USD</span>
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs pt-1 border-t border-[#d2e4ff]">
+                    <span className="text-[11px] text-gray-500">Tasa del día: {bcvRate.toFixed(2)} Bs/$</span>
+                    <span className="font-bold text-[#006782]">
+                      {formatBsDirect((activeOrder?.totalUsd || 0) * bcvRate)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Banner de Estado de Pago */}
+                {isSettledOrVerified ? (
+                  <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 space-y-2 text-xs">
+                    <div className="flex items-center gap-2 font-bold text-emerald-900">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>¡Cuenta verificada y cerrada con éxito!</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-800 leading-relaxed">
+                      Tu pago ha sido validado por el cajero de Playa Buche. Muchas gracias por tu preferencia y visita.
+                    </p>
+                    {activeOrder?.paymentReference && (
+                      <span className="inline-block text-[10px] font-mono bg-white/80 border border-emerald-200 px-2 py-0.5 rounded text-emerald-900">
+                        Comprobante / Ref: #{activeOrder.paymentReference}
+                      </span>
+                    )}
+
+                    {onClearActiveOrder && (
+                      <button
+                        type="button"
+                        onClick={onClearActiveOrder}
+                        className="w-full mt-2 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Hacer un Nuevo Pedido / Liberar Toldo</span>
+                      </button>
+                    )}
+                  </div>
+                ) : isPendingVerification ? (
+                  <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 space-y-2 text-xs">
+                    <div className="flex items-center gap-2 font-bold text-amber-900">
+                      <Clock className="w-4 h-4 text-amber-700 shrink-0 animate-spin-slow" />
+                      <span>Comprobante enviado a caja</span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      Tu reporte de pago por{' '}
+                      <strong>{formatUsd(activeOrder?.totalUsd || 0)}</strong> ha sido registrado en el sistema. El cajero está verificando los fondos para cerrar tu cuenta en unos instantes.
+                    </p>
+                    {activeOrder?.paymentReference && (
+                      <span className="inline-block text-[10px] font-mono bg-white/80 border border-amber-200 px-2 py-0.5 rounded text-amber-900">
+                        Ref enviada: #{activeOrder.paymentReference}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (activeOrder) onOpenPaymentModal(activeOrder);
+                      }}
+                      className="w-full mt-1 py-2 bg-amber-200 hover:bg-amber-300 text-amber-900 font-bold rounded-lg text-[11px] transition-colors"
+                    >
+                      Modificar o Corregir Comprobante de Pago
+                    </button>
+                  </div>
+                ) : (
+                  /* Botón Pagar para órdenes aún no reportadas */
+                  <button
+                    onClick={() => {
+                      if (activeOrder) {
+                        onOpenPaymentModal(activeOrder);
+                      } else {
+                        setExtraNotice('Aún no hay una orden activa por pagar en este toldo.');
+                        setTimeout(() => setExtraNotice(null), 4000);
+                      }
+                    }}
+                    className="w-full h-12 bg-[#002546] hover:bg-[#0d3b66] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-colors cursor-pointer"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-[#57d1fd]" />
+                    <span>Pedir la Cuenta / Pagar Pago Móvil o Zelle</span>
+                  </button>
+                )}
+
+                {/* View Fiscal Invoice Digital Button */}
+                {onOpenFiscalInvoice && (
+                  <button
+                    onClick={onOpenFiscalInvoice}
+                    className="w-full h-10 bg-[#eff4ff] hover:bg-[#dce9ff] text-[#002546] border border-[#a4c9fc] rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Receipt className="w-4 h-4 text-[#006782]" />
+                    <span>Ver Comprobante Fiscal Digital (SENIAT)</span>
+                  </button>
+                )}
               </div>
-              <div className="flex justify-between items-center text-xs pt-1 border-t border-[#d2e4ff]">
-                <span className="text-[11px] text-gray-500">Tasa del día: {bcvRate.toFixed(2)} Bs/$</span>
-                <span className="font-bold text-[#006782]">
-                  {formatBsDirect((activeOrder?.totalUsd || 0) * bcvRate)}
-                </span>
-              </div>
-            </div>
-
-            {/* Pay Button */}
-            <button
-              onClick={() => {
-                if (activeOrder) {
-                  onOpenPaymentModal(activeOrder);
-                } else {
-                  setExtraNotice('Aún no hay una orden activa por pagar en este toldo.');
-                  setTimeout(() => setExtraNotice(null), 4000);
-                }
-              }}
-              className="w-full h-12 bg-[#002546] hover:bg-[#0d3b66] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-colors"
-            >
-              <ShieldCheck className="w-4 h-4 text-[#57d1fd]" />
-              <span>Pedir la Cuenta / Pagar Pago Móvil o Zelle</span>
-            </button>
-
-            {/* View Fiscal Invoice Digital Button */}
-            {onOpenFiscalInvoice && (
-              <button
-                onClick={onOpenFiscalInvoice}
-                className="w-full h-10 bg-[#eff4ff] hover:bg-[#dce9ff] text-[#002546] border border-[#a4c9fc] rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors"
-              >
-                <Receipt className="w-4 h-4 text-[#006782]" />
-                <span>Ver Comprobante Fiscal Digital (SENIAT)</span>
-              </button>
-            )}
-          </div>
+            );
+          })()}
         </>
       )}
     </div>

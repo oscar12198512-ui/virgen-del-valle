@@ -273,15 +273,26 @@ export const App: React.FC = () => {
     }
   });
 
+  const sanitizeGiveaway = (gw: GiveawayState): GiveawayState => {
+    const dummyNames = ['carlos mendoza', 'mariana silva', 'alejandro gómez', 'alejandro gomez'];
+    const dummyEmails = ['carlos@playabuche.com', 'mariana@playabuche.com', 'alejandro@playabuche.com'];
+    const cleanParticipants = (gw?.participants || []).filter(
+      (p) =>
+        !dummyNames.includes(p.name?.toLowerCase().trim()) &&
+        !dummyEmails.includes(p.email?.toLowerCase().trim())
+    );
+    return { ...gw, participants: cleanParticipants };
+  };
+
   const [giveaway, setGiveaway] = useState<GiveawayState>(() => {
     try {
       const saved = localStorage.getItem('playa_buche_giveaway');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && Array.isArray(parsed.participants)) return parsed;
+        if (parsed && Array.isArray(parsed.participants)) return sanitizeGiveaway(parsed);
       }
     } catch {}
-    return INITIAL_GIVEAWAY_STATE;
+    return sanitizeGiveaway(INITIAL_GIVEAWAY_STATE);
   });
   const [isGiveawayModalOpen, setIsGiveawayModalOpen] = useState(false);
 
@@ -493,9 +504,10 @@ export const App: React.FC = () => {
           if (Array.isArray(state.waitersClosings)) setWaitersClosings(state.waitersClosings);
           if (state.drawerBills) setDrawerBills(state.drawerBills);
           if (state.giveaway) {
-            setGiveaway(state.giveaway);
+            const clean = sanitizeGiveaway(state.giveaway);
+            setGiveaway(clean);
             try {
-              localStorage.setItem('playa_buche_giveaway', JSON.stringify(state.giveaway));
+              localStorage.setItem('playa_buche_giveaway', JSON.stringify(clean));
             } catch {}
           }
           if (typeof state.bcvRate === 'number' && !isNaN(state.bcvRate) && state.bcvRate > 0) {
@@ -540,7 +552,7 @@ export const App: React.FC = () => {
         if (Array.isArray(data.state.menuItems)) setMenuItems(data.state.menuItems);
         if (Array.isArray(data.state.spots)) setSpots(data.state.spots);
         if (data.state.excursion && data.state.excursion.id) setExcursion(data.state.excursion);
-        if (data.state.giveaway) setGiveaway(data.state.giveaway);
+        if (data.state.giveaway) setGiveaway(sanitizeGiveaway(data.state.giveaway));
         if (typeof data.state.bcvRate === 'number' && !isNaN(data.state.bcvRate) && data.state.bcvRate > 0) {
           setBcvRate(data.state.bcvRate);
           try {
@@ -585,7 +597,7 @@ export const App: React.FC = () => {
           if (data.state.bankConfig) setBankConfig(data.state.bankConfig);
           if (Array.isArray(data.state.waitersClosings)) setWaitersClosings(data.state.waitersClosings);
           if (data.state.drawerBills) setDrawerBills(data.state.drawerBills);
-          if (data.state.giveaway) setGiveaway(data.state.giveaway);
+          if (data.state.giveaway) setGiveaway(sanitizeGiveaway(data.state.giveaway));
           if (typeof data.state.bcvRate === 'number') setBcvRate(data.state.bcvRate);
         }
         setIsDbHydrated(true);
@@ -1191,6 +1203,18 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleClearClientOrder = () => {
+    setClientActiveOrder(null);
+    if (currentUser) {
+      try {
+        const idKey = getClientOrderStorageKey(currentUser);
+        const dataKey = getClientOrderDataStorageKey(currentUser);
+        localStorage.removeItem(idKey);
+        localStorage.removeItem(dataKey);
+      } catch {}
+    }
+  };
+
   const handlePaymentSuccess = (
     orderId: string,
     reference: string,
@@ -1198,14 +1222,16 @@ export const App: React.FC = () => {
     details?: { receivedAmount?: number; changeAmount?: number }
   ) => {
     let paidOrderObj: Order | undefined;
+    const isClientUser = currentUser?.role === 'client';
+
     const applyPayment = (order: Order): Order => {
       if (order.id !== orderId) return order;
       paidOrderObj = {
         ...order,
-        paymentStatus: 'verified' as const,
+        paymentStatus: isClientUser ? ('pending_verification' as const) : ('verified' as const),
         paymentMethod: method,
         paymentReference: reference,
-        isSettled: true,
+        isSettled: !isClientUser,
       };
       return paidOrderObj;
     };
@@ -1220,7 +1246,17 @@ export const App: React.FC = () => {
       return nextOrders;
     });
 
-    setClientActiveOrder((previous) => (previous ? applyPayment(previous) : previous));
+    setClientActiveOrder((previous) => {
+      const updated = previous ? applyPayment(previous) : previous;
+      if (updated && currentUser) {
+        try {
+          const dataKey = getClientOrderDataStorageKey(currentUser);
+          localStorage.setItem(dataKey, JSON.stringify(updated));
+        } catch {}
+      }
+      return updated;
+    });
+
     soundService.playCashChime();
   };
 
@@ -1419,6 +1455,7 @@ export const App: React.FC = () => {
               onUpdateOrderStatus={handleUpdateOrderStatus}
               onSendOrderToKitchen={handleSendOrderToKitchen}
               onUpdateOrder={handleUpdateOrder}
+              onOpenPaymentModal={handleOpenPaymentModal}
             />
           </ErrorBoundary>
         )}
@@ -1463,6 +1500,7 @@ export const App: React.FC = () => {
               orders={orders}
               onUpdateOrderStatus={handleUpdateOrderStatus}
               onUpdateOrder={handleUpdateOrder}
+              onOpenPagoMovil={handleOpenPaymentModal}
               approachingAlertCount={approachingAlertCount}
               spots={spots}
               onOpenToldoQrModal={() => setIsToldoQrModalOpen(true)}
@@ -1486,6 +1524,7 @@ export const App: React.FC = () => {
               onOpenPaymentModal={handleOpenPaymentModal}
               onOpenFiscalInvoice={() => setIsFiscalInvoiceOpen(true)}
               onUpdateOrder={handleUpdateOrder}
+              onClearActiveOrder={handleClearClientOrder}
               giveaway={giveaway}
               giveawayTicket={currentUser?.giveawayTicket}
               onOpenGiveaway={handleOpenGiveaway}

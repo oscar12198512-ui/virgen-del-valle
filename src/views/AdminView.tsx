@@ -100,6 +100,7 @@ interface AdminViewProps {
   orders?: Order[];
   onUpdateOrderStatus?: (orderId: string, newStatus: OrderStatus) => void;
   onUpdateOrder?: (updated: Order) => void;
+  onOpenPagoMovil?: (order: Order) => void;
   approachingAlertCount?: number;
   spots?: ToldoSpot[];
   onOpenToldoQrModal?: () => void;
@@ -132,6 +133,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   orders = INITIAL_ORDERS,
   onUpdateOrderStatus,
   onUpdateOrder,
+  onOpenPagoMovil,
   approachingAlertCount = 0,
   spots = [],
   onOpenToldoQrModal,
@@ -143,6 +145,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   >('closings');
   const [kdsSubView, setKdsSubView] = useState<'monitor' | 'editor'>('monitor');
   const [rateInput, setRateInput] = useState<string>(bcvRate.toString());
+  const [financialPeriod, setFinancialPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
 
   useEffect(() => {
     setRateInput(bcvRate.toString());
@@ -151,7 +154,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [showActaZSuccess, setShowActaZSuccess] = useState(false);
   const [rateNotice, setRateNotice] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
-  const [selectedMesoneroId, setSelectedMesoneroId] = useState<string>('close-yr');
+  const [selectedMesoneroId, setSelectedMesoneroId] = useState<string>('');
   const [envelopeBillsState, setEnvelopeBillsState] = useState<Record<string, BillDenominationCount>>(() => {
     const map: Record<string, BillDenominationCount> = {};
     waitersClosings.forEach((w) => {
@@ -645,18 +648,110 @@ export const AdminView: React.FC<AdminViewProps> = ({
     return clientPendingOrders.reduce((sum, o) => sum + (o.totalUsd || 0), 0);
   }, [clientPendingOrders]);
 
+  // Cuentas por cobrar de excursiones y lanchas turísticas
+  const excursionPendingOrders = useMemo(() => {
+    return orders.filter(
+      (o) =>
+        o.origin === 'excursion' &&
+        o.paymentStatus !== 'verified' &&
+        o.status !== 'cancelled'
+    );
+  }, [orders]);
+
+  const totalExcursionPendingUsd = useMemo(() => {
+    return excursionPendingOrders.reduce((sum, o) => sum + (o.totalUsd || 0), 0);
+  }, [excursionPendingOrders]);
+
   const totalCollectedPending = effectiveWaitersClosings.reduce(
     (acc, w) => acc + (w.status === 'pending' ? w.cashToDeliverUsd : 0),
     0
   );
 
-  const totalGlobalGross = effectiveWaitersClosings.reduce((acc, w) => acc + w.totalCollectedUsd, 0);
-  const paidOrders = orders.filter((order) => order.paymentStatus === 'verified');
-  const totalVerified = paidOrders.reduce((acc, order) => acc + order.totalUsd, 0);
+  const totalGlobalGross = useMemo(() => {
+    const fromOrders = orders
+      .filter((o) => o.status !== 'cancelled')
+      .reduce((sum, o) => sum + (o.totalUsd || 0), 0);
+    const fromWaiters = effectiveWaitersClosings.reduce((acc, w) => acc + w.totalCollectedUsd, 0);
+    return Math.max(fromOrders, fromWaiters);
+  }, [orders, effectiveWaitersClosings]);
+
+  const paidOrders = orders.filter((order) => order.paymentStatus === 'verified' || order.isSettled);
+  const totalVerified = paidOrders.reduce((acc, order) => acc + (order.totalUsd || 0), 0);
   const averageTicket = paidOrders.length ? totalVerified / paidOrders.length : 0;
   const dispatchedCount = orders.filter((order) =>
     ['ready_pass', 'delivered'].includes(order.status)
   ).length;
+
+  // Filtrado de métricas ejecutivas por período (Diario, Semanal, Mensual)
+  const periodFilteredOrders = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    return orders.filter((o) => {
+      if (!o.createdAt) return true;
+      const orderDate = new Date(o.createdAt);
+      if (isNaN(orderDate.getTime())) return true;
+      if (financialPeriod === 'daily') {
+        return orderDate.toISOString().slice(0, 10) === todayStr;
+      }
+      if (financialPeriod === 'weekly') {
+        return orderDate >= sevenDaysAgo;
+      }
+      if (financialPeriod === 'monthly') {
+        return orderDate >= thirtyDaysAgo;
+      }
+      return true;
+    });
+  }, [orders, financialPeriod]);
+
+  const periodPaidOrders = useMemo(() => {
+    return periodFilteredOrders.filter((o) => o.paymentStatus === 'verified' || o.isSettled);
+  }, [periodFilteredOrders]);
+
+  const periodGrossTotal = useMemo(() => {
+    return periodFilteredOrders
+      .filter((o) => o.status !== 'cancelled')
+      .reduce((sum, o) => sum + (o.totalUsd || 0), 0);
+  }, [periodFilteredOrders]);
+
+  const periodVerifiedTotal = useMemo(() => {
+    return periodPaidOrders.reduce((sum, o) => sum + (o.totalUsd || 0), 0);
+  }, [periodPaidOrders]);
+
+  const periodAverageTicket = useMemo(() => {
+    return periodPaidOrders.length ? periodVerifiedTotal / periodPaidOrders.length : 0;
+  }, [periodPaidOrders, periodVerifiedTotal]);
+
+  const periodDispatchedCount = useMemo(() => {
+    return periodFilteredOrders.filter((o) => ['ready_pass', 'delivered'].includes(o.status)).length;
+  }, [periodFilteredOrders]);
+
+  // Ingresos reales por canal calculados de las órdenes
+  const excursionChannelTotal = useMemo(() => {
+    return periodPaidOrders
+      .filter((o) => o.origin === 'excursion')
+      .reduce((sum, o) => sum + (o.totalUsd || 0), 0);
+  }, [periodPaidOrders]);
+
+  const clientQrChannelTotal = useMemo(() => {
+    return periodPaidOrders
+      .filter((o) => o.origin === 'client_qr')
+      .reduce((sum, o) => sum + (o.totalUsd || 0), 0);
+  }, [periodPaidOrders]);
+
+  const waiterPosChannelTotal = useMemo(() => {
+    return periodPaidOrders
+      .filter((o) => o.origin === 'waiter_pos' || (!o.origin && (o.waiterName || o.waiterId)))
+      .reduce((sum, o) => sum + (o.totalUsd || 0), 0);
+  }, [periodPaidOrders]);
+
+  const totalChannelsSum = excursionChannelTotal + clientQrChannelTotal + waiterPosChannelTotal;
+  const excPct = totalChannelsSum > 0 ? Math.round((excursionChannelTotal / totalChannelsSum) * 100) : 0;
+  const qrPct = totalChannelsSum > 0 ? Math.round((clientQrChannelTotal / totalChannelsSum) * 100) : 0;
+  const waiterPct = totalChannelsSum > 0 ? 100 - excPct - qrPct : 0;
+
   const totalWasteUsd = wasteReports.reduce((acc, report) => acc + (report.costUsd || 0), 0);
   const totalWasteBs = wasteReports.reduce((acc, report) => acc + (report.costBs || 0), 0);
   const [auditEntries, setAuditEntries] = useState<AuditLogItem[]>(INITIAL_AUDIT_LOGS);
@@ -1198,6 +1293,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
                           <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold">
                             {ord.customerName || 'Cliente QR'}
                           </span>
+                          {ord.paymentStatus === 'pending_verification' && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold border border-emerald-300">
+                              🟡 Pago Reportado: {ord.paymentMethod?.toUpperCase()} {ord.paymentReference ? `(#${ord.paymentReference})` : ''}
+                            </span>
+                          )}
                         </div>
                         <span className="text-[11px] text-gray-500 truncate block mt-0.5">
                           {(ord.items || []).map((i) => `${i.quantity}x ${i.name}`).join(', ')}
@@ -1214,15 +1314,137 @@ export const AdminView: React.FC<AdminViewProps> = ({
                           {formatBsDirect(ord.totalBs || ord.totalUsd * bcvRate)}
                         </span>
                       </div>
-                      {onUpdateOrderStatus && (
-                        <button
-                          type="button"
-                          onClick={() => onUpdateOrderStatus(ord.id, 'ready_pass')}
-                          className="px-2.5 py-1.5 rounded-lg bg-[#006782] hover:bg-[#005870] text-white font-bold text-[11px] transition-colors"
-                        >
-                          Verificar
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {onOpenPagoMovil && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenPagoMovil(ord)}
+                            className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-[#002546] font-bold text-[11px] transition-colors"
+                            title="Revisar detalles de pago o captura"
+                          >
+                            Detalles
+                          </button>
+                        )}
+                        {onUpdateOrder && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundService.playCashChime();
+                              onUpdateOrder({
+                                ...ord,
+                                paymentStatus: 'verified',
+                                isSettled: true,
+                                status: ord.status === 'delivered' ? 'delivered' : ord.status,
+                              });
+                              setActionNotice(`Cuenta #${ord.displayNumber} (${ord.spotName}) verificada y cerrada.`);
+                              setTimeout(() => setActionNotice(null), 3500);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] transition-colors flex items-center gap-1 shadow-xs cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Verificar & Cerrar</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Cuentas por Cobrar & Liquidación • Excursiones y Paquetes de Lanchas */}
+          <div className="bg-white rounded-2xl border border-sky-200 p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">⚓</span>
+                <div>
+                  <h3 className="text-xs font-bold text-[#002546] uppercase tracking-wider">
+                    Cuentas por Cobrar • Excursiones y Lanchas
+                  </h3>
+                  <span className="text-[11px] text-gray-500">
+                    {excursionPendingOrders.length} comanda(s) turísticas pendientes de liquidación
+                  </span>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-base font-extrabold text-[#006782] block">
+                  {formatUsd(totalExcursionPendingUsd)}
+                </span>
+                <span className="text-[10px] text-gray-500 font-mono">
+                  ≈ {formatBsDirect(totalExcursionPendingUsd * bcvRate)}
+                </span>
+              </div>
+            </div>
+
+            {excursionPendingOrders.length === 0 ? (
+              <p className="text-xs text-gray-400 italic bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                ✅ No hay cuentas de excursiones pendientes de cobro en este momento.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {excursionPendingOrders.map((ord) => (
+                  <div
+                    key={ord.id}
+                    className="p-3 rounded-xl bg-sky-50/50 border border-sky-100 flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-8 h-8 rounded-lg bg-[#002546] text-[#57d1fd] font-bold text-xs flex items-center justify-center shrink-0">
+                        {ord.displayNumber}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-[#002546] truncate">{ord.spotName}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-900 font-bold">
+                            {ord.customerName || 'Excursión'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-gray-500 truncate block mt-0.5">
+                          {(ord.items || []).map((i) => `${i.quantity}x ${i.name}`).join(', ')}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right">
+                        <span className="font-extrabold text-[#002546] text-xs font-mono block">
+                          {formatUsd(ord.totalUsd)}
+                        </span>
+                        <span className="text-[10px] text-gray-500 font-mono">
+                          {formatBsDirect(ord.totalBs || ord.totalUsd * bcvRate)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {onOpenPagoMovil && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenPagoMovil(ord)}
+                            className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-[#002546] font-bold text-[11px] transition-colors"
+                          >
+                            Detalles
+                          </button>
+                        )}
+                        {onUpdateOrder && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundService.playCashChime();
+                              onUpdateOrder({
+                                ...ord,
+                                paymentStatus: 'verified',
+                                isSettled: true,
+                                status: ord.status === 'delivered' ? 'delivered' : ord.status,
+                              });
+                              setActionNotice(`Excursión #${ord.displayNumber} liquidada con éxito.`);
+                              setTimeout(() => setActionNotice(null), 3500);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] transition-colors flex items-center gap-1 shadow-xs cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Liquidar</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1242,12 +1464,17 @@ export const AdminView: React.FC<AdminViewProps> = ({
               </span>
             </div>
 
-            {/* Mesonero Navigation Tabs Bar */}
-            <div className="flex gap-2 overflow-x-auto pb-1.5 px-0.5 no-scrollbar" id="mesonero-nav-tabs">
-              {effectiveWaitersClosings.map((closing) => {
-                const isSelected = selectedMesoneroId === closing.id;
-                const isPending = closing.status === 'pending';
-                return (
+            {effectiveWaitersClosings.length === 0 ? (
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 text-center text-xs text-gray-500">
+                ✅ No hay comandas de mesoneros activas en este momento. Cuando un mesonero registre pedidos o cobre en toldos, su arqueo y entrega de efectivo aparecerán aquí.
+              </div>
+            ) : (
+              /* Mesonero Navigation Tabs Bar */
+              <div className="flex gap-2 overflow-x-auto pb-1.5 px-0.5 no-scrollbar" id="mesonero-nav-tabs">
+                {effectiveWaitersClosings.map((closing) => {
+                  const isSelected = (selectedMesoneroId || effectiveWaitersClosings[0]?.id) === closing.id;
+                  const isPending = closing.status === 'pending';
+                  return (
                   <button
                     key={closing.id}
                     id={`tab-btn-${closing.id.replace('close-', '')}`}
@@ -1296,6 +1523,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 );
               })}
             </div>
+            )}
           </div>
 
           {/* ACTIVE MESONERO DETAILED LIQUIDATION CARD */}
@@ -2620,29 +2848,78 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </button>
           </div>
 
-          {/* Executive Metrics — calculados con las órdenes reales del turno */}
+          {/* Selector de Período Financiero */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-[#006782]" />
+                <h3 className="text-sm font-bold text-[#002546]">Cierre & Reporte Financiero</h3>
+              </div>
+              <span className="text-[10px] font-bold text-sky-800 bg-sky-100 px-2.5 py-0.5 rounded-full uppercase">
+                {financialPeriod === 'daily' ? 'Diario' : financialPeriod === 'weekly' ? 'Semanal' : 'Mensual'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 p-1 bg-gray-100 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setFinancialPeriod('daily')}
+                className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                  financialPeriod === 'daily'
+                    ? 'bg-white text-[#002546] shadow-xs'
+                    : 'text-gray-600 hover:text-[#002546]'
+                }`}
+              >
+                Diario (Hoy)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFinancialPeriod('weekly')}
+                className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                  financialPeriod === 'weekly'
+                    ? 'bg-white text-[#002546] shadow-xs'
+                    : 'text-gray-600 hover:text-[#002546]'
+                }`}
+              >
+                Semanal (7d)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFinancialPeriod('monthly')}
+                className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                  financialPeriod === 'monthly'
+                    ? 'bg-white text-[#002546] shadow-xs'
+                    : 'text-gray-600 hover:text-[#002546]'
+                }`}
+              >
+                Mensual (30d)
+              </button>
+            </div>
+          </div>
+
+          {/* Executive Metrics — calculados con las órdenes reales del período */}
           <div className="grid grid-cols-2 gap-2.5">
             <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-xs">
-              <span className="text-[10px] font-bold uppercase text-gray-500 block">Ventas Brutas</span>
-              <span className="text-xl font-extrabold text-[#002546]">${totalGlobalGross.toFixed(2)}</span>
+              <span className="text-[10px] font-bold uppercase text-gray-500 block">Ventas Brutas ({financialPeriod === 'daily' ? 'Hoy' : financialPeriod === 'weekly' ? '7 días' : 'Mes'})</span>
+              <span className="text-xl font-extrabold text-[#002546]">{formatUsd(periodGrossTotal)}</span>
               <span className="text-[10px] text-gray-500 font-bold block mt-0.5">
-                {orders.length} {orders.length === 1 ? 'comanda' : 'comandas'} del turno
+                {periodFilteredOrders.length} {periodFilteredOrders.length === 1 ? 'comanda' : 'comandas'}
               </span>
             </div>
             <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-xs">
-              <span className="text-[10px] font-bold uppercase text-gray-500 block">Total cobrado</span>
-              <span className="text-xl font-extrabold text-[#002546]">${totalVerified.toFixed(2)}</span>
-              <span className="text-[10px] text-[#006782] font-bold block mt-0.5">Órdenes verificadas</span>
+              <span className="text-[10px] font-bold uppercase text-gray-500 block">Total Cobrado</span>
+              <span className="text-xl font-extrabold text-[#002546]">{formatUsd(periodVerifiedTotal)}</span>
+              <span className="text-[10px] text-[#006782] font-bold block mt-0.5">{periodPaidOrders.length} órdenes liquidadas</span>
             </div>
             <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-xs">
               <span className="text-[10px] font-bold uppercase text-gray-500 block">Ticket Promedio</span>
-              <span className="text-xl font-extrabold text-[#002546]">${averageTicket.toFixed(2)}</span>
-              <span className="text-[10px] text-gray-500 block mt-0.5">Sobre órdenes cobradas</span>
+              <span className="text-xl font-extrabold text-[#002546]">{formatUsd(periodAverageTicket)}</span>
+              <span className="text-[10px] text-gray-500 block mt-0.5">Por cuenta cobrada</span>
             </div>
             <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-xs">
-              <span className="text-[10px] font-bold uppercase text-gray-500 block">Comandas / Pax</span>
-              <span className="text-xl font-extrabold text-[#002546]">{orders.length} ord.</span>
-              <span className="text-[10px] text-gray-500 block mt-0.5">{dispatchedCount} despachadas</span>
+              <span className="text-[10px] font-bold uppercase text-gray-500 block">Despachos & Pax</span>
+              <span className="text-xl font-extrabold text-[#002546]">{periodFilteredOrders.length} ord.</span>
+              <span className="text-[10px] text-gray-500 block mt-0.5">{periodDispatchedCount} despachadas</span>
             </div>
           </div>
 
@@ -2656,46 +2933,62 @@ export const AdminView: React.FC<AdminViewProps> = ({
             <span>Exportar Resumen Financiero y Cierre a WhatsApp</span>
           </button>
 
-          {/* Ingresos por Canal */}
+          {/* Ingresos por Canal Reales */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-1.5">
                 <PieChart className="w-4 h-4 text-[#006782]" />
                 <h3 className="text-sm font-bold text-[#002546]">Ingresos por Canal</h3>
               </div>
-              <span className="text-[11px] text-gray-500">Distribución de turno</span>
+              <span className="text-[11px] text-gray-500">
+                {financialPeriod === 'daily' ? 'Turno de hoy' : financialPeriod === 'weekly' ? 'Últimos 7 días' : 'Mes actual'}
+              </span>
             </div>
 
-            {/* Distribution bar */}
-            <div className="w-full h-2.5 rounded-full overflow-hidden flex">
-              <div className="bg-sky-400 h-full w-[45%]" title="Excursiones 45%"></div>
-              <div className="bg-[#002546] h-full w-[35%]" title="Clientes App 35%"></div>
-              <div className="bg-amber-400 h-full w-[20%]" title="Mesoneros 20%"></div>
-            </div>
+            {totalChannelsSum === 0 ? (
+              <p className="text-xs text-gray-400 italic bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                Aún no hay cobros liquidados registrados en este período.
+              </p>
+            ) : (
+              <>
+                {/* Distribution bar */}
+                <div className="w-full h-2.5 rounded-full overflow-hidden flex bg-gray-100">
+                  {excPct > 0 && <div className="bg-sky-400 h-full" style={{ width: `${excPct}%` }} title={`Excursiones ${excPct}%`}></div>}
+                  {qrPct > 0 && <div className="bg-[#002546] h-full" style={{ width: `${qrPct}%` }} title={`Clientes App ${qrPct}%`}></div>}
+                  {waiterPct > 0 && <div className="bg-amber-400 h-full" style={{ width: `${waiterPct}%` }} title={`Mesoneros ${waiterPct}%`}></div>}
+                </div>
 
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
-                  <span>Excursiones y Lanchas (Bahía Buche)</span>
-                </span>
-                <span className="font-bold text-[#002546]">$1,568.25 (45%)</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#002546]"></span>
-                  <span>Clientes App Directa (QR Toldos & Muelle)</span>
-                </span>
-                <span className="font-bold text-[#002546]">$1,219.75 (35%)</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-                  <span>Mesoneros Salón & Playa (Comandera POS)</span>
-                </span>
-                <span className="font-bold text-[#002546]">$697.00 (20%)</span>
-              </div>
-            </div>
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
+                      <span>Excursiones y Lanchas (Bahía Buche)</span>
+                    </span>
+                    <span className="font-bold text-[#002546]">
+                      {formatUsd(excursionChannelTotal)} ({excPct}%)
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#002546]"></span>
+                      <span>Clientes App Directa (QR Toldos & Muelle)</span>
+                    </span>
+                    <span className="font-bold text-[#002546]">
+                      {formatUsd(clientQrChannelTotal)} ({qrPct}%)
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                      <span>Mesoneros Salón & Playa (Comandera POS)</span>
+                    </span>
+                    <span className="font-bold text-[#002546]">
+                      {formatUsd(waiterPosChannelTotal)} ({waiterPct}%)
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Control Rápido de Menú (Availability Toggles) */}

@@ -15,7 +15,8 @@ import {
   Share2,
   Search,
   Users,
-  Edit3
+  Edit3,
+  CreditCard
 } from 'lucide-react';
 import { ComandaEditorModal } from '../components/ComandaEditorModal';
 import { CaptainVhfModal } from '../components/CaptainVhfModal';
@@ -33,6 +34,7 @@ interface ExcursionsViewProps {
   onUpdateOrderStatus?: (orderId: string, newStatus: any) => void;
   onSendOrderToKitchen?: (newOrder: Order) => Promise<void> | void;
   onUpdateOrder?: (updatedOrder: Order) => void;
+  onOpenPaymentModal?: (order: Order) => void;
 }
 
 export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
@@ -46,6 +48,7 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
   onUpdateOrderStatus,
   onSendOrderToKitchen,
   onUpdateOrder,
+  onOpenPaymentModal,
 }) => {
   const userKey = currentUser?.email ? currentUser.email.toLowerCase().trim() : currentUser?.id || 'default';
   const defaultTourCode = currentUser?.boatName ? `TOUR-${currentUser.boatName.toUpperCase().replace(/\s+/g, '-').slice(0, 10)}` : 'TOUR-BUCHE-882';
@@ -943,6 +946,33 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
             ))}
           </div>
         </div>
+
+        {/* Botón y Estado de Liquidación de la Excursión */}
+        {safeExcursion.isSettled || safeExcursion.paymentStatus === 'verified' ? (
+          <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 flex items-center justify-between gap-2 shadow-xs">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <div>
+                <span className="text-xs font-bold text-emerald-900 block">Excursión Totalmente Liquidada</span>
+                <span className="text-[10px] text-emerald-700">Paquete cobrado y cerrado en muelle</span>
+              </div>
+            </div>
+            <span className="text-xs font-extrabold font-mono text-emerald-900 bg-white px-2 py-1 rounded-lg border border-emerald-200">
+              {formatUsd(totalUsd)}
+            </span>
+          </div>
+        ) : (
+          onOpenPaymentModal && (
+            <button
+              type="button"
+              onClick={() => onOpenPaymentModal(excursionAsOrder)}
+              className="w-full h-12 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.99] bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer"
+            >
+              <CreditCard className="w-4 h-4 text-emerald-200" />
+              <span>Cobrar / Liquidar Excursión ({formatUsd(totalUsd)})</span>
+            </button>
+          )
+        )}
 
         {/* Approaching Alert Button (10 min) */}
         <button
