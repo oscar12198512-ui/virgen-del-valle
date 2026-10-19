@@ -44,13 +44,17 @@ app.use(
     credentials: false,
   })
 );
-app.use(express.json({ limit: '1mb' }));
+app.disable('x-powered-by');
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   next();
 });
+app.use(express.json({ limit: '1mb' }));
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const hashToken = (value) => crypto.createHash('sha256').update(value).digest('hex');
@@ -187,6 +191,9 @@ setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of attempts) if (now > entry.resetAt) attempts.delete(key);
 }, 60_000).unref();
+
+// Rate limit global en la API para mitigar flooding, scraping y escaneos de bots (150 req/min por IP)
+app.use('/api/', rateLimit(60 * 1000, 150));
 
 // --------------------------------------------------------------- arranque
 async function bootstrap() {
