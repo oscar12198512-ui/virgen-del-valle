@@ -129,11 +129,15 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
     setBusy(true);
     try {
       if (isFirebaseConfigured()) {
-        const userId = form.id || `staff-${Date.now()}`;
+        const cleanEmail = form.email.trim().toLowerCase();
+        const existingByEmail = users.find(
+          (u) => u.email && u.email.trim().toLowerCase() === cleanEmail
+        );
+        const userId = form.id || existingByEmail?.id || `staff-${Date.now()}`;
         const userData: User = {
           id: userId,
           name: form.name.trim(),
-          email: form.email.trim().toLowerCase(),
+          email: cleanEmail,
           phone: form.phone.trim() || null,
           role: form.role,
           zone: form.zone.trim() || null,
@@ -141,7 +145,7 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
           status: 'active',
         };
         await saveUserToFirestore(userData);
-        setMessage(`Cuenta de ${form.name} guardada en Firebase Firestore.`);
+        setMessage(`Cuenta de ${form.name} (${ROLE_LABELS[form.role]}) sincronizada exitosamente.`);
       } else {
         if (form.id) {
           await request('PATCH', `/api/staff/${form.id}`, {

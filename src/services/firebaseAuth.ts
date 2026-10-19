@@ -7,7 +7,7 @@ import {
   User as FirebaseUser,
   updateProfile
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { User, UserRole } from '../types';
 import { normalizeUserRole } from '../utils/roleUtils';
@@ -50,17 +50,45 @@ export async function loginWithEmail(email: string, pass: string): Promise<User>
       return { ...data, role, id: cred.user.uid, sessionToken: `token-${cred.user.uid}` };
     }
 
+    // Buscar si existe un perfil de staff pre-creado por el Dueño para este correo
+    let staffData: Partial<User> | null = null;
+    let orphanDocRef: any = null;
+    try {
+      const q = query(collection(db, 'app_users'), where('email', '==', cleanEmail));
+      const snaps = await getDocs(q);
+      if (!snaps.empty) {
+        snaps.forEach((s) => {
+          if (s.id !== cred.user.uid) {
+            staffData = s.data() as User;
+            orphanDocRef = s.ref;
+          }
+        });
+      }
+    } catch {}
+
     // Usuario autenticado por primera vez sin perfil previo en Firestore
     const isMaster = ['oscar12198512@gmail.com'].includes(cleanEmail);
+    const resolvedRole: UserRole = isMaster
+      ? 'admin'
+      : staffData?.role
+      ? normalizeUserRole(staffData.role)
+      : 'client';
+
     const defaultUser: User = {
       id: cred.user.uid,
-      name: cred.user.displayName || cleanEmail.split('@')[0],
+      name: staffData?.name || cred.user.displayName || cleanEmail.split('@')[0],
       email: cred.user.email || cleanEmail,
-      role: isMaster ? 'admin' : 'client',
-      status: 'active',
+      phone: staffData?.phone || null,
+      role: resolvedRole,
+      zone: staffData?.zone || null,
+      boatName: staffData?.boatName || null,
+      status: staffData?.status || 'active',
       sessionToken: `token-${cred.user.uid}`
     };
     await setDoc(userDocRef, { ...defaultUser, createdAt: serverTimestamp() }, { merge: true });
+    if (orphanDocRef) {
+      deleteDoc(orphanDocRef).catch(() => {});
+    }
     return defaultUser;
   } catch (err: any) {
     console.error('Firebase Auth login error:', err?.message || err);
