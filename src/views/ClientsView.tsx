@@ -93,6 +93,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const firstName = clientName.split(' ')[0] || 'Cliente';
 
   const handleAddToCart = (item: MenuItem) => {
+    if (item.isAvailable === false) {
+      setExtraNotice(`El plato "${item.name}" está agotado temporalmente en cocina.`);
+      setTimeout(() => setExtraNotice(null), 3500);
+      return;
+    }
     soundService.playFireAlert();
     setCart((prev) => ({
       ...prev,
@@ -675,6 +680,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             <Plus className="w-3.5 h-3.5" />
                           </button>
                         </div>
+                      ) : item.isAvailable === false ? (
+                        <span className="px-3 py-1.5 bg-gray-100 text-gray-500 rounded-xl text-xs font-bold border border-gray-200">
+                          Agotado
+                        </span>
                       ) : (
                         <button
                           onClick={() => handleAddToCart(item)}

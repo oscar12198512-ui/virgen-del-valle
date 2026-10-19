@@ -26,6 +26,7 @@ import {
 } from '../data/initialData';
 import { formatUsd, formatBsDirect } from '../utils/currencyFormatter';
 import { soundService } from '../services/soundService';
+import { hardwareDriversService } from '../services/hardwareDriversService';
 import { generatePazYSalvoHash } from '../utils/cryptoHash';
 import { RbacSecurityMatrix } from '../components/RbacSecurityMatrix';
 import { SatelliteMeshContingency } from '../components/SatelliteMeshContingency';
@@ -809,7 +810,35 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const handleGenerateActaZ = () => {
     soundService.playCashChime();
     setShowActaZSuccess(true);
-    setTimeout(() => setShowActaZSuccess(false), 5000);
+    // Liquidar y consolidar a todos los mesoneros activos
+    effectiveWaitersClosings.forEach((w) => {
+      if (w.status !== 'settled') {
+        const hash = generatePazYSalvoHash(
+          w.id,
+          w.waiterName,
+          w.cashToDeliverUsd,
+          new Date().toISOString()
+        );
+        onSettleWaiter({
+          ...w,
+          status: 'settled',
+          pazYSalvoHash: hash,
+          pazYSalvoNumber: w.pazYSalvoNumber || '#PYS-' + Math.floor(1000 + Math.random() * 9000),
+          settledAt: new Date().toISOString(),
+          settledByOwner: 'Socio Admin (Cierre Diario)',
+        });
+      }
+    });
+
+    try {
+      hardwareDriversService.printPhysicalVoucher('actaZ');
+    } catch {}
+
+    setActionNotice('¡Cierre diario finalizado con éxito! Acta Z generada y cuentas consolidadas.');
+    setTimeout(() => {
+      setShowActaZSuccess(false);
+      setActionNotice(null);
+    }, 6000);
   };
 
   const filteredClosings = effectiveWaitersClosings.filter((w) => {

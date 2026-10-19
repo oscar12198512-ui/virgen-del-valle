@@ -76,6 +76,40 @@ const Splash: React.FC<{ label?: string }> = ({ label = 'Verificando sesión…'
   </div>
 );
 
+// Firma de integridad del estado global para detectar cambios reales en cartas, precios, cierres y gaveta
+function computeAppStateSignature(params: {
+  menuItems?: MenuItem[];
+  spots?: ToldoSpot[];
+  bcvRate?: number;
+  excursion?: ExcursionPackage;
+  bankConfig?: BankConfig;
+  waitersClosings?: WaiterClosingSummary[];
+  drawerBills?: BillDenominationCount;
+  giveaway?: GiveawayState | null;
+}): string {
+  const menuSig = (params.menuItems || []).map((m) => `${m.id}:${m.isAvailable ? 1 : 0}:${m.priceUsd}:${m.name}`).join('|');
+  const spotsSig = (params.spots || []).map((s) => `${s.id}:${s.status}:${s.waiterId || ''}`).join('|');
+  const closingsSig = (params.waitersClosings || []).map((c) => `${c.id}:${c.status}:${c.cashToDeliverUsd}:${c.pazYSalvoNumber || ''}`).join('|');
+  const drawerSig = params.drawerBills
+    ? `${params.drawerBills.d100}:${params.drawerBills.d50}:${params.drawerBills.d20}:${params.drawerBills.d10}:${params.drawerBills.d5}:${params.drawerBills.d1}`
+    : '';
+  const bankSig = params.bankConfig
+    ? `${params.bankConfig.pagoMovilPhone}:${params.bankConfig.pagoMovilRif}:${params.bankConfig.pagoMovilBank}:${params.bankConfig.zelleEmail}`
+    : '';
+  const giveawaySig = params.giveaway ? `${params.giveaway.id}:${params.giveaway.isActive}:${params.giveaway.participants?.length || 0}` : '';
+
+  return JSON.stringify({
+    menuSig,
+    spotsSig,
+    closingsSig,
+    drawerSig,
+    bankSig,
+    bcvRate: params.bcvRate || 0,
+    excursion: params.excursion?.id || '',
+    giveawaySig
+  });
+}
+
 // Funciones de aislamiento de cuenta: Cada usuario ve exclusivamente sus propios pedidos
 export const isOrderOwnedByClient = (
   order: Order | null | undefined,
@@ -486,13 +520,15 @@ export const App: React.FC = () => {
       const unsubState = subscribeToAppState(
         (state) => {
           // Registrar hash entrante para evitar bucles ping-pong de re-escritura
-          const incomingHash = JSON.stringify({
-            menuItems: state.menuItems?.length || 0,
-            spots: state.spots?.length || 0,
-            bcvRate: state.bcvRate || 0,
-            excursion: state.excursion?.id || '',
-            bankConfig: state.bankConfig?.pagoMovilPhone || '',
-            giveaway: state.giveaway ? `${state.giveaway.id}_${state.giveaway.isActive}_${state.giveaway.participants?.length || 0}` : ''
+          const incomingHash = computeAppStateSignature({
+            menuItems: state.menuItems,
+            spots: state.spots,
+            bcvRate: state.bcvRate,
+            excursion: state.excursion,
+            bankConfig: state.bankConfig,
+            waitersClosings: state.waitersClosings,
+            drawerBills: state.drawerBills,
+            giveaway: state.giveaway
           });
           lastReceivedStateHashRef.current = incomingHash;
 
@@ -619,13 +655,15 @@ export const App: React.FC = () => {
   // Previene que comensales, mesoneros o cocina sobreescriban precios, cuentas de pago o tasas.
   useEffect(() => {
     if (!isDbHydrated || signedInRole !== 'admin') return;
-    const currentHash = JSON.stringify({
-      menuItems: menuItems.length,
-      spots: spots.length,
+    const currentHash = computeAppStateSignature({
+      menuItems,
+      spots,
       bcvRate,
-      excursion: excursion.id,
-      bankConfig: bankConfig.pagoMovilPhone,
-      giveaway: giveaway?.isActive ? 'active' : 'inactive'
+      excursion,
+      bankConfig,
+      waitersClosings,
+      drawerBills,
+      giveaway
     });
 
     // Si el estado local es idéntico al recién recibido de Firestore, no re-escribir
@@ -641,7 +679,7 @@ export const App: React.FC = () => {
         } catch (error) {
           console.warn('No se pudo guardar el estado en Firestore.', error);
         }
-      }, 800);
+      }, 500);
       return () => window.clearTimeout(timer);
     }
   }, [
@@ -1489,8 +1527,28 @@ export const App: React.FC = () => {
               onUpdateMenuItem={(item) => setMenuItems((previous) => previous.map((entry) => (entry.id === item.id ? item : entry)))}
               onDeleteMenuItem={(itemId) => setMenuItems((previous) => previous.filter((item) => item.id !== itemId))}
               waitersClosings={waitersClosings}
-              onSettleWaiter={(closing) => setWaitersClosings((previous) => previous.map((entry) => (entry.id === closing.id ? closing : entry)))}
-              onUpdateWaiterClosing={(closing) => setWaitersClosings((previous) => previous.map((entry) => (entry.id === closing.id ? closing : entry)))}
+              onSettleWaiter={(closing) =>
+                setWaitersClosings((previous) => {
+                  const idx = previous.findIndex((entry) => entry.id === closing.id);
+                  if (idx >= 0) {
+                    const next = [...previous];
+                    next[idx] = closing;
+                    return next;
+                  }
+                  return [...previous, closing];
+                })
+              }
+              onUpdateWaiterClosing={(closing) =>
+                setWaitersClosings((previous) => {
+                  const idx = previous.findIndex((entry) => entry.id === closing.id);
+                  if (idx >= 0) {
+                    const next = [...previous];
+                    next[idx] = closing;
+                    return next;
+                  }
+                  return [...previous, closing];
+                })
+              }
               onOpenPazYSalvo={setActivePazYSalvoClosing}
               drawerBills={drawerBills}
               onUpdateDrawerBills={setDrawerBills}
