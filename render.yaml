@@ -42,8 +42,9 @@ services:
       - key: OWNER_INITIAL_PASSWORD
         sync: false
 
-  - type: static
+  - type: web
     name: virgen-del-valle-web
+    runtime: static
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     region: virginia
