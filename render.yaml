@@ -47,7 +47,6 @@ services:
     runtime: static
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
-    region: virginia
     branch: main
     repo: https://github.com/oscar12198512-ui/virgen-del-valle
     autoDeploy: true
