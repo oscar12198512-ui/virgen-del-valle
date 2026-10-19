@@ -18,7 +18,7 @@ services:
       - key: APP_URL
         value: "https://virgen-del-valle-web.onrender.com"
       - key: CORS_ORIGIN
-        value: "https://virgen-del-valle-web.onrender.com,http://localhost:3000,http://localhost:5173,https://localhost"
+        value: "https://virgen-del-valle-web.onrender.com,https://playa-buche-pos.web.app,https://playa-buche-pos.firebaseapp.com,http://localhost:3000,http://localhost:5173,https://localhost"
       - key: VITE_FIREBASE_API_KEY
         value: "AIzaSyAnMvY9S2ZCRwaY-rCzMnSUGe6XSY7kl5k"
       - key: VITE_FIREBASE_AUTH_DOMAIN

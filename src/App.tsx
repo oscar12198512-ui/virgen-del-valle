@@ -86,23 +86,22 @@ export const isOrderOwnedByClient = (
   const userEmail = (user?.email || '').toLowerCase().trim();
   const userId = user?.id || '';
 
-  // 1. Si la orden tiene un email registrado:
-  if (order.customerEmail) {
-    const orderEmail = order.customerEmail.toLowerCase().trim();
-    // Solo pertenece si el usuario actual está logueado con ese MISMO email
-    return !!userEmail && userEmail === orderEmail;
-  }
-
-  // 2. Si la orden tiene un customerId o clientUserId registrado:
-  if (order.customerId || order.clientUserId) {
-    const orderOwnerId = order.customerId || order.clientUserId;
-    // Solo pertenece si el usuario actual tiene ese MISMO ID
-    return !!userId && userId === orderOwnerId;
-  }
-
-  // 3. Si la orden NO tiene ni email ni ID (pedido anónimo / invitado):
-  // Solo pertenece si coincide con el ID guardado específicamente en este dispositivo para invitado
+  // 1. Prioridad: Si coincide con el ID de comanda activo en este dispositivo (invitado o comanda en curso)
   if (localStoredOrderId && order.id === localStoredOrderId) {
+    // Si la orden tiene un email asignado y el usuario está logueado con un email diferente, no pertenece
+    if (order.customerEmail && userEmail && order.customerEmail.toLowerCase().trim() !== userEmail) {
+      return false;
+    }
+    return true;
+  }
+
+  // 2. Si la orden tiene un email registrado y el usuario actual está autenticado con ese MISMO email:
+  if (order.customerEmail && userEmail) {
+    return userEmail === order.customerEmail.toLowerCase().trim();
+  }
+
+  // 3. Si la orden tiene un customerId o clientUserId registrado y el usuario tiene ese MISMO ID:
+  if (userId && (order.customerId === userId || order.clientUserId === userId)) {
     return true;
   }
 
