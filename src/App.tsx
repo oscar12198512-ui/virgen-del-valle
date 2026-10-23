@@ -88,7 +88,7 @@ function computeAppStateSignature(params: {
   giveaway?: GiveawayState | null;
 }): string {
   const menuSig = (params.menuItems || []).map((m) => `${m.id}:${m.isAvailable ? 1 : 0}:${m.priceUsd}:${m.name}`).join('|');
-  const spotsSig = (params.spots || []).map((s) => `${s.id}:${s.status}:${s.waiterId || ''}`).join('|');
+  const spotsSig = (params.spots || []).map((s) => `${s.id}:${s.status}:${s.assignedWaiterId || ''}`).join('|');
   const closingsSig = (params.waitersClosings || []).map((c) => `${c.id}:${c.status}:${c.cashToDeliverUsd}:${c.pazYSalvoNumber || ''}`).join('|');
   const drawerSig = params.drawerBills
     ? `${params.drawerBills.d100}:${params.drawerBills.d50}:${params.drawerBills.d20}:${params.drawerBills.d10}:${params.drawerBills.d5}:${params.drawerBills.d1}`

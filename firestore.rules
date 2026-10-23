@@ -10,15 +10,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Dueños y administradores fundadores del restaurante
-    function isMasterAdmin() {
-      return isAuthenticated() &&
-        request.auth.token.email != null &&
-        request.auth.token.email.lower() in [
-          'oscar12198512@gmail.com'
-        ];
-    }
-
     function hasUserDoc() {
       return exists(/databases/$(database)/documents/app_users/$(request.auth.uid));
     }
@@ -29,7 +20,6 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        isMasterAdmin() ||
         request.auth.token.role == 'admin' ||
         (hasUserDoc() && getUserData().role == 'admin')
       );
@@ -45,14 +35,13 @@ service cloud.firestore {
 
     // =========================================================================
     // 1. ESTADO GLOBAL OPERATIVO (app_state)
-    // Menú, tasa BCV, toldos, cuentas de pago (Pago Móvil / Zelle) y sorteos
+    // Menú, tasa BCV, toldos y carta digital
     // =========================================================================
     match /app_state/{docId} {
-      // Lectura pública necesaria para comensales y carta digital en la playa
+      // Lectura pública necesaria para visualizar carta digital, menú y disponibilidad
       allow read: if true;
 
-      // Modificación estrictamente reservada al administrador / dueño
-      // Previene que atacantes, clientes o personal operativo alteren cuentas bancarias o tasas
+      // Modificación estrictamente reservada al Dueño / Administrador
       allow create, update, delete: if isAdmin();
     }
 
@@ -61,7 +50,7 @@ service cloud.firestore {
     // =========================================================================
     match /menu_items/{itemId} {
       allow read: if true;
-      allow create, update, delete: if isStaff();
+      allow create, update, delete: if isAdmin();
     }
 
     match /spots/{spotId} {
@@ -71,19 +60,25 @@ service cloud.firestore {
 
     match /excursions/{excursionId} {
       allow read: if true;
-      allow create, update, delete: if isStaff();
+      allow create, update, delete: if isAdmin();
     }
 
     // =========================================================================
     // 3. COMANDAS Y PEDIDOS EN TIEMPO REAL (orders)
+    // Privacidad estricta: comensales solo leen sus propios pedidos.
     // =========================================================================
     match /orders/{orderId} {
-      // Lectura en tiempo real: comensales en toldos y personal operativo reciben las comandas al instante
-      allow read: if true;
+      // Lectura: Staff autorizado o comensal propietario de la comanda
+      allow read: if isStaff() || (
+        isAuthenticated() && (
+          (resource.data.clientUserId != null && resource.data.clientUserId == request.auth.uid) ||
+          (resource.data.customerId != null && resource.data.customerId == request.auth.uid)
+        )
+      );
 
-      // Creación: Personal o comensales con validación estricta de estructura y coherencia económica
-      // Bloquea inyección de estado 'verified' o 'isSettled' al crear y garantiza montos no negativos
+      // Creación: Personal de servicio o cliente autenticado para su propio ID
       allow create: if isStaff() || (
+        isAuthenticated() &&
         request.resource.data.keys().hasAll(['id', 'spotId', 'items', 'totalUsd', 'status', 'createdAt']) &&
         request.resource.data.status in ['pending', 'in_fire'] &&
         request.resource.data.totalUsd is number &&
@@ -93,16 +88,23 @@ service cloud.firestore {
         request.resource.data.items is list &&
         request.resource.data.items.size() > 0 &&
         request.resource.data.items.size() <= 50 &&
-        (!('paymentStatus' in request.resource.data) || request.resource.data.paymentStatus != 'verified') &&
-        (!('isSettled' in request.resource.data) || request.resource.data.isSettled == false)
+        // El cliente no puede auto-aprobar pagos ni marcar órdenes como liquidadas
+        (!('paymentStatus' in request.resource.data) || request.resource.data.paymentStatus in ['pending', 'pending_verification']) &&
+        (!('isSettled' in request.resource.data) || request.resource.data.isSettled == false) &&
+        // El pedido debe quedar vinculado al UID autenticado del cliente
+        (request.resource.data.clientUserId == request.auth.uid || request.resource.data.customerId == request.auth.uid)
       );
 
-      // Actualización: Staff con control total; Clientes pueden reportar pago (pending_verification) sin auto-aprobarse
+      // Actualización: Staff con control operativo; Clientes solo pueden adjuntar comprobante sin alterar totales ni ítems
       allow update: if isStaff() || (
+        isAuthenticated() &&
+        (resource.data.clientUserId == request.auth.uid || resource.data.customerId == request.auth.uid) &&
         request.resource.data.id == resource.data.id &&
         request.resource.data.spotId == resource.data.spotId &&
         request.resource.data.createdAt == resource.data.createdAt &&
-        (!('isSettled' in request.resource.data) || request.resource.data.isSettled == resource.data.isSettled || request.resource.data.isSettled == false) &&
+        request.resource.data.totalUsd == resource.data.totalUsd &&
+        request.resource.data.items == resource.data.items &&
+        (!('isSettled' in request.resource.data) || request.resource.data.isSettled == resource.data.isSettled) &&
         (
           (!('paymentStatus' in request.resource.data) || request.resource.data.paymentStatus == resource.data.paymentStatus) ||
           (resource.data.paymentStatus != 'verified' && request.resource.data.paymentStatus == 'pending_verification')
@@ -118,21 +120,23 @@ service cloud.firestore {
     // Previene escalación de privilegios y falsificación de roles
     // =========================================================================
     match /app_users/{userId} {
-      // Lectura: Staff puede ver personal; Clientes solo consultan su propio perfil
+      // Lectura: Staff puede ver listado de personal; Clientes solo consultan su propio perfil
       allow read: if isStaff() || (isAuthenticated() && request.auth.uid == userId);
 
-      // Registro: Solo admin puede crear staff; Nuevos usuarios quedan fijados en rol 'client'
+      // Registro: Solo admin puede crear staff; Nuevos usuarios quedan fijados en rol 'client' activo
       allow create: if isStaff() || (
         isAuthenticated() && 
         request.auth.uid == userId && 
-        (!('role' in request.resource.data) || request.resource.data.role == 'client')
+        (!('role' in request.resource.data) || request.resource.data.role == 'client') &&
+        (!('status' in request.resource.data) || request.resource.data.status == 'active')
       );
 
-      // Edición: El usuario actualiza sus datos sin alterar su propio rol
+      // Edición: El usuario actualiza sus datos sin alterar su propio rol ni su estado
       allow update: if isStaff() || (
         isAuthenticated() && 
         request.auth.uid == userId && 
-        request.resource.data.role == resource.data.role
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.status == resource.data.status
       );
 
       // Eliminación: Exclusiva para administradores
@@ -155,8 +159,6 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // NOTA DE SEGURIDAD: Se elimina el comodín universal match /{document=**}.
-    // Cualquier ruta no listada explícitamente es denegada por defecto.
+    // Denegación por defecto para cualquier otra ruta no especificada
   }
 }
-

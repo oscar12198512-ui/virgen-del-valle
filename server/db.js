@@ -57,22 +57,24 @@ export function describeDatabaseSource(env = process.env) {
 }
 
 /**
- * Valida la conexion. Si el servidor rechaza TLS se reintenta sin SSL, porque la
- * red interna de Render no expone certificado y la local tampoco lo requiere.
+ * Valida la conexión inicial a PostgreSQL.
+ * En producción se preserva estrictamente el canal TLS para proteger credenciales y datos.
  */
 export async function verifyPoolConnection(pool) {
   try {
     await pool.query('SELECT 1');
     return true;
   } catch (error) {
-    if (pool.options && pool.options.ssl && !pool.__sslRetried) {
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (pool.options && pool.options.ssl && !isProduction && !pool.__sslRetried) {
       pool.__sslRetried = true;
       pool.options.ssl = undefined;
       pool.options.sslmode = undefined;
-      console.warn('Conexion TLS rechazada por el servidor; reintentando sin SSL.');
+      console.warn('Conexión TLS rechazada en desarrollo local; reintentando sin SSL.');
       await pool.query('SELECT 1');
       return true;
     }
+    console.error('Error de conexión a PostgreSQL con TLS:', error.message);
     throw error;
   }
 }

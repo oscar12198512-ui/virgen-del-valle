@@ -45,8 +45,7 @@ export async function loginWithEmail(email: string, pass: string): Promise<User>
     
     if (userDoc.exists()) {
       const data = userDoc.data() as User;
-      const isMaster = ['oscar12198512@gmail.com'].includes(cleanEmail);
-      const role: UserRole = isMaster ? 'admin' : normalizeUserRole(data.role);
+      const role: UserRole = normalizeUserRole(data.role);
       return { ...data, role, id: cred.user.uid, sessionToken: `token-${cred.user.uid}` };
     }
 
@@ -67,10 +66,7 @@ export async function loginWithEmail(email: string, pass: string): Promise<User>
     } catch {}
 
     // Usuario autenticado por primera vez sin perfil previo en Firestore
-    const isMaster = ['oscar12198512@gmail.com'].includes(cleanEmail);
-    const resolvedRole: UserRole = isMaster
-      ? 'admin'
-      : staffData?.role
+    const resolvedRole: UserRole = staffData?.role
       ? normalizeUserRole(staffData.role)
       : 'client';
 
@@ -100,16 +96,14 @@ export async function registerWithEmail(
   email: string,
   pass: string,
   name: string,
-  phone?: string,
-  role: UserRole = 'client',
-  extra?: { zone?: string; boatName?: string; status?: 'active' | 'suspended' | 'pending_approval' }
+  phone?: string
 ): Promise<User> {
   const cleanEmail = email.trim().toLowerCase();
 
-  // Prevenir escalación de privilegios desde el cliente: solo admin puede crear staff directo.
-  // Los registros públicos quedan restringidos a 'client' o staff sujeto a aprobación previa.
-  const safeRole: UserRole = (role === 'waiter' || role === 'excursion') ? role : 'client';
-  const initialStatus = extra?.status || (safeRole === 'excursion' || safeRole === 'waiter' ? 'pending_approval' : 'active');
+  // El registro público es EXCLUSIVAMENTE para clientes.
+  // Las cuentas de personal (mesonero, cocina, excursión, admin) son creadas por el Dueño.
+  const role: UserRole = 'client';
+  const initialStatus = 'active';
 
   try {
     const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
@@ -120,9 +114,7 @@ export async function registerWithEmail(
       name: name.trim(),
       email: cred.user.email || cleanEmail,
       phone: phone?.trim() || null,
-      role: safeRole,
-      zone: extra?.zone?.trim() || null,
-      boatName: extra?.boatName?.trim() || null,
+      role,
       status: initialStatus,
       sessionToken: `token-${cred.user.uid}`
     };
@@ -151,21 +143,20 @@ export function subscribeToAuthState(callback: (user: User | null) => void) {
       return;
     }
     const cleanEmail = (firebaseUser.email || '').trim().toLowerCase();
-    const isMaster = ['oscar12198512@gmail.com'].includes(cleanEmail);
 
     try {
       const userDocRef = doc(db, 'app_users', firebaseUser.uid);
       const userDoc = await getDoc(userDocRef);
       if (userDoc.exists()) {
         const data = userDoc.data() as User;
-        const role: UserRole = isMaster ? 'admin' : normalizeUserRole(data.role);
+        const role: UserRole = normalizeUserRole(data.role);
         callback({ ...data, role, id: firebaseUser.uid, sessionToken: `token-${firebaseUser.uid}` });
       } else {
         callback({
           id: firebaseUser.uid,
           name: firebaseUser.displayName || cleanEmail.split('@')[0] || 'Usuario',
           email: cleanEmail,
-          role: isMaster ? 'admin' : 'client',
+          role: 'client',
           status: 'active',
           sessionToken: `token-${firebaseUser.uid}`
         });
@@ -176,7 +167,7 @@ export function subscribeToAuthState(callback: (user: User | null) => void) {
         id: firebaseUser.uid,
         name: firebaseUser.displayName || 'Usuario',
         email: cleanEmail,
-        role: isMaster ? 'admin' : 'client',
+        role: 'client',
         status: 'active',
         sessionToken: `token-${firebaseUser.uid}`
       });

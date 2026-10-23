@@ -807,18 +807,19 @@ export const AdminView: React.FC<AdminViewProps> = ({
     onOpenPazYSalvo(settled);
   };
 
-  const handleGenerateActaZ = () => {
+  const handleGenerateActaZ = async () => {
     soundService.playCashChime();
     setShowActaZSuccess(true);
     // Liquidar y consolidar a todos los mesoneros activos
-    effectiveWaitersClosings.forEach((w) => {
+    for (const w of effectiveWaitersClosings) {
       if (w.status !== 'settled') {
-        const hash = generatePazYSalvoHash(
-          w.id,
-          w.waiterName,
-          w.cashToDeliverUsd,
-          new Date().toISOString()
-        );
+        const hash = await generatePazYSalvoHash({
+          receiptNumber: w.pazYSalvoNumber || '#PYS-' + Math.floor(1000 + Math.random() * 9000),
+          waiterName: w.waiterName,
+          amountUsd: w.cashToDeliverUsd,
+          dateStr: new Date().toISOString(),
+          ownerName: 'Socio Admin (Cierre Diario)',
+        });
         onSettleWaiter({
           ...w,
           status: 'settled',
@@ -828,10 +829,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
           settledByOwner: 'Socio Admin (Cierre Diario)',
         });
       }
-    });
+    }
 
     try {
-      hardwareDriversService.printPhysicalVoucher('actaZ');
+      hardwareDriversService.printTestVoucher('actaZ');
     } catch {}
 
     setActionNotice('¡Cierre diario finalizado con éxito! Acta Z generada y cuentas consolidadas.');

@@ -6,14 +6,19 @@ import {
 import { getAuth } from 'firebase/auth';
 
 // Firebase configuration for Playa Buche POS
+const metaEnv: Record<string, string | undefined> = 
+  typeof import.meta !== 'undefined' && (import.meta as any).env 
+    ? (import.meta as any).env 
+    : (typeof process !== 'undefined' ? (process.env as any) : {});
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAnMvY9S2ZCRwaY-rCzMnSUGe6XSY7kl5k",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "playa-buche-pos.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "playa-buche-pos",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "playa-buche-pos.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "637742279156",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:637742279156:web:daa2a086b0b82d6ecc31a1",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-705S44KGDC"
+  apiKey: metaEnv.VITE_FIREBASE_API_KEY || metaEnv.FIREBASE_API_KEY || "AIzaSyAnMvY9S2ZCRwaY-rCzMnSUGe6XSY7kl5k",
+  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || metaEnv.FIREBASE_AUTH_DOMAIN || "playa-buche-pos.firebaseapp.com",
+  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID || metaEnv.FIREBASE_PROJECT_ID || "playa-buche-pos",
+  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || metaEnv.FIREBASE_STORAGE_BUCKET || "playa-buche-pos.firebasestorage.app",
+  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || metaEnv.FIREBASE_MESSAGING_SENDER_ID || "637742279156",
+  appId: metaEnv.VITE_FIREBASE_APP_ID || metaEnv.FIREBASE_APP_ID || "1:637742279156:web:daa2a086b0b82d6ecc31a1",
+  measurementId: metaEnv.VITE_FIREBASE_MEASUREMENT_ID || metaEnv.FIREBASE_MEASUREMENT_ID || "G-705S44KGDC"
 };
 
 // Initialize Firebase
