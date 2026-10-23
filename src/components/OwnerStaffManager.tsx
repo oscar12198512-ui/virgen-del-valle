@@ -22,6 +22,8 @@ import {
   deleteUserFromFirestore,
   fetchUsersFromFirestore
 } from '../services/firebaseDb';
+import { createStaffMemberByAdmin } from '../services/firebaseAuth';
+
 
 interface OwnerStaffManagerProps {
   users: User[];
@@ -122,30 +124,77 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
       setError('Nombre y correo son obligatorios.');
       return;
     }
-    if (form.password.length < 8) {
-      setError('La clave debe tener al menos 8 caracteres.');
+    if (!form.id && form.password.length < 8) {
+      setError('La clave debe tener al menos 8 caracteres para nuevas cuentas.');
       return;
     }
     setBusy(true);
     try {
       if (isFirebaseConfigured()) {
         const cleanEmail = form.email.trim().toLowerCase();
-        const existingByEmail = users.find(
-          (u) => u.email && u.email.trim().toLowerCase() === cleanEmail
-        );
-        const userId = form.id || existingByEmail?.id || `staff-${Date.now()}`;
-        const userData: User = {
-          id: userId,
-          name: form.name.trim(),
-          email: cleanEmail,
-          phone: form.phone.trim() || null,
-          role: form.role,
-          zone: form.zone.trim() || null,
-          boatName: form.boatName.trim() || null,
-          status: 'active',
-        };
-        await saveUserToFirestore(userData);
-        setMessage(`Cuenta de ${form.name} (${ROLE_LABELS[form.role]}) sincronizada exitosamente.`);
+        if (form.id) {
+          // Edición de usuario existente
+          const existingUser = users.find((u) => u.id === form.id);
+          const updatedData: User = {
+            ...(existingUser || {}),
+            id: form.id,
+            name: form.name.trim(),
+            email: cleanEmail,
+            phone: form.phone.trim() || null,
+            role: form.role,
+            zone: form.zone.trim() || null,
+            boatName: form.boatName.trim() || null,
+            status: existingUser?.status || 'active',
+          };
+          await saveUserToFirestore(updatedData);
+          setMessage(`Cuenta de ${form.name} (${ROLE_LABELS[form.role]}) actualizada exitosamente.`);
+        } else {
+          // Creación de nueva cuenta de personal con Firebase Authentication
+          const callerUser: User = users.find((u) => u.id === currentUserId) || {
+            id: currentUserId,
+            name: 'Dueño',
+            email: 'admin@playabuche.com',
+            role: 'admin',
+            status: 'active'
+          };
+          const created = await createStaffMemberByAdmin(callerUser, {
+            name: form.name.trim(),
+            email: cleanEmail,
+            role: form.role,
+            password: form.password,
+            phone: form.phone.trim() || undefined,
+            zone: form.zone.trim() || undefined,
+            boatName: form.boatName.trim() || undefined,
+          });
+          setMessage(`¡Cuenta creada con éxito! ${created.name} (${ROLE_LABELS[created.role]}) ya puede iniciar sesión en la app.`);
+        }
+
+        // Sincronización opcional con Backend PostgreSQL si la API está accesible
+        if (apiBase) {
+          try {
+            if (form.id) {
+              await request('PATCH', `/api/staff/${form.id}`, {
+                name: form.name.trim(),
+                phone: form.phone.trim(),
+                role: form.role,
+                zone: form.zone.trim(),
+                boatName: form.boatName.trim(),
+              });
+            } else {
+              await request('POST', '/api/staff', {
+                name: form.name.trim(),
+                email: form.email.trim(),
+                phone: form.phone.trim(),
+                role: form.role,
+                zone: form.zone.trim(),
+                boatName: form.boatName.trim(),
+                password: form.password,
+              });
+            }
+          } catch {
+            // No bloquea la operación si Firestore ya guardó la cuenta
+          }
+        }
       } else {
         if (form.id) {
           await request('PATCH', `/api/staff/${form.id}`, {
@@ -156,8 +205,10 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
             zone: form.zone.trim(),
             boatName: form.boatName.trim(),
           });
-          await request('POST', `/api/staff/${form.id}/password`, { password: form.password });
-          setMessage(`Cuenta de ${form.name} actualizada. Se cerró su sesión para aplicar la nueva clave.`);
+          if (form.password && form.password.length >= 8) {
+            await request('POST', `/api/staff/${form.id}/password`, { password: form.password });
+          }
+          setMessage(`Cuenta de ${form.name} actualizada.`);
         } else {
           await request('POST', '/api/staff', {
             name: form.name.trim(),
@@ -168,7 +219,7 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
             boatName: form.boatName.trim(),
             password: form.password,
           });
-          setMessage(`Cuenta de ${form.name} creada. Entrega la clave de forma segura.`);
+          setMessage(`Cuenta de ${form.name} creada exitosamente.`);
         }
       }
       setForm(emptyForm());
@@ -183,6 +234,17 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
   const toggleStatus = async (user: User) => {
     setError('');
     setMessage('');
+    if (user.id === currentUserId) {
+      setError('No puedes suspender tu propia cuenta de Dueño.');
+      return;
+    }
+    if (user.role === 'admin' && user.status === 'active') {
+      const activeAdmins = users.filter((u) => u.role === 'admin' && u.status === 'active').length;
+      if (activeAdmins <= 1) {
+        setError('Debe existir al menos un Dueño o Administrador activo.');
+        return;
+      }
+    }
     const nextStatus = user.status === 'suspended' ? 'active' : 'suspended';
     try {
       if (isFirebaseConfigured()) {
@@ -201,6 +263,17 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
   const remove = async (user: User) => {
     setError('');
     setMessage('');
+    if (user.id === currentUserId) {
+      setError('No puedes eliminar tu propia cuenta de Dueño.');
+      return;
+    }
+    if (user.role === 'admin') {
+      const activeAdmins = users.filter((u) => u.role === 'admin' && u.status === 'active').length;
+      if (activeAdmins <= 1) {
+        setError('Debe existir al menos un Dueño activo. No puedes eliminar al último administrador.');
+        return;
+      }
+    }
     if (!window.confirm(`¿Eliminar la cuenta de ${user.name}? La acción no se puede deshacer.`)) return;
     try {
       if (isFirebaseConfigured()) {
@@ -215,6 +288,7 @@ export const OwnerStaffManager: React.FC<OwnerStaffManagerProps> = ({
       setError((requestError as Error).message);
     }
   };
+
 
   return (
     <div className="space-y-4">

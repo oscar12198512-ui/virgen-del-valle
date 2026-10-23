@@ -63,10 +63,12 @@ import { subscribeToAuthState, logoutFirebase } from './services/firebaseAuth';
 import { normalizeUserRole } from './utils/roleUtils';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { loadDismissedNotificationIds, loadReadNotificationIds } from './services/notificationStorage';
+import { PRODUCTION_API_URL } from './constants';
 
 const SESSION_KEY = 'virgen_del_valle_session';
-const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || PRODUCTION_API_URL).replace(/\/$/, '');
 const STAFF_ROLES: UserRole[] = ['admin', 'waiter', 'kitchen', 'excursion'];
+
 const ALL_ROLES: UserRole[] = ['admin', 'waiter', 'kitchen', 'excursion', 'client'];
 
 const Splash: React.FC<{ label?: string }> = ({ label = 'Verificando sesión…' }) => (

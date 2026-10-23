@@ -5,12 +5,15 @@ import {
   signOut,
   onAuthStateChanged,
   User as FirebaseUser,
-  updateProfile
+  updateProfile,
+  getAuth
 } from 'firebase/auth';
+import { initializeApp, deleteApp } from 'firebase/app';
 import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
+import { auth, db, firebaseConfig } from '../config/firebase';
 import { User, UserRole } from '../types';
 import { normalizeUserRole } from '../utils/roleUtils';
+
 
 function formatFirebaseAuthError(error: any): string {
   const code = error?.code || '';
@@ -174,3 +177,76 @@ export function subscribeToAuthState(callback: (user: User | null) => void) {
     }
   });
 }
+
+/**
+ * Permite al Dueño/Administrador crear una cuenta de personal (mesonero, cocina, excursión, admin)
+ * en Firebase Authentication y Cloud Firestore SIN cerrar la sesión del Dueño.
+ * Utiliza una instancia secundaria efímera de Firebase Auth para aprovisionar las credenciales.
+ */
+export async function createStaffMemberByAdmin(
+  caller: User,
+  staffData: {
+    name: string;
+    email: string;
+    role: UserRole;
+    password: string;
+    phone?: string;
+    zone?: string;
+    boatName?: string;
+  }
+): Promise<User> {
+  if (caller.role !== 'admin') {
+    throw new Error('Solo un Administrador o Dueño autorizado puede crear cuentas de personal.');
+  }
+
+  const cleanEmail = staffData.email.trim().toLowerCase();
+  if (!cleanEmail || !staffData.name.trim()) {
+    throw new Error('Nombre y correo son obligatorios.');
+  }
+
+  if (!staffData.password || staffData.password.length < 8) {
+    throw new Error('La contraseña debe tener al menos 8 caracteres.');
+  }
+
+  if (staffData.role === 'client') {
+    throw new Error('Las cuentas de cliente se auto-registran desde la pantalla de bienvenida.');
+  }
+
+  // 1. Aprovisionar usuario en Firebase Authentication mediante instancia secundaria
+  const secondaryAppName = `staff-creator-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+  const secondaryAuth = getAuth(secondaryApp);
+
+  let targetUid: string;
+  try {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, staffData.password);
+    await updateProfile(cred.user, { displayName: staffData.name.trim() });
+    targetUid = cred.user.uid;
+    await signOut(secondaryAuth);
+  } catch (err: any) {
+    if (err?.code === 'auth/email-already-in-use') {
+      throw new Error(`El correo "${cleanEmail}" ya está registrado en Firebase. Si ya tiene cuenta, asigna su rol directamente desde la lista de personal.`);
+    }
+    throw new Error(formatFirebaseAuthError(err));
+  } finally {
+    await deleteApp(secondaryApp).catch(() => {});
+  }
+
+  // 2. Crear documento de perfil en Firestore bajo app_users/{uid}
+  const userDocRef = doc(db, 'app_users', targetUid);
+  const newStaffUser: User = {
+    id: targetUid,
+    name: staffData.name.trim(),
+    email: cleanEmail,
+    phone: staffData.phone?.trim() || null,
+    role: staffData.role,
+    zone: staffData.zone?.trim() || null,
+    boatName: staffData.boatName?.trim() || null,
+    status: 'active',
+    sessionToken: `token-${targetUid}`
+  };
+
+  await setDoc(userDocRef, { ...newStaffUser, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+  return newStaffUser;
+}
+

@@ -29,7 +29,10 @@ interface LoginScreenProps {
   }) => number | null;
 }
 
-const API = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+import { PRODUCTION_API_URL } from '../constants';
+
+const API = (import.meta.env.VITE_API_URL || PRODUCTION_API_URL).replace(/\/$/, '');
+
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
   onAuthenticated,

@@ -121,18 +121,24 @@ service cloud.firestore {
     // =========================================================================
     match /app_users/{userId} {
       // Lectura: Staff puede ver listado de personal; Clientes solo consultan su propio perfil
-      allow read: if isStaff() || (isAuthenticated() && request.auth.uid == userId);
+      // o documentos asociados a su correo verificado de autenticación
+      allow read: if isStaff() || (
+        isAuthenticated() && (
+          request.auth.uid == userId ||
+          (resource.data.email != null && resource.data.email == request.auth.token.email)
+        )
+      );
 
-      // Registro: Solo admin puede crear staff; Nuevos usuarios quedan fijados en rol 'client' activo
-      allow create: if isStaff() || (
+      // Registro: Solo admin puede crear staff; Nuevos usuarios auto-registrados quedan fijados en rol 'client' activo
+      allow create: if isAdmin() || (
         isAuthenticated() && 
         request.auth.uid == userId && 
         (!('role' in request.resource.data) || request.resource.data.role == 'client') &&
         (!('status' in request.resource.data) || request.resource.data.status == 'active')
       );
 
-      // Edición: El usuario actualiza sus datos sin alterar su propio rol ni su estado
-      allow update: if isStaff() || (
+      // Edición: Solo admin puede modificar roles o estados ajenos; Usuarios normales solo actualizan sus propios datos sin alterar rol ni status
+      allow update: if isAdmin() || (
         isAuthenticated() && 
         request.auth.uid == userId && 
         request.resource.data.role == resource.data.role &&
@@ -142,6 +148,7 @@ service cloud.firestore {
       // Eliminación: Exclusiva para administradores
       allow delete: if isAdmin();
     }
+
 
     // =========================================================================
     // 5. CIERRES DE CAJA Y ARQUEO DE MESONEROS (waiters_closings)
