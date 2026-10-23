@@ -43,6 +43,10 @@ jobs:
           node --check server/db.js
           node --check server/migrate.js
 
+      - name: Pruebas automatizadas de seguridad e integridad
+        run: npm test
+
+
   android:
     runs-on: ubuntu-latest
     env:
