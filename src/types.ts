@@ -100,6 +100,18 @@ export interface OrderItem {
   prepTimerSeconds?: number;
 }
 
+export interface MixedPaymentBreakdown {
+  cashUsd: number;
+  cashBs: number;
+  pagoMovilBs: number;
+  pagoMovilUsd: number;
+  zelleUsd: number;
+  cardPosUsd: number;
+  rate: number;
+  changeAmount: number;
+  changeCurrency: 'usd' | 'bs';
+}
+
 export interface Order {
   id: string;
   displayNumber: string; // e.g. #PB-204 or #1048
@@ -133,6 +145,21 @@ export interface Order {
   readyAt?: string; // ISO string when marked ready_pass or delivered
   prepDurationMinutes?: number; // Calculated minutes elapsed from receipt (createdAt) to ready
   clientUserId?: string; // Identificador del usuario cliente que creo el pedido
+  idempotencyKey?: string;
+  shiftId?: string;
+  closingId?: string;
+  excursionId?: string;
+  boatName?: string;
+  agencyName?: string;
+  captainName?: string;
+  guideId?: string;
+  bcvRateAtOrder?: number;
+  mixedPaymentBreakdown?: MixedPaymentBreakdown;
+  paymentDetails?: {
+    receivedAmount?: number;
+    changeAmount?: number;
+    changeCurrency?: 'usd' | 'bs';
+  };
 }
 
 export interface ExcursionPackage {
@@ -158,6 +185,35 @@ export interface ExcursionPackage {
   isSettled: boolean;
   paymentPreference: 'cash_usd' | 'pago_movil' | 'transfer';
   paymentStatus?: 'pending' | 'verified' | 'cash_waiter' | 'pending_verification';
+  guideId?: string;
+}
+
+export interface ExcursionSettlement {
+  id: string;
+  excursionId: string;
+  tourCode: string;
+  boatName: string;
+  captainName: string;
+  agencyName: string;
+  guideId?: string;
+  operatingDate: string;
+  orderIds: string[];
+  totalSalesUsd: number;
+  totalCollectedUsd: number;
+  pendingAmountUsd: number;
+  paymentMethodSummary: {
+    cashUsd: number;
+    cashBs: number;
+    pagoMovilUsd: number;
+    transferUsd: number;
+    mixedUsd?: number;
+  };
+  expensesUsd?: number;
+  netToSettleUsd: number;
+  status: 'pending' | 'settled' | 'disputed';
+  settledAt?: string;
+  settledByAdmin?: string;
+  notes?: string;
 }
 
 export interface WaiterComandaItem {
@@ -199,6 +255,31 @@ export interface WaiterClosingSummary {
   envelopeBills?: BillDenominationCount;
   comandas?: WaiterComandaItem[];
   deductionsNote?: string;
+  shiftId?: string;
+  shiftType?: 'morning' | 'afternoon' | 'full_day';
+  operatingDate?: string; // YYYY-MM-DD
+  openedAt?: string;
+  closedAt?: string;
+  startingCashFundUsd?: number;
+  orderIds?: string[];
+  salesByMethod?: {
+    cashUsd: number;
+    cashBs: number;
+    pagoMovilUsd: number;
+    zelleUsd: number;
+    cardPosUsd: number;
+    mixedUsd: number;
+  };
+  expectedCashUsd?: number;
+  countedCashUsd?: number;
+  cashDifferenceUsd?: number; // Real difference without Math.max(0, ...)
+  adjustmentsLog?: Array<{
+    id: string;
+    timestamp: string;
+    adjustedBy: string;
+    reason: string;
+    amountUsd: number;
+  }>;
 }
 
 export interface BillDenominationCount {
