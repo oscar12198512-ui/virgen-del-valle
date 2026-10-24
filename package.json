@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "test": "node --import tsx --test tests/**/*.test.mjs",
     "start": "node server/index.js",
     "dev:server": "node --watch server/index.js",
     "db:migrate": "node server/migrate.js",

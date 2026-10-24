@@ -181,7 +181,8 @@ export function subscribeToOrders(
       orderBy('createdAt', 'desc'),
       limit(options.limitCount || 5)
     );
-    return onSnapshot(
+    let unsubFallback: Unsubscribe | null = null;
+    const unsubPrimary = onSnapshot(
       clientQuery,
       (snapshot) => {
         const list: Order[] = [];
@@ -189,15 +190,28 @@ export function subscribeToOrders(
         onUpdate(list);
       },
       (error) => {
-        console.warn('Error en query de órdenes del cliente:', error);
-        if (onError) onError(error);
+        console.warn('Error en query de órdenes del cliente con índice, activando fallback en memoria:', error);
+        unsubPrimary();
+        unsubFallback = onSnapshot(
+          query(ORDERS_COLLECTION, where('clientUserId', '==', options.clientUserId), limit(options.limitCount || 5)),
+          (fallbackSnap) => {
+            const list: Order[] = [];
+            fallbackSnap.forEach((snap) => list.push({ id: snap.id, ...snap.data() } as Order));
+            list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+            onUpdate(list);
+          },
+          onError
+        );
       }
     );
+    return () => {
+      unsubPrimary();
+      if (unsubFallback) unsubFallback();
+    };
   }
 
   // 3. CASO COCINA (KDS):
   // Escucha las órdenes más recientes (activas e histórico de despacho)
-  // Sin requerir índice compuesto propenso a fallas en la nube
   if (options.role === 'kitchen') {
     const kitchenQuery = query(
       ORDERS_COLLECTION,
@@ -205,7 +219,8 @@ export function subscribeToOrders(
       limit(options.limitCount || 60)
     );
 
-    return onSnapshot(
+    let unsubKitchenFallback: Unsubscribe | null = null;
+    const unsubKitchenPrimary = onSnapshot(
       kitchenQuery,
       (snapshot) => {
         const list: Order[] = [];
@@ -213,11 +228,26 @@ export function subscribeToOrders(
         onUpdate(list);
       },
       (error) => {
-        console.warn('Error al escuchar órdenes en cocina KDS:', error);
-        if (onError) onError(error);
+        console.warn('Advertencia en query de órdenes cocina, usando fallback:', error);
+        unsubKitchenPrimary();
+        unsubKitchenFallback = onSnapshot(
+          query(ORDERS_COLLECTION, limit(options.limitCount || 60)),
+          (fallbackSnap) => {
+            const list: Order[] = [];
+            fallbackSnap.forEach((snap) => list.push({ id: snap.id, ...snap.data() } as Order));
+            list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+            onUpdate(list);
+          },
+          onError
+        );
       }
     );
+    return () => {
+      unsubKitchenPrimary();
+      if (unsubKitchenFallback) unsubKitchenFallback();
+    };
   }
+
 
   // 4. CASO MESONEROS, EXCURSIONES Y ADMINISTRADOR:
   // Consulta acotada con límite para evitar descargar miles de órdenes acumuladas en el teléfono.

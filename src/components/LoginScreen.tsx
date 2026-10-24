@@ -29,7 +29,10 @@ interface LoginScreenProps {
   }) => number | null;
 }
 
-const API = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+import { PRODUCTION_API_URL } from '../constants';
+
+const API = (import.meta.env.VITE_API_URL || PRODUCTION_API_URL).replace(/\/$/, '');
+
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
   onAuthenticated,
@@ -156,10 +159,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     setBusy(true);
     try {
-      const initialStatus = selectedRole === 'client' ? 'active' : 'pending_approval';
-
       let assignedTicket: number | undefined = undefined;
-      if (selectedRole === 'client' && onRegisterGiveawayParticipant) {
+      if (onRegisterGiveawayParticipant) {
         const ticket = onRegisterGiveawayParticipant({
           fullName: name.trim(),
           email: email.trim().toLowerCase(),
@@ -173,22 +174,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           email,
           password,
           name,
-          phone,
-          selectedRole,
-          {
-            boatName: selectedRole === 'excursion' ? boatName.trim() : undefined,
-            zone: selectedRole === 'waiter' ? zone.trim() : undefined,
-            status: initialStatus
-          }
+          phone
         );
 
         if (assignedTicket) {
           user.giveawayTicket = assignedTicket;
-        }
-
-        if (initialStatus === 'pending_approval') {
-          setRegistrationSuccess({ role: selectedRole, name: user.name });
-          return;
         }
 
         onAuthenticated(user);
@@ -204,10 +194,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             email: email.trim().toLowerCase(),
             phone: phone.trim(),
             password: password,
-            role: selectedRole,
-            boatName: selectedRole === 'excursion' ? boatName.trim() : undefined,
-            zone: selectedRole === 'waiter' ? zone.trim() : undefined,
-            status: initialStatus
+            role: 'client'
           }),
         });
         const data = await response.json().catch(() => ({}));
@@ -215,10 +202,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           const apiUser = data.user;
           if (assignedTicket) {
             apiUser.giveawayTicket = assignedTicket;
-          }
-          if (initialStatus === 'pending_approval') {
-            setRegistrationSuccess({ role: selectedRole, name: apiUser.name });
-            return;
           }
           onAuthenticated(apiUser);
           return;
@@ -517,70 +500,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       {/* REGISTRATION WITH ROLE SELECTION */}
       {mode === 'register' && (
         <form onSubmit={submitRegister} className="space-y-3">
-          <div>
-            <label className="block text-xs font-bold text-[#002546] mb-1.5">
-              Tipo de Cuenta / Rol:
-            </label>
-            <div className="grid grid-cols-3 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setSelectedRole('client')}
-                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col items-center justify-center text-center ${
-                  selectedRole === 'client'
-                    ? 'bg-[#002546] text-white border-[#002546] shadow-xs'
-                    : 'bg-white text-gray-700 border-gray-200 hover:border-[#006782]'
-                }`}
-              >
-                <Sparkles className={`w-4 h-4 mb-1 ${selectedRole === 'client' ? 'text-[#57d1fd]' : 'text-purple-600'}`} />
-                <span className="text-[11px] font-bold block">Cliente</span>
-                <span className={`text-[9px] block ${selectedRole === 'client' ? 'text-sky-200' : 'text-gray-400'}`}>
-                  Directo
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedRole('excursion')}
-                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col items-center justify-center text-center ${
-                  selectedRole === 'excursion'
-                    ? 'bg-[#002546] text-white border-[#002546] shadow-xs'
-                    : 'bg-white text-gray-700 border-gray-200 hover:border-[#006782]'
-                }`}
-              >
-                <Ship className={`w-4 h-4 mb-1 ${selectedRole === 'excursion' ? 'text-[#57d1fd]' : 'text-teal-600'}`} />
-                <span className="text-[11px] font-bold block">Excursión</span>
-                <span className={`text-[9px] block ${selectedRole === 'excursion' ? 'text-sky-200' : 'text-gray-400'}`}>
-                  Capitán / Tour
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedRole('waiter')}
-                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col items-center justify-center text-center ${
-                  selectedRole === 'waiter'
-                    ? 'bg-[#002546] text-white border-[#002546] shadow-xs'
-                    : 'bg-white text-gray-700 border-gray-200 hover:border-[#006782]'
-                }`}
-              >
-                <Utensils className={`w-4 h-4 mb-1 ${selectedRole === 'waiter' ? 'text-[#57d1fd]' : 'text-blue-600'}`} />
-                <span className="text-[11px] font-bold block">Mesonero</span>
-                <span className={`text-[9px] block ${selectedRole === 'waiter' ? 'text-sky-200' : 'text-gray-400'}`}>
-                  Staff Playa
-                </span>
-              </button>
+          <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-xs text-[#002546]">
+            <div className="flex items-center gap-2 font-bold mb-1">
+              <Sparkles className="w-4 h-4 text-[#006782]" />
+              <span>Registro de Comensal / Cliente</span>
             </div>
+            <p className="text-[11px] text-gray-600 leading-relaxed">
+              Crea tu cuenta para ordenar directamente a tu toldo en la playa, consultar tu cuenta en vivo y participar en sorteos. Las cuentas de personal (mesoneros, cocina, excursiones) son creadas y gestionadas por la administración.
+            </p>
           </div>
-
-          {/* Información según el rol seleccionado */}
-          {selectedRole !== 'client' && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-900 flex items-start gap-2">
-              <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-              <span>
-                Las cuentas de <b>{ROLE_LABELS[selectedRole]}</b> requieren ser aprobadas por el Dueño de Playa Buche antes de habilitar el acceso.
-              </span>
-            </div>
-          )}
 
           <div>
             <label className="block text-xs font-bold text-[#002546] mb-1">Nombre Completo</label>

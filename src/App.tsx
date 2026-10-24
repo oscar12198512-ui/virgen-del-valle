@@ -63,10 +63,12 @@ import { subscribeToAuthState, logoutFirebase } from './services/firebaseAuth';
 import { normalizeUserRole } from './utils/roleUtils';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { loadDismissedNotificationIds, loadReadNotificationIds } from './services/notificationStorage';
+import { PRODUCTION_API_URL } from './constants';
 
 const SESSION_KEY = 'virgen_del_valle_session';
-const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+const API_BASE = (import.meta.env.VITE_API_URL || PRODUCTION_API_URL).replace(/\/$/, '');
 const STAFF_ROLES: UserRole[] = ['admin', 'waiter', 'kitchen', 'excursion'];
+
 const ALL_ROLES: UserRole[] = ['admin', 'waiter', 'kitchen', 'excursion', 'client'];
 
 const Splash: React.FC<{ label?: string }> = ({ label = 'Verificando sesión…' }) => (
@@ -88,7 +90,7 @@ function computeAppStateSignature(params: {
   giveaway?: GiveawayState | null;
 }): string {
   const menuSig = (params.menuItems || []).map((m) => `${m.id}:${m.isAvailable ? 1 : 0}:${m.priceUsd}:${m.name}`).join('|');
-  const spotsSig = (params.spots || []).map((s) => `${s.id}:${s.status}:${s.waiterId || ''}`).join('|');
+  const spotsSig = (params.spots || []).map((s) => `${s.id}:${s.status}:${s.assignedWaiterId || ''}`).join('|');
   const closingsSig = (params.waitersClosings || []).map((c) => `${c.id}:${c.status}:${c.cashToDeliverUsd}:${c.pazYSalvoNumber || ''}`).join('|');
   const drawerSig = params.drawerBills
     ? `${params.drawerBills.d100}:${params.drawerBills.d50}:${params.drawerBills.d20}:${params.drawerBills.d10}:${params.drawerBills.d5}:${params.drawerBills.d1}`

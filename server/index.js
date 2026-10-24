@@ -214,23 +214,36 @@ async function ensureOwner() {
   const email = normalizeEmail(process.env.OWNER_EMAIL);
   const password = String(process.env.OWNER_INITIAL_PASSWORD || '');
   if (!email || !password) {
-    console.warn('OWNER_EMAIL / OWNER_INITIAL_PASSWORD no configurados: no se crea la cuenta de dueño.');
+    console.warn('OWNER_EMAIL / OWNER_INITIAL_PASSWORD no configurados: arranque sin cuenta inicial.');
     return;
   }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    console.error(`OWNER_INITIAL_PASSWORD debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`);
+    return;
+  }
+  const { rows: adminRows } = await pool.query("SELECT COUNT(*)::int AS count FROM app_users WHERE role='admin'");
+  const totalAdmins = adminRows[0]?.count || 0;
+  if (totalAdmins > 0) {
+    console.log('Cuenta administrativa ya existente en base de datos. Se omite el bootstrap para evitar reescritura de permisos.');
+    return;
+  }
+
   const { rowCount } = await pool.query('SELECT 1 FROM app_users WHERE email=$1 LIMIT 1', [email]);
   if (rowCount) {
     await pool.query(
-      "UPDATE app_users SET role='admin', status='active', updated_at=NOW() WHERE email=$1 AND (role<>'admin' OR status<>'active')",
+      "UPDATE app_users SET role='admin', status='active', updated_at=NOW() WHERE email=$1",
       [email]
     );
+    console.log(`Cuenta existente promovida a Dueño inicial: ${email}.`);
     return;
   }
+
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   await pool.query(
     "INSERT INTO app_users (name, phone, email, role, password_hash, status) VALUES ($1,$2,$3,'admin',$4,'active')",
-    [process.env.OWNER_NAME || 'Administrador', process.env.OWNER_PHONE || null, email, passwordHash]
+    [process.env.OWNER_NAME || 'Administrador Dueño', process.env.OWNER_PHONE || null, email, passwordHash]
   );
-  console.log(`Owner account created for ${email}.`);
+  console.log(`Cuenta de Dueño inicial creada de forma segura para: ${email}.`);
 }
 
 // ------------------------------------------------------------------ estado
@@ -405,8 +418,17 @@ app.post('/api/orders', requireAuth, requireRole('client'), async (req, res) => 
     const totalBs = Math.round(totalUsd * bcvRate * 100) / 100;
     const nowIso = new Date().toISOString();
 
+    const targetOrderId = String(order.id || `ord-${crypto.randomBytes(6).toString('hex')}`);
+
+    // Idempotencia: Si el cliente reintenta con el mismo ID por latencia o reconexión, devolver la comanda existente
+    const existingOrders = Array.isArray(appState.orders) ? appState.orders : [];
+    const alreadyExists = existingOrders.find((o) => o && o.id === targetOrderId);
+    if (alreadyExists) {
+      return res.status(200).json({ ok: true, order: alreadyExists, orders: existingOrders, duplicatePrevented: true });
+    }
+
     const safeOrder = {
-      id: String(order.id || `ord-${crypto.randomBytes(6).toString('hex')}`),
+      id: targetOrderId,
       displayNumber: String(order.displayNumber || `#${Math.floor(200 + Math.random() * 800)}`),
       origin: 'client_qr',
       spotId: String(order.spotId || 'general').slice(0, 50),
@@ -435,11 +457,14 @@ app.post('/api/orders', requireAuth, requireRole('client'), async (req, res) => 
     const result = await pool.query(
       `INSERT INTO app_state (id,state) VALUES (1, jsonb_build_object('orders', jsonb_build_array($1::jsonb)))
        ON CONFLICT (id) DO UPDATE SET
-         state = jsonb_set(COALESCE(app_state.state,'{}'::jsonb), '{orders}',
-           COALESCE(app_state.state->'orders','[]'::jsonb) || jsonb_build_array($1::jsonb)),
+         state = CASE
+           WHEN COALESCE(app_state.state->'orders','[]'::jsonb) @> jsonb_build_array(jsonb_build_object('id', $2::text)) THEN app_state.state
+           ELSE jsonb_set(COALESCE(app_state.state,'{}'::jsonb), '{orders}',
+             COALESCE(app_state.state->'orders','[]'::jsonb) || jsonb_build_array($1::jsonb))
+         END,
          version = app_state.version + 1, updated_at = NOW()
        RETURNING state->'orders' AS orders`,
-      [JSON.stringify(safeOrder)]
+      [JSON.stringify(safeOrder), targetOrderId]
     );
     return res.status(201).json({ ok: true, order: safeOrder, orders: result.rows[0]?.orders || [] });
   } catch (error) {
@@ -453,15 +478,21 @@ app.patch('/api/orders/:orderId', requireAuth, async (req, res) => {
   const patch = req.body?.order;
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return fail(res, 400, 'Actualización inválida.');
   const ownerId = req.authUser.external_id || req.authUser.id;
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query(
-      "SELECT state->'orders' AS orders FROM app_state WHERE id=1"
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      "SELECT state->'orders' AS orders FROM app_state WHERE id=1 FOR UPDATE"
     );
     const orders = rows[0]?.orders || [];
     const existing = orders.find((order) => order && order.id === req.params.orderId);
-    if (!existing) return fail(res, 404, 'Pedido no encontrado.');
+    if (!existing) {
+      await client.query('ROLLBACK');
+      return fail(res, 404, 'Pedido no encontrado.');
+    }
     const isOwnerOfOrder = existing.clientUserId && existing.clientUserId === ownerId;
     if (!isOwnerOfOrder && !OPERATIONAL_ROLES.includes(req.authUser.role)) {
+      await client.query('ROLLBACK');
       return fail(res, 403, 'No tienes permisos para este pedido.');
     }
 
@@ -491,7 +522,7 @@ app.patch('/api/orders/:orderId', requireAuth, async (req, res) => {
       merged = { ...existing, ...patch, id: existing.id, updatedAt: new Date().toISOString() };
     }
 
-    await pool.query(
+    await client.query(
       `UPDATE app_state SET
          state = jsonb_set(COALESCE(state,'{}'::jsonb), '{orders}',
            (SELECT COALESCE(jsonb_agg(CASE WHEN o->>'id' = $1 THEN $2::jsonb ELSE o END ORDER BY ord), '[]'::jsonb)
@@ -500,9 +531,14 @@ app.patch('/api/orders/:orderId', requireAuth, async (req, res) => {
        WHERE id = 1`,
       [existing.id, JSON.stringify(merged)]
     );
+    await client.query('COMMIT');
     return res.json({ ok: true, order: merged });
-  } catch {
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error actualizando pedido:', error);
     return fail(res, 500, 'No se pudo actualizar el pedido.');
+  } finally {
+    client.release();
   }
 });
 
@@ -633,7 +669,6 @@ app.post(
   '/api/auth/register',
   rateLimit(15 * 60 * 1000, 10),
   async (req, res) => {
-    if (!pool) return fail(res, 503, 'Registro no disponible.');
     const name = String(req.body?.name || '').trim();
     const email = normalizeEmail(req.body?.email);
     const phone = String(req.body?.phone || '').trim();
@@ -643,7 +678,14 @@ app.post(
     if (password.length < MIN_PASSWORD_LENGTH) {
       return fail(res, 400, `La clave debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`);
     }
+    if (!pool) return fail(res, 503, 'Registro no disponible.');
     try {
+      // Validar si el correo ya existe para rechazar apropiación de cuentas
+      const { rowCount: emailExists } = await pool.query('SELECT 1 FROM app_users WHERE email=$1 LIMIT 1', [email]);
+      if (emailExists) {
+        return fail(res, 409, 'Ese correo ya está registrado. Inicia sesión con tu clave o solicita recuperación.');
+      }
+
       const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
       const avatar =
         name
@@ -655,17 +697,10 @@ app.post(
       const result = await pool.query(
         `INSERT INTO app_users (external_id, name, phone, email, role, password_hash, status, avatar, notes)
          VALUES ($1,$2,$3,$4,'client',$5,'active',$6,$7)
-         ON CONFLICT (email) DO UPDATE SET
-           password_hash = EXCLUDED.password_hash,
-           name = CASE WHEN app_users.role='client' THEN EXCLUDED.name ELSE app_users.name END,
-           phone = COALESCE(EXCLUDED.phone, app_users.phone),
-           status = CASE WHEN app_users.role='client' THEN 'active' ELSE app_users.status END,
-           updated_at = NOW()
          RETURNING *`,
-        [`u-${crypto.randomBytes(6).toString('hex')}`, name, phone || null, email, passwordHash, avatar, 'Registro desde la aplicación.']
+        [`u-${crypto.randomBytes(6).toString('hex')}`, name, phone || null, email, passwordHash, avatar, 'Registro de cliente desde la aplicación.']
       );
       const user = result.rows[0];
-      if (user.role !== 'client') return fail(res, 409, 'Ese correo ya está registrado. Inicia sesión con tu clave.');
       await pool.query('UPDATE app_users SET last_login=NOW() WHERE id=$1', [user.id]);
       user.last_login = new Date().toISOString();
       const token = await createSession(user.id);
@@ -858,6 +893,12 @@ app.use((_req, res) => fail(res, 404, 'Ruta no encontrada.'));
 
 // Un error puntual nunca debe tumbar el servicio en produccion.
 app.use((error, _req, res, _next) => {
+  if (error.status === 413 || error.type === 'entity.too.large') {
+    return fail(res, 413, 'El cuerpo de la solicitud excede el tamaño máximo permitido.');
+  }
+  if (error.status && error.status >= 400 && error.status < 500) {
+    return fail(res, error.status, error.message || 'Solicitud inválida.');
+  }
   console.error('Unhandled request error:', error.message);
   return fail(res, 500, 'Error interno del servidor.');
 });
@@ -865,6 +906,10 @@ app.use((error, _req, res, _next) => {
 process.on('unhandledRejection', (reason) => console.error('Unhandled rejection:', reason));
 process.on('uncaughtException', (error) => console.error('Uncaught exception:', error.message));
 
-bootstrap();
+export { app, bootstrap, pool };
 
-app.listen(port, '0.0.0.0', () => console.log(`API listening on 0.0.0.0:${port}`));
+const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
+if (isMainModule) {
+  bootstrap();
+  app.listen(port, '0.0.0.0', () => console.log(`API listening on 0.0.0.0:${port}`));
+}

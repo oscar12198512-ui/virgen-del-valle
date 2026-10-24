@@ -33,6 +33,10 @@ services:
         value: "1:637742279156:web:daa2a086b0b82d6ecc31a1"
       - key: VITE_FIREBASE_MEASUREMENT_ID
         value: "G-705S44KGDC"
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
       - key: OWNER_NAME
         sync: false
       - key: OWNER_PHONE
@@ -40,6 +44,16 @@ services:
       - key: OWNER_EMAIL
         sync: false
       - key: OWNER_INITIAL_PASSWORD
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
         sync: false
 
   - type: web
