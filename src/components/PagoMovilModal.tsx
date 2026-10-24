@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BankConfig, Order } from '../types';
+import { BankConfig, Order, MixedPaymentBreakdown } from '../types';
 import { formatUsd, formatBsDirect } from '../utils/currencyFormatter';
 import { validatePagoMovilScreenshot, OcrValidationResult } from '../services/geminiService';
 import { soundService } from '../services/soundService';
@@ -33,7 +33,8 @@ interface PagoMovilModalProps {
     orderId: string,
     reference: string,
     method: PaymentMethodKey,
-    details?: { receivedAmount?: number; changeAmount?: number }
+    details?: { receivedAmount?: number; changeAmount?: number; changeCurrency?: 'usd' | 'bs' },
+    mixedBreakdown?: MixedPaymentBreakdown
   ) => void;
 }
 
@@ -138,7 +139,7 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
         order.id,
         reference.trim() || `EFEC-USD-${Date.now().toString().slice(-4)}`,
         'cash_usd',
-        { receivedAmount: numCashUsd || totalUsd, changeAmount: changeUsd }
+        { receivedAmount: numCashUsd || totalUsd, changeAmount: changeUsd, changeCurrency: 'usd' }
       );
       onClose();
       return;
@@ -154,7 +155,7 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
         order.id,
         reference.trim() || `EFEC-BS-${Date.now().toString().slice(-4)}`,
         'cash_bs',
-        { receivedAmount: numCashBs || totalBs, changeAmount: changeBs }
+        { receivedAmount: numCashBs || totalBs, changeAmount: changeBs, changeCurrency: 'bs' }
       );
       onClose();
       return;
@@ -172,6 +173,18 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
         return;
       }
       const effectiveRef = reference.trim() || `MIXTO-${Date.now().toString().slice(-4)}`;
+      const mixedBreakdown: MixedPaymentBreakdown = {
+        cashUsd: numSplitCashUsd,
+        cashBs: 0,
+        pagoMovilBs: numSplitPagoMovilBs,
+        pagoMovilUsd: Math.round((numSplitPagoMovilBs / (bcvRate || 1)) * 100) / 100,
+        zelleUsd: 0,
+        cardPosUsd: 0,
+        rate: bcvRate,
+        changeAmount: splitVueltoPreference === 'bs' ? splitSurplusBs : splitSurplusUsd,
+        changeCurrency: splitVueltoPreference,
+      };
+
       soundService.playCashChime();
       onPaymentSuccess(
         order.id,
@@ -180,7 +193,9 @@ export const PagoMovilModal: React.FC<PagoMovilModalProps> = ({
         {
           receivedAmount: numSplitCashUsd,
           changeAmount: splitVueltoPreference === 'bs' ? splitSurplusBs : splitSurplusUsd,
-        }
+          changeCurrency: splitVueltoPreference,
+        },
+        mixedBreakdown
       );
       onClose();
       return;
