@@ -88,12 +88,11 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
   const [zoomedDish, setZoomedDish] = useState<MenuItem | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('Todo');
   const [showVisualCatalog, setShowVisualCatalog] = useState<boolean>(true);
-  const excursionStorageCartKey = `playa_buche_excursion_cart_${currentUser?.id || userKey}_${safeExcursion.id}`;
 
-  // Carrito y raciones de la comanda de excursión en estado reactivo persistente aislado por usuario y servicio
+  // Carrito y raciones de la comanda de excursión en estado reactivo persistente
   const [orderItems, setOrderItems] = useState<OrderItem[]>(() => {
     try {
-      const saved = localStorage.getItem(excursionStorageCartKey);
+      const saved = localStorage.getItem('playa_buche_excursion_cart');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -105,9 +104,9 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
   // Guardar en almacenamiento local cada vez que cambia para que nunca se pierda
   React.useEffect(() => {
     try {
-      localStorage.setItem(excursionStorageCartKey, JSON.stringify(orderItems));
+      localStorage.setItem('playa_buche_excursion_cart', JSON.stringify(orderItems));
     } catch {}
-  }, [orderItems, excursionStorageCartKey]);
+  }, [orderItems]);
 
   const subtotal = orderItems.reduce((acc, i) => acc + (i.quantity || 0) * (i.unitPriceUsd || 0), 0);
   // Las facturas de excursiones no cobran ningún porcentaje (0% propina / recargo)
@@ -125,11 +124,6 @@ export const ExcursionsView: React.FC<ExcursionsViewProps> = ({
     customerId: currentUser?.id,
     customerEmail: currentUser?.email,
     clientUserId: currentUser?.id,
-    excursionId: safeExcursion.id,
-    boatName: safeExcursion.boatName,
-    agencyName: safeExcursion.agencyName,
-    captainName: safeExcursion.captainName,
-    guideId: currentUser?.id,
     waiterId: 'coord-maritima',
     waiterName: 'Capitanía Buche',
     items: orderItems,

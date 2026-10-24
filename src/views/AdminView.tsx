@@ -341,8 +341,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     const intl = entry !== undefined ? entry.international : defaultIntl;
     const dishShare = w.dishShareWaiterUsd ?? 0;
     const tip = w.commissionWaiterUsd ?? 0;
-    // Cálculo de efectivo neto real: no ocultar diferencias negativas con Math.max(0, ...)
-    const netCash = Math.round((w.totalCollectedUsd - pm - intl - dishShare - tip) * 100) / 100;
+    const netCash = Math.max(0, w.totalCollectedUsd - pm - intl - dishShare - tip);
 
     return {
       pagoMovil: pm,
@@ -365,8 +364,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       if (target && onUpdateWaiterClosing) {
         const dishShare = target.dishShareWaiterUsd ?? 0;
         const tip = target.commissionWaiterUsd ?? 0;
-        // Preserva el signo real de la diferencia
-        const netCash = Math.round((target.totalCollectedUsd - nextPm - nextIntl - dishShare - tip) * 100) / 100;
+        const netCash = Math.max(0, target.totalCollectedUsd - nextPm - nextIntl - dishShare - tip);
         onUpdateWaiterClosing({
           ...target,
           pagoMovilDeductedUsd: nextPm,
@@ -546,78 +544,23 @@ export const AdminView: React.FC<AdminViewProps> = ({
         return;
       }
 
-      const waiterOrders = (orders || []).filter((o) =>
-        o && o.origin !== 'excursion' && (
-          o.waiterId === wc.waiterId ||
-          (o.waiterName && o.waiterName.toLowerCase() === wc.waiterName.toLowerCase())
-        )
+      const waiterOrders = orders.filter((o) =>
+        o.waiterId === wc.waiterId ||
+        (o.waiterName && o.waiterName.toLowerCase() === wc.waiterName.toLowerCase())
       );
 
-      // Comandas cobradas: verificadas o cobradas en efectivo por mesonero, excluyendo órdenes canceladas
-      const closedOrders = waiterOrders.filter((o) => {
-        if (wc.orderIds && wc.orderIds.length > 0) {
-          return wc.orderIds.includes(o.id);
-        }
-        const isPaid = o.paymentStatus === 'verified' || o.paymentStatus === 'cash_waiter';
-        return isPaid && !o.isSettled && o.status !== 'cancelled';
-      });
-
+      const closedOrders = waiterOrders.filter((o) => o.paymentStatus === 'verified' || o.isSettled);
       const spotsSet = new Set(waiterOrders.map((o) => o.spotName || o.spotId).filter(Boolean));
 
       const totalGross = closedOrders.reduce((sum, o) => sum + (o.totalUsd || 0), 0);
-
-      // Desglose riguroso por método de pago incluyendo pagos mixtos (mixed_split)
-      let cashSum = 0;
-      let digitalSum = 0;
-      let cashUsdSum = 0;
-      let cashBsSum = 0;
-      let pagoMovilSum = 0;
-      let zelleSum = 0;
-      let cardPosSum = 0;
-      let mixedSum = 0;
-
-      closedOrders.forEach((o) => {
-        const amt = o.totalUsd || 0;
-        if (o.paymentMethod === 'cash_usd') {
-          cashSum += amt;
-          cashUsdSum += amt;
-        } else if (o.paymentMethod === 'cash_bs') {
-          cashSum += amt;
-          cashBsSum += amt;
-        } else if (o.paymentMethod === 'pago_movil') {
-          digitalSum += amt;
-          pagoMovilSum += amt;
-        } else if (o.paymentMethod === 'zelle') {
-          digitalSum += amt;
-          zelleSum += amt;
-        } else if (o.paymentMethod === 'card_pos' || o.paymentMethod === 'pos_card') {
-          digitalSum += amt;
-          cardPosSum += amt;
-        } else if (o.paymentMethod === 'mixed_split') {
-          mixedSum += amt;
-          if (o.mixedPaymentBreakdown) {
-            cashSum += o.mixedPaymentBreakdown.cashUsd || 0;
-            cashUsdSum += o.mixedPaymentBreakdown.cashUsd || 0;
-            digitalSum += o.mixedPaymentBreakdown.pagoMovilUsd || 0;
-            pagoMovilSum += o.mixedPaymentBreakdown.pagoMovilUsd || 0;
-          } else if (o.paymentDetails?.receivedAmount !== undefined) {
-            const cashPart = o.paymentDetails.receivedAmount;
-            const digitalPart = Math.max(0, amt - cashPart);
-            cashSum += cashPart;
-            cashUsdSum += cashPart;
-            digitalSum += digitalPart;
-            pagoMovilSum += digitalPart;
-          } else {
-            cashSum += amt / 2;
-            cashUsdSum += amt / 2;
-            digitalSum += amt / 2;
-            pagoMovilSum += amt / 2;
-          }
-        }
-      });
-
+      const digitalSum = closedOrders
+        .filter((o) => ['pago_movil', 'zelle', 'card_pos'].includes(o.paymentMethod || ''))
+        .reduce((sum, o) => sum + (o.totalUsd || 0), 0);
+      const cashSum = closedOrders
+        .filter((o) => ['cash_usd', 'cash_bs'].includes(o.paymentMethod || ''))
+        .reduce((sum, o) => sum + (o.totalUsd || 0), 0);
       const tipSum = closedOrders.reduce(
-        (sum, o) => sum + (o.tipUsd || ((o.totalUsd || 0) * (o.tipPercent || 0)) / 100),
+        (sum, o) => sum + (o.tipUsd || (o.totalUsd * (o.tipPercent || 0)) / 100),
         0
       );
 
@@ -644,7 +587,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
       }));
       const totalDishShare = dishesBreakdown.reduce((sum, d) => sum + d.totalShare, 0);
 
-      const comandas: WaiterComandaItem[] = closedOrders.map((o) => ({
+      const comandas: WaiterComandaItem[] = waiterOrders.map((o) => ({
         id: o.id,
         toldo: o.spotName || 'Toldo',
         description: (o.items || []).map((i) => `${i.quantity}x ${i.name}`).join(', ') || 'Consumo',
@@ -657,25 +600,23 @@ export const AdminView: React.FC<AdminViewProps> = ({
             ? 'Pago Móvil'
             : o.paymentMethod === 'zelle'
             ? 'Zelle'
-            : o.paymentMethod === 'mixed_split'
-            ? 'Pago Mixto'
             : 'Punto POS'
           : o.paymentStatus === 'verified'
           ? 'Pagado'
           : 'Por Cobrar',
         amountUsd: o.totalUsd,
-        isCash: o.paymentMethod === 'cash_usd' || o.paymentMethod === 'cash_bs' || o.paymentMethod === 'mixed_split',
+        isCash: o.paymentMethod === 'cash_usd' || o.paymentMethod === 'cash_bs',
       }));
 
       // Efectivo real a entregar: Dinero recibido en efectivo menos deducciones de platos y comisión/propina
-      // PRESERVA DIFERENCIAS REALES (sin Math.max(0, ...)) para reflejar faltantes o saldo a favor
       const finalGross = closedOrders.length > 0 ? totalGross : wc.totalCollectedUsd;
       const finalDigital = closedOrders.length > 0 ? digitalSum : wc.digitalReportedUsd;
       const finalTip = closedOrders.length > 0 ? tipSum : wc.commissionWaiterUsd;
       const finalDishShare = totalDishShare > 0 ? totalDishShare : (wc.dishShareWaiterUsd || 0);
-      const computedCashToDeliver = Math.round(
-        ((closedOrders.length > 0 ? cashSum : (finalGross - finalDigital)) - finalDishShare - finalTip) * 100
-      ) / 100;
+      const computedCashToDeliver = Math.max(
+        0,
+        (closedOrders.length > 0 ? cashSum : Math.max(0, finalGross - finalDigital)) - finalDishShare - finalTip
+      );
 
       result.push({
         ...wc,
@@ -688,17 +629,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
         dishesBreakdown: dishesBreakdown.length > 0 ? dishesBreakdown : (wc.dishesBreakdown || []),
         cashToDeliverUsd: computedCashToDeliver,
         comandas: comandas.length > 0 ? comandas : (wc.comandas || []),
-        orderIds: closedOrders.map((o) => o.id),
-        salesByMethod: {
-          cashUsd: cashUsdSum,
-          cashBs: cashBsSum,
-          pagoMovilUsd: pagoMovilSum,
-          zelleUsd: zelleSum,
-          cardPosUsd: cardPosSum,
-          mixedUsd: mixedSum,
-        },
-        expectedCashUsd: cashSum,
-        cashDifferenceUsd: computedCashToDeliver,
       });
     });
 
@@ -1926,22 +1856,18 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   </div>
 
                   {/* EFECTIVO NETO A ENTREGAR EN MANO (SOBRE) */}
-                  <div className={`pt-3 pb-2.5 px-3.5 rounded-xl flex items-center justify-between shadow-sm ${
-                    ded.netCash >= 0
-                      ? 'bg-gradient-to-r from-[#002546] to-[#003966] text-white'
-                      : 'bg-gradient-to-r from-rose-900 to-amber-900 text-white border-2 border-rose-400'
-                  }`}>
+                  <div className="pt-3 pb-2.5 px-3.5 bg-gradient-to-r from-[#002546] to-[#003966] text-white rounded-xl flex items-center justify-between shadow-sm">
                     <div className="flex flex-col">
                       <span className="text-[10px] uppercase tracking-wider text-[#57d1fd] font-extrabold">
-                        {ded.netCash >= 0 ? 'Efectivo Neto Físico a Entregar en Mano' : '⚠️ Saldo a Favor del Mesonero (La Caja Paga)'}
+                        Efectivo Neto Físico a Entregar en Mano
                       </span>
                       <span className="text-[11px] text-gray-300">
-                        {ded.netCash >= 0 ? 'Total - PM - Zelle - Platos - Propina' : 'Ventas digitales y platos superan el efectivo físico'}
+                        Total - PM - Zelle - Platos - Propina
                       </span>
                     </div>
                     <div className="flex flex-col items-end">
                       <span className="text-xl font-extrabold text-white bg-white/15 px-3 py-0.5 rounded-lg font-mono">
-                        {ded.netCash >= 0 ? formatUsd(ded.netCash) : `-${formatUsd(Math.abs(ded.netCash))}`}
+                        {formatUsd(ded.netCash)}
                       </span>
                       <span className="text-[11px] text-[#57d1fd] font-bold mt-0.5 font-mono">
                         ≈ {(ded.netCash * bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs.

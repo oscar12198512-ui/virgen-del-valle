@@ -94,27 +94,20 @@ service cloud.firestore {
     // =========================================================================
     // 3. COMANDAS Y PEDIDOS EN TIEMPO REAL (orders)
     // Privacidad estricta: comensales solo leen sus propios pedidos.
-    // Cocina solo actualiza estados operativos; Mesoneros no alteran precios ni verifican pagos.
     // =========================================================================
     match /orders/{orderId} {
-      // Lectura: Administrador y cocina ven todas; mesoneros ven órdenes de toldos/playa;
-      // personal de excursiones ve únicamente las de sus propios servicios;
-      // y clientes únicamente sus propios pedidos.
-      allow read: if isAdmin() || isKitchen() || (
-        isWaiter() && (!('origin' in resource.data) || resource.data.origin != 'excursion')
-      ) || (
-        isExcursion() && resource.data.origin == 'excursion'
-      ) || (
+      // Lectura: Staff autorizado o comensal propietario de la comanda
+      allow read: if isStaff() || (
         isAuthenticated() && (
           (resource.data.clientUserId != null && resource.data.clientUserId == request.auth.uid) ||
           (resource.data.customerId != null && resource.data.customerId == request.auth.uid)
         )
       );
 
-      // Creación: Exige campos obligatorios, importes válidos, cantidades permitidas
-      // y estados iniciales válidos para cada rol.
-      allow create: if (
-        request.resource.data.keys().hasAll(['id', 'spotId', 'items', 'totalUsd', 'status', 'createdAt', 'origin']) &&
+      // Creación: Personal de servicio o cliente autenticado para su propio ID
+      allow create: if isStaff() || (
+        isAuthenticated() &&
+        request.resource.data.keys().hasAll(['id', 'spotId', 'items', 'totalUsd', 'status', 'createdAt']) &&
         request.resource.data.status in ['pending', 'in_fire'] &&
         request.resource.data.totalUsd is number &&
         request.resource.data.totalUsd >= 0 &&
@@ -123,47 +116,21 @@ service cloud.firestore {
         request.resource.data.items is list &&
         request.resource.data.items.size() > 0 &&
         request.resource.data.items.size() <= 50 &&
+        // El cliente no puede auto-aprobar pagos ni marcar órdenes como liquidadas
+        (!('paymentStatus' in request.resource.data) || request.resource.data.paymentStatus in ['pending', 'pending_verification']) &&
         (!('isSettled' in request.resource.data) || request.resource.data.isSettled == false) &&
-        (
-          isAdmin() ||
-          (isWaiter() && request.resource.data.origin in ['waiter_pos', 'client_qr'] && (!('paymentStatus' in request.resource.data) || request.resource.data.paymentStatus in ['pending', 'cash_waiter', 'pending_verification'])) ||
-          (isExcursion() && request.resource.data.origin == 'excursion' && (!('paymentStatus' in request.resource.data) || request.resource.data.paymentStatus in ['pending', 'pending_verification'])) ||
-          (isAuthenticated() && request.resource.data.origin == 'client_qr' && (!('paymentStatus' in request.resource.data) || request.resource.data.paymentStatus in ['pending', 'pending_verification']) && (request.resource.data.clientUserId == request.auth.uid || request.resource.data.customerId == request.auth.uid))
-        )
+        // El pedido debe quedar vinculado al UID autenticado del cliente
+        (request.resource.data.clientUserId == request.auth.uid || request.resource.data.customerId == request.auth.uid)
       );
 
-      // Actualización: Permisos estrictos por rol con listas explícitas de campos modificables.
-      // Nadie que no sea Dueño / Admin puede alterar precios, liquidar o aprobar pagos.
+      // Actualización: Staff con control operativo; Clientes solo pueden adjuntar comprobante sin alterar totales ni ítems
       allow update: if isAdmin() || (
-        // COCINA: Solo puede actualizar estados operativos y tiempos de cocción;
-        // NO puede modificar precios, totales, método de pago ni liquidación.
-        isKitchen() &&
+        // Mesoneros, cocina y excursiones pueden actualizar flujo operativo,
+        // pero NO pueden modificar órdenes ya liquidadas ni marcar órdenes como liquidadas
+        (isWaiter() || isKitchen() || isExcursion()) &&
         (!('isSettled' in resource.data) || resource.data.isSettled != true) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status', 'items', 'kitchenStep', 'updatedAt', 'prepTimerSeconds',
-          'readyAt', 'prepDurationMinutes', 'elapsedSeconds'
-        ]) &&
-        request.resource.data.status in ['pending', 'in_fire', 'plated', 'ready_pass', 'delivered', 'cancelled']
+        (!('isSettled' in request.resource.data) || request.resource.data.isSettled == resource.data.isSettled)
       ) || (
-        // MESONEROS: Gestionan flujo de toldos/playa; no pueden modificar comandas de excursión,
-        // no pueden alterar totales ni ítems, y no pueden auto-marcar órdenes como verificadas o liquidadas.
-        isWaiter() &&
-        (!('isSettled' in resource.data) || resource.data.isSettled != true) &&
-        (!('origin' in resource.data) || resource.data.origin != 'excursion') &&
-        request.resource.data.totalUsd == resource.data.totalUsd &&
-        (!('subtotalUsd' in resource.data) || request.resource.data.subtotalUsd == resource.data.subtotalUsd) &&
-        request.resource.data.items == resource.data.items &&
-        (!('isSettled' in request.resource.data) || request.resource.data.isSettled == resource.data.isSettled) &&
-        (!('paymentStatus' in request.resource.data) || request.resource.data.paymentStatus in ['pending', 'cash_waiter', 'pending_verification'])
-      ) || (
-        // EXCURSIONES: Gestionan únicamente pedidos de excursión; no pueden liquidar ni auto-aprobar pagos.
-        isExcursion() &&
-        resource.data.origin == 'excursion' &&
-        (!('isSettled' in resource.data) || resource.data.isSettled != true) &&
-        (!('isSettled' in request.resource.data) || request.resource.data.isSettled == resource.data.isSettled) &&
-        (!('paymentStatus' in request.resource.data) || request.resource.data.paymentStatus in ['pending', 'pending_verification'])
-      ) || (
-        // CLIENTES: Solo pueden adjuntar comprobante de pago ('pending_verification') sin alterar totales ni ítems.
         isAuthenticated() &&
         (resource.data.clientUserId == request.auth.uid || resource.data.customerId == request.auth.uid) &&
         (!('isSettled' in resource.data) || resource.data.isSettled != true) &&
@@ -264,40 +231,7 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 6. LIQUIDACIÓN DE EXCURSIONES Y LANCHAS (excursion_settlements)
-    // =========================================================================
-    match /excursion_settlements/{settlementId} {
-      // Lectura: Administrador audita todas; guía/capitán consulta las de su servicio
-      allow read: if isAdmin() || (
-        isExcursion() && (
-          resource.data.guideId == request.auth.uid ||
-          !('guideId' in resource.data)
-        )
-      );
-
-      // Creación: Administrador o personal de excursión registrando reporte pendiente
-      allow create: if isAdmin() || (
-        isExcursion() &&
-        request.resource.data.status == 'pending' &&
-        (!('settledAt' in request.resource.data) || request.resource.data.settledAt == null) &&
-        (!('settledByAdmin' in request.resource.data) || request.resource.data.settledByAdmin == null)
-      );
-
-      // Actualización: Admin liquida; personal solo actualiza mientras esté pendiente
-      allow update: if isAdmin() || (
-        isExcursion() &&
-        resource.data.status == 'pending' &&
-        request.resource.data.status == 'pending' &&
-        (!('settledAt' in request.resource.data) || request.resource.data.settledAt == resource.data.settledAt) &&
-        (!('settledByAdmin' in request.resource.data) || request.resource.data.settledByAdmin == resource.data.settledByAdmin)
-      );
-
-      // Eliminación: Exclusiva para administradores
-      allow delete: if isAdmin();
-    }
-
-    // =========================================================================
-    // 7. CONFIGURACIONES FINANCIERAS Y DEL SISTEMA (settings)
+    // 6. CONFIGURACIONES FINANCIERAS Y DEL SISTEMA (settings)
     // =========================================================================
     match /settings/{settingId} {
       // Lectura: Administradores y mesoneros que requieren consultar tasas y cuentas
