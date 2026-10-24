@@ -13,6 +13,7 @@ import {
   WaiterClosingSummary,
   GiveawayState,
   GiveawayParticipant,
+  MixedPaymentBreakdown,
 } from './types';
 import {
   INITIAL_BANK_CONFIG,
@@ -57,7 +58,12 @@ import {
   subscribeToOrders,
   SubscribeOrdersOptions,
   subscribeToUsers,
-  fetchUsersFromFirestore
+  fetchUsersFromFirestore,
+  subscribeToWaitersClosings,
+  saveWaiterClosingToFirestore,
+  migrateLegacyClosingsFromAppState,
+  isValidOrderStatusTransition,
+  fetchOrdersForPeriod
 } from './services/firebaseDb';
 import { subscribeToAuthState, logoutFirebase } from './services/firebaseAuth';
 import { normalizeUserRole } from './utils/roleUtils';
@@ -164,13 +170,16 @@ export const getClientOrderDataStorageKey = (user: User | null): string => {
   return 'playa_buche_client_active_order_guest';
 };
 
-// Aislamiento estricto de comandas para Mesoneros: cada mesonero solo ve sus propias comandas
+// Aislamiento estricto de comandas para Mesoneros: cada mesonero solo ve sus propias comandas de playa
 export const isOrderOwnedByWaiter = (
   order: Order | null | undefined,
   user: User | null,
   spots?: ToldoSpot[]
 ): boolean => {
   if (!order || !user) return false;
+  // Órdenes de excursión están estrictamente aisladas del arqueo de mesoneros
+  if (order.origin === 'excursion') return false;
+
   const userId = user.id || '';
   const userEmail = (user.email || '').toLowerCase().trim();
   const userName = (user.name || '').toLowerCase().trim();
@@ -216,7 +225,8 @@ export const isOrderOwnedByExcursion = (
   const userBoat = (user.boatName || '').toLowerCase().trim();
   const userName = (user.name || '').toLowerCase().trim();
 
-  // 1. Coincidencia por ID de usuario / cliente
+  // 1. Coincidencia por guía o ID de usuario
+  if (order.guideId && userId && order.guideId === userId) return true;
   if (userId && (order.customerId === userId || order.clientUserId === userId)) return true;
 
   // 2. Coincidencia por email
@@ -224,12 +234,16 @@ export const isOrderOwnedByExcursion = (
 
   // 3. Coincidencia por paquete de excursión específico
   if (excursion) {
-    if (order.id === excursion.id) return true;
+    if (order.id === excursion.id || order.excursionId === excursion.id) return true;
     if (excursion.tourCode && order.displayNumber === excursion.tourCode) return true;
   }
 
   // 4. Coincidencia por nombre de embarcación o agencia
-  if (userBoat && order.spotName && order.spotName.toLowerCase().includes(userBoat)) return true;
+  if (userBoat && (
+    (order.spotName && order.spotName.toLowerCase().includes(userBoat)) ||
+    (order.boatName && order.boatName.toLowerCase() === userBoat)
+  )) return true;
+
   if (userName && order.customerName && order.customerName.toLowerCase().includes(userName)) return true;
 
   return false;
@@ -570,10 +584,31 @@ export const App: React.FC = () => {
         });
       }
 
+      // Suscripción a la colección dedicada de cierres de caja (waiters_closings)
+      let unsubClosings = () => {};
+      if (signedInRole === 'admin' || signedInRole === 'waiter') {
+        const waiterFilter = signedInRole === 'waiter' ? currentUser?.id : undefined;
+        unsubClosings = subscribeToWaitersClosings(
+          (closingsList) => {
+            if (Array.isArray(closingsList) && closingsList.length > 0) {
+              setWaitersClosings(closingsList);
+            }
+          },
+          (err) => console.warn('Advertencia en escucha de waiters_closings:', err),
+          waiterFilter
+        );
+
+        if (signedInRole === 'admin') {
+          // Migración segura y no destructiva de cierres antiguos desde app_state/main
+          migrateLegacyClosingsFromAppState().catch(console.warn);
+        }
+      }
+
       return () => {
         unsubOrders();
         unsubState();
         unsubUsers();
+        unsubClosings();
       };
     }
 
@@ -1054,7 +1089,42 @@ export const App: React.FC = () => {
     setActivePagoMovilOrder(order);
   }, []);
 
-  const handleUpdateOrderStatus = (orderId: string, newStatus: OrderStatus) => {
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
+    const currentOrder = orders.find((o) => o.id === orderId);
+    const isAdminUser = currentUser?.role === 'admin';
+    if (currentOrder && !isValidOrderStatusTransition(currentOrder.status, newStatus, isAdminUser)) {
+      alert(`Transición de estado no permitida de "${currentOrder.status}" a "${newStatus}".`);
+      return;
+    }
+
+    const updatedAt = new Date().toISOString();
+    let updatedOrderObj: Order | undefined;
+    if (currentOrder) {
+      const updates: Partial<Order> = { status: newStatus, updatedAt };
+      if ((newStatus === 'ready_pass' || newStatus === 'delivered') && !currentOrder.readyAt) {
+        const createdMs = currentOrder.createdAt ? new Date(currentOrder.createdAt).getTime() : 0;
+        const elapsedMs = createdMs ? Date.now() - createdMs : 0;
+        updates.readyAt = updatedAt;
+        updates.prepDurationMinutes =
+          elapsedMs > 0 && elapsedMs < 12 * 60 * 60 * 1000
+            ? Math.max(1, Math.round(elapsedMs / 60000))
+            : currentOrder.elapsedSeconds
+              ? Math.max(1, Math.round(currentOrder.elapsedSeconds / 60))
+              : 1;
+      }
+      updatedOrderObj = { ...currentOrder, ...updates };
+    }
+
+    if (isFirebaseConfigured() && updatedOrderObj) {
+      try {
+        await saveOrderToFirestore(updatedOrderObj, menuItems, bcvRate, isAdminUser);
+      } catch (error: any) {
+        console.error('Error al actualizar estado en Firestore:', error);
+        alert('Error al actualizar estado en el servidor: ' + (error?.message || error));
+        return;
+      }
+    }
+
     if (newStatus === 'ready_pass') {
       soundService.playReadyPassAlert();
     } else if (newStatus === 'in_fire') {
@@ -1062,47 +1132,32 @@ export const App: React.FC = () => {
     } else if (newStatus === 'delivered') {
       soundService.playSuccess();
     }
-    const updatedAt = new Date().toISOString();
-    let updatedOrderObj: Order | undefined;
-    const nextOrders = orders.map((order) => {
-      if (order.id !== orderId) return order;
-      const updates: Partial<Order> = { status: newStatus, updatedAt };
-      if ((newStatus === 'ready_pass' || newStatus === 'delivered') && !order.readyAt) {
-        const createdMs = order.createdAt ? new Date(order.createdAt).getTime() : 0;
-        const elapsedMs = createdMs ? Date.now() - createdMs : 0;
-        updates.readyAt = updatedAt;
-        updates.prepDurationMinutes =
-          elapsedMs > 0 && elapsedMs < 12 * 60 * 60 * 1000
-            ? Math.max(1, Math.round(elapsedMs / 60000))
-            : order.elapsedSeconds
-              ? Math.max(1, Math.round(order.elapsedSeconds / 60))
-              : 1;
-      }
-      updatedOrderObj = { ...order, ...updates };
-      return updatedOrderObj;
-    });
-    setOrders(nextOrders);
 
-    setClientActiveOrder((prev) => {
-      if (prev?.id === orderId) {
-        const updated = nextOrders.find((o) => o.id === orderId) || prev;
-        try {
-          const dataKey = getClientOrderDataStorageKey(currentUser);
-          localStorage.setItem(dataKey, JSON.stringify(updated));
-        } catch {}
-        return updated;
-      }
-      return prev;
-    });
-
-    if (isFirebaseConfigured() && updatedOrderObj) {
-      saveOrderToFirestore(updatedOrderObj).catch((error) => {
-        console.warn('Error al actualizar estado en Firestore:', error);
+    if (updatedOrderObj) {
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? updatedOrderObj! : o)));
+      setClientActiveOrder((prev) => {
+        if (prev?.id === orderId) {
+          try {
+            const dataKey = getClientOrderDataStorageKey(currentUser);
+            localStorage.setItem(dataKey, JSON.stringify(updatedOrderObj));
+          } catch {}
+          return updatedOrderObj!;
+        }
+        return prev;
       });
     }
   };
 
-  const handleUpdateOrder = (updatedOrder: Order) => {
+  const handleUpdateOrder = async (updatedOrder: Order) => {
+    if (isFirebaseConfigured()) {
+      try {
+        await saveOrderToFirestore(updatedOrder, menuItems, bcvRate, currentUser?.role === 'admin');
+      } catch (error: any) {
+        console.error('Error al actualizar orden en Firestore:', error);
+        alert('Error al actualizar la orden en Firestore: ' + (error?.message || error));
+        return;
+      }
+    }
     const nextOrders = orders.map((order) => (order.id === updatedOrder.id ? updatedOrder : order));
     setOrders(nextOrders);
     if (clientActiveOrder?.id === updatedOrder.id) {
@@ -1111,11 +1166,6 @@ export const App: React.FC = () => {
         const dataKey = getClientOrderDataStorageKey(currentUser);
         localStorage.setItem(dataKey, JSON.stringify(updatedOrder));
       } catch {}
-    }
-    if (isFirebaseConfigured()) {
-      saveOrderToFirestore(updatedOrder).catch((error) => {
-        console.warn('Error al actualizar orden en Firestore:', error);
-      });
     }
   };
 
@@ -1254,46 +1304,70 @@ export const App: React.FC = () => {
     }
   };
 
-  const handlePaymentSuccess = (
+  const handlePaymentSuccess = async (
     orderId: string,
     reference: string,
     method: PaymentMethodKey,
-    details?: { receivedAmount?: number; changeAmount?: number }
+    details?: { receivedAmount?: number; changeAmount?: number; changeCurrency?: 'usd' | 'bs' },
+    mixedBreakdown?: MixedPaymentBreakdown
   ) => {
-    let paidOrderObj: Order | undefined;
-    const isClientUser = currentUser?.role === 'client';
+    const orderToPay = orders.find((o) => o.id === orderId) || clientActiveOrder;
+    if (!orderToPay) return;
 
-    const applyPayment = (order: Order): Order => {
-      if (order.id !== orderId) return order;
-      paidOrderObj = {
-        ...order,
-        paymentStatus: isClientUser ? ('pending_verification' as const) : ('verified' as const),
-        paymentMethod: method,
-        paymentReference: reference,
-        isSettled: !isClientUser,
-      };
-      return paidOrderObj;
+    const role = currentUser?.role;
+    const isAdminUser = role === 'admin';
+    const isClientUser = role === 'client';
+    const isWaiterUser = role === 'waiter';
+
+    let paymentStatus: 'verified' | 'cash_waiter' | 'pending_verification' = 'pending_verification';
+    let isSettled = false;
+
+    if (isAdminUser) {
+      paymentStatus = 'verified';
+      isSettled = true;
+    } else if (isWaiterUser) {
+      paymentStatus = method === 'cash_usd' || method === 'cash_bs' ? 'cash_waiter' : 'pending_verification';
+      isSettled = false;
+    } else {
+      paymentStatus = 'pending_verification';
+      isSettled = false;
+    }
+
+    const paidOrderObj: Order = {
+      ...orderToPay,
+      paymentStatus,
+      paymentMethod: method,
+      paymentReference: reference,
+      paymentDetails: details,
+      mixedPaymentBreakdown: mixedBreakdown,
+      bcvRateAtOrder: bcvRate,
+      isSettled,
+      updatedAt: new Date().toISOString(),
     };
 
-    setOrders((previous) => {
-      const nextOrders = previous.map(applyPayment);
-      if (paidOrderObj && isFirebaseConfigured()) {
-        saveOrderToFirestore(paidOrderObj, menuItems, bcvRate).catch((error) => {
-          console.warn('Error al sincronizar orden cobrada en Firestore:', error);
-        });
+    if (isFirebaseConfigured()) {
+      try {
+        await saveOrderToFirestore(paidOrderObj, menuItems, bcvRate, isAdminUser);
+      } catch (error: any) {
+        console.error('Error al sincronizar orden cobrada en Firestore:', error);
+        alert('Error al confirmar el cobro en Firestore: ' + (error?.message || error));
+        return;
       }
-      return nextOrders;
-    });
+    }
+
+    setOrders((previous) => previous.map((o) => (o.id === orderId ? paidOrderObj : o)));
 
     setClientActiveOrder((previous) => {
-      const updated = previous ? applyPayment(previous) : previous;
-      if (updated && currentUser) {
-        try {
-          const dataKey = getClientOrderDataStorageKey(currentUser);
-          localStorage.setItem(dataKey, JSON.stringify(updated));
-        } catch {}
+      if (previous?.id === orderId) {
+        if (currentUser) {
+          try {
+            const dataKey = getClientOrderDataStorageKey(currentUser);
+            localStorage.setItem(dataKey, JSON.stringify(paidOrderObj));
+          } catch {}
+        }
+        return paidOrderObj;
       }
-      return updated;
+      return previous;
     });
 
     soundService.playCashChime();
@@ -1529,7 +1603,14 @@ export const App: React.FC = () => {
               onUpdateMenuItem={(item) => setMenuItems((previous) => previous.map((entry) => (entry.id === item.id ? item : entry)))}
               onDeleteMenuItem={(itemId) => setMenuItems((previous) => previous.filter((item) => item.id !== itemId))}
               waitersClosings={waitersClosings}
-              onSettleWaiter={(closing) =>
+              onSettleWaiter={async (closing) => {
+                if (isFirebaseConfigured()) {
+                  try {
+                    await saveWaiterClosingToFirestore(closing);
+                  } catch (err) {
+                    console.warn('Error al guardar cierre liquidado en waiters_closings:', err);
+                  }
+                }
                 setWaitersClosings((previous) => {
                   const idx = previous.findIndex((entry) => entry.id === closing.id);
                   if (idx >= 0) {
@@ -1538,9 +1619,16 @@ export const App: React.FC = () => {
                     return next;
                   }
                   return [...previous, closing];
-                })
-              }
-              onUpdateWaiterClosing={(closing) =>
+                });
+              }}
+              onUpdateWaiterClosing={async (closing) => {
+                if (isFirebaseConfigured()) {
+                  try {
+                    await saveWaiterClosingToFirestore(closing);
+                  } catch (err) {
+                    console.warn('Error al guardar actualización en waiters_closings:', err);
+                  }
+                }
                 setWaitersClosings((previous) => {
                   const idx = previous.findIndex((entry) => entry.id === closing.id);
                   if (idx >= 0) {
@@ -1549,8 +1637,8 @@ export const App: React.FC = () => {
                     return next;
                   }
                   return [...previous, closing];
-                })
-              }
+                });
+              }}
               onOpenPazYSalvo={setActivePazYSalvoClosing}
               drawerBills={drawerBills}
               onUpdateDrawerBills={setDrawerBills}
