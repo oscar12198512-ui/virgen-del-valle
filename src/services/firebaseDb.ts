@@ -24,7 +24,6 @@ import {
   UserRole,
   ExcursionPackage,
   WaiterClosingSummary,
-  ExcursionSettlement,
   BillDenominationCount,
   BankConfig,
   User,
@@ -398,42 +397,10 @@ export async function validateAndRecalculateOrder(
  * Optimiza el tamaño del documento: sanea platos para no duplicar Base64 pesados ni blobs de imágenes,
  * y recalcula obligatoriamente los precios contra el catálogo para prevenir manipulación.
  */
-export const VALID_ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  pending: ['in_fire', 'cancelled'],
-  in_fire: ['plated', 'ready_pass', 'delivered', 'cancelled'],
-  plated: ['ready_pass', 'delivered', 'in_fire'],
-  ready_pass: ['delivered'],
-  delivered: [],
-  cancelled: [],
-};
-
-/**
- * Valida si una transición de estado de orden es legal según el ciclo de vida.
- * Previene reaperturas indebidas o cancelaciones arbitrarias de comandas ya entregadas.
- */
-export function isValidOrderStatusTransition(
-  currentStatus: OrderStatus,
-  newStatus: OrderStatus,
-  isAdmin: boolean = false
-): boolean {
-  if (currentStatus === newStatus) return true;
-  if (isAdmin) return true;
-  const allowed = VALID_ORDER_TRANSITIONS[currentStatus] || [];
-  return allowed.includes(newStatus);
-}
-
-/**
- * Guarda o actualiza una orden de forma atómica en Firestore.
- * Notifica de inmediato a todos los dispositivos conectados.
- * Optimiza el tamaño del documento: sanea platos para no duplicar Base64 pesados ni blobs de imágenes,
- * recalcula obligatoriamente los precios contra el catálogo para prevenir manipulación,
- * y valida las transiciones legítimas de estado.
- */
 export async function saveOrderToFirestore(
   order: Order,
   officialMenuItems?: MenuItem[],
-  bcvRate?: number,
-  isAdmin: boolean = false
+  bcvRate?: number
 ): Promise<void> {
   const orderDocRef = doc(db, 'orders', order.id);
 
@@ -461,10 +428,9 @@ export async function pushOrderToFirestore(
  */
 export async function updateOrderStatusInFirestore(
   orderId: string,
-  newStatus: OrderStatus,
+  newStatus: string,
   _allOrders?: Order[],
-  additionalUpdates?: Partial<Order>,
-  isAdmin: boolean = false
+  additionalUpdates?: Partial<Order>
 ): Promise<void> {
   const orderDocRef = doc(db, 'orders', orderId);
   const updateData = sanitizeFirestoreDoc({
@@ -473,49 +439,6 @@ export async function updateOrderStatusInFirestore(
     ...(additionalUpdates || {})
   });
   await setDoc(orderDocRef, updateData, { merge: true });
-}
-
-/**
- * Consulta órdenes en un período de tiempo sin el límite de 50/80 de la interfaz.
- * Utilizado para generar informes financieros íntegros y arqueos de caja sin omisión de comandas.
- */
-export async function fetchOrdersForPeriod(
-  startDate?: string,
-  endDate?: string,
-  options?: { waiterId?: string; origin?: string }
-): Promise<Order[]> {
-  try {
-    const q = query(ORDERS_COLLECTION, orderBy('createdAt', 'desc'), limit(500));
-    const snap = await getDocs(q);
-    let list: Order[] = [];
-    snap.forEach((docSnap) => {
-      list.push({ id: docSnap.id, ...docSnap.data() } as Order);
-    });
-
-    if (startDate) {
-      const startMs = new Date(startDate).getTime();
-      list = list.filter((o) => (o.createdAt ? new Date(o.createdAt).getTime() >= startMs : true));
-    }
-    if (endDate) {
-      const endMs = new Date(endDate).getTime();
-      list = list.filter((o) => (o.createdAt ? new Date(o.createdAt).getTime() <= endMs : true));
-    }
-    if (options?.waiterId) {
-      list = list.filter((o) => o.waiterId === options.waiterId);
-    }
-    if (options?.origin) {
-      list = list.filter((o) => o.origin === options.origin);
-    }
-    return list;
-  } catch (error) {
-    console.warn('Error fetching orders for period, fallback query without index:', error);
-    const snap = await getDocs(query(ORDERS_COLLECTION, limit(500)));
-    const list: Order[] = [];
-    snap.forEach((docSnap) => {
-      list.push({ id: docSnap.id, ...docSnap.data() } as Order);
-    });
-    return list;
-  }
 }
 
 /**
@@ -569,147 +492,4 @@ export async function saveUserToFirestore(user: User): Promise<void> {
 export async function deleteUserFromFirestore(userId: string): Promise<void> {
   const userDocRef = doc(db, 'app_users', userId);
   await deleteDoc(userDocRef);
-}
-
-// -------------------------------------------------------------
-// GESTIÓN DE CIERRES DE CAJA DE MESONEROS (COLECCIÓN DEDICADA: waiters_closings)
-// -------------------------------------------------------------
-export const WAITERS_CLOSINGS_COLLECTION = collection(db, 'waiters_closings');
-
-/**
- * Escucha en tiempo real la colección dedicada 'waiters_closings'.
- * Si se especifica waiterId, filtra únicamente los cierres de ese mesonero.
- */
-export function subscribeToWaitersClosings(
-  onUpdate: (closings: WaiterClosingSummary[]) => void,
-  onError?: (error: Error) => void,
-  waiterId?: string
-): Unsubscribe {
-  const q = waiterId
-    ? query(WAITERS_CLOSINGS_COLLECTION, where('waiterId', '==', waiterId))
-    : query(WAITERS_CLOSINGS_COLLECTION, limit(100));
-
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const list: WaiterClosingSummary[] = [];
-      snapshot.forEach((snap) => {
-        list.push({ id: snap.id, ...snap.data() } as WaiterClosingSummary);
-      });
-      list.sort((a, b) => {
-        const timeA = a.closedAt || a.settledAt || '';
-        const timeB = b.closedAt || b.settledAt || '';
-        return timeB.localeCompare(timeA);
-      });
-      onUpdate(list);
-    },
-    (error) => {
-      console.warn('Error al escuchar waiters_closings en Firestore:', error);
-      if (onError) onError(error);
-    }
-  );
-}
-
-/**
- * Guarda o actualiza un arqueo / cierre de turno en la colección dedicada waiters_closings.
- */
-export async function saveWaiterClosingToFirestore(
-  closing: WaiterClosingSummary
-): Promise<void> {
-  const closingDocRef = doc(db, 'waiters_closings', closing.id);
-  const cleanDoc = sanitizeFirestoreDoc({
-    ...closing,
-    updatedAt: new Date().toISOString(),
-  });
-  await setDoc(closingDocRef, cleanDoc, { merge: true });
-}
-
-/**
- * Obtiene un cierre de caja específico por su identificador único.
- */
-export async function getWaiterClosingById(closingId: string): Promise<WaiterClosingSummary | null> {
-  const closingDocRef = doc(db, 'waiters_closings', closingId);
-  const snap = await getDoc(closingDocRef);
-  if (snap.exists()) {
-    return { id: snap.id, ...snap.data() } as WaiterClosingSummary;
-  }
-  return null;
-}
-
-/**
- * Migra de forma segura y no destructiva los cierres heredados desde app_state/main
- * hacia la colección dedicada waiters_closings. NO elimina datos de app_state.
- */
-export async function migrateLegacyClosingsFromAppState(): Promise<number> {
-  try {
-    const snap = await getDoc(STATE_DOC_REF);
-    if (!snap.exists()) return 0;
-    const data = snap.data() as AppStateData;
-    const legacyClosings = data.waitersClosings;
-    if (!Array.isArray(legacyClosings) || legacyClosings.length === 0) return 0;
-
-    let migratedCount = 0;
-    for (const closing of legacyClosings) {
-      if (!closing || !closing.id) continue;
-      const closingDocRef = doc(db, 'waiters_closings', closing.id);
-      const existing = await getDoc(closingDocRef);
-      if (!existing.exists()) {
-        await setDoc(closingDocRef, sanitizeFirestoreDoc(closing));
-        migratedCount++;
-      }
-    }
-    return migratedCount;
-  } catch (err) {
-    console.warn('Advertencia en migración segura de cierres heredados:', err);
-    return 0;
-  }
-}
-
-// -------------------------------------------------------------
-// GESTIÓN DE LIQUIDACIÓN Y SERVICIOS DE EXCURSIONES
-// -------------------------------------------------------------
-export const EXCURSIONS_COLLECTION = collection(db, 'excursions');
-export const EXCURSION_SETTLEMENTS_COLLECTION = collection(db, 'excursion_settlements');
-
-/**
- * Escucha en tiempo real la liquidación de servicios de excursión.
- */
-export function subscribeToExcursionSettlements(
-  onUpdate: (settlements: ExcursionSettlement[]) => void,
-  onError?: (error: Error) => void,
-  guideId?: string
-): Unsubscribe {
-  const q = guideId
-    ? query(EXCURSION_SETTLEMENTS_COLLECTION, where('guideId', '==', guideId))
-    : query(EXCURSION_SETTLEMENTS_COLLECTION, limit(100));
-
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const list: ExcursionSettlement[] = [];
-      snapshot.forEach((snap) => {
-        list.push({ id: snap.id, ...snap.data() } as ExcursionSettlement);
-      });
-      list.sort((a, b) => (b.operatingDate || '').localeCompare(a.operatingDate || ''));
-      onUpdate(list);
-    },
-    (error) => {
-      console.warn('Error al escuchar excursion_settlements:', error);
-      if (onError) onError(error);
-    }
-  );
-}
-
-/**
- * Guarda o liquida un reporte de servicio de excursión en Firestore.
- */
-export async function saveExcursionSettlementToFirestore(
-  settlement: ExcursionSettlement
-): Promise<void> {
-  const docRef = doc(db, 'excursion_settlements', settlement.id);
-  const cleanDoc = sanitizeFirestoreDoc({
-    ...settlement,
-    updatedAt: new Date().toISOString(),
-  });
-  await setDoc(docRef, cleanDoc, { merge: true });
 }
