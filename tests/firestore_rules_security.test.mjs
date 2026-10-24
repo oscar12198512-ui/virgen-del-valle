@@ -62,50 +62,107 @@ function evaluateRule({
   // 5. orders
   if (collectionName === 'orders') {
     if (action === 'read') {
-      if (isStaff) return true;
+      if (isAdmin || isKitchen) return true;
+      if (isWaiter && (!resource.origin || resource.origin !== 'excursion')) return true;
+      if (isExcursion && resource.origin === 'excursion') return true;
       if (isAuthenticated && (resource.clientUserId === user.uid || resource.customerId === user.uid)) return true;
       return false;
     }
     if (action === 'create') {
-      if (isStaff) return true;
-      if (
-        isAuthenticated &&
-        requestData.id && requestData.spotId && Array.isArray(requestData.items) &&
-        typeof requestData.totalUsd === 'number' && requestData.totalUsd >= 0 &&
-        ['pending', 'in_fire'].includes(requestData.status) &&
-        (!('paymentStatus' in requestData) || ['pending', 'pending_verification'].includes(requestData.paymentStatus)) &&
-        (!('isSettled' in requestData) || requestData.isSettled === false) &&
-        (requestData.clientUserId === user.uid || requestData.customerId === user.uid)
-      ) {
-        return true;
+      const requiredKeys = ['id', 'spotId', 'items', 'totalUsd', 'status', 'createdAt', 'origin'];
+      const hasAllKeys = requiredKeys.every(k => k in requestData);
+      if (!hasAllKeys) return false;
+      if (!['pending', 'in_fire'].includes(requestData.status)) return false;
+      if (typeof requestData.totalUsd !== 'number' || requestData.totalUsd < 0) return false;
+      if (!Array.isArray(requestData.items) || requestData.items.length === 0 || requestData.items.length > 50) return false;
+      if (requestData.isSettled === true) return false;
+
+      if (isAdmin) return true;
+      if (isWaiter) {
+        return ['waiter_pos', 'client_qr'].includes(requestData.origin) &&
+          (!requestData.paymentStatus || ['pending', 'cash_waiter', 'pending_verification'].includes(requestData.paymentStatus));
+      }
+      if (isExcursion) {
+        return requestData.origin === 'excursion' &&
+          (!requestData.paymentStatus || ['pending', 'pending_verification'].includes(requestData.paymentStatus));
+      }
+      if (isAuthenticated && (requestData.clientUserId === user.uid || requestData.customerId === user.uid)) {
+        return requestData.origin === 'client_qr' &&
+          (!requestData.paymentStatus || ['pending', 'pending_verification'].includes(requestData.paymentStatus));
       }
       return false;
     }
     if (action === 'update') {
       if (isAdmin) return true;
+      if (resource.isSettled === true) return false;
 
-      // Staff operativo (mesonero, cocina, excursión)
-      if (isWaiter || isKitchen || isExcursion) {
-        if (resource.isSettled === true) return false; // Bloquea si ya está liquidada
-        if ('isSettled' in requestData && requestData.isSettled !== resource.isSettled) return false; // No pueden alterar isSettled
+      // Staff Cocina: solo claves operativas
+      if (isKitchen) {
+        const allowedKitchenKeys = [
+          'status', 'items', 'kitchenStep', 'updatedAt', 'prepTimerSeconds',
+          'readyAt', 'prepDurationMinutes', 'elapsedSeconds'
+        ];
+        const affectedKeys = Object.keys(requestData).filter(k => requestData[k] !== resource[k]);
+        const keysAllowed = affectedKeys.every(k => allowedKitchenKeys.includes(k));
+        const validStatus = ['pending', 'in_fire', 'plated', 'ready_pass', 'delivered', 'cancelled'].includes(requestData.status);
+        return keysAllowed && validStatus;
+      }
+
+      // Staff Mesonero: no comandas de excursión, no altera totales ni ítems, no marca verified ni isSettled
+      if (isWaiter) {
+        if (resource.origin === 'excursion') return false;
+        if (requestData.totalUsd !== resource.totalUsd) return false;
+        if (requestData.isSettled === true) return false;
+        if (requestData.paymentStatus === 'verified' && resource.paymentStatus !== 'verified') return false;
         return true;
       }
 
-      // Cliente
+      // Staff Excursión: solo comandas de excursión, no marca verified ni isSettled
+      if (isExcursion) {
+        if (resource.origin !== 'excursion') return false;
+        if (requestData.isSettled === true) return false;
+        if (requestData.paymentStatus === 'verified' && resource.paymentStatus !== 'verified') return false;
+        return true;
+      }
+
+      // Cliente: solo comprobante de pago 'pending_verification', no altera precios, ítems ni estado de entrega
       if (
         isAuthenticated &&
-        (resource.clientUserId === user.uid || resource.customerId === user.uid) &&
-        resource.isSettled !== true &&
-        requestData.id === resource.id &&
-        requestData.spotId === resource.spotId &&
-        requestData.createdAt === resource.createdAt &&
-        requestData.totalUsd === resource.totalUsd &&
-        (!('isSettled' in requestData) || requestData.isSettled === resource.isSettled) &&
-        (
-          (!('paymentStatus' in requestData) || requestData.paymentStatus === resource.paymentStatus) ||
-          (resource.paymentStatus !== 'verified' && requestData.paymentStatus === 'pending_verification')
-        )
+        (resource.clientUserId === user.uid || resource.customerId === user.uid)
       ) {
+        if (requestData.id !== resource.id || requestData.spotId !== resource.spotId) return false;
+        if (requestData.totalUsd !== resource.totalUsd) return false;
+        if (requestData.status !== resource.status) return false;
+        if (requestData.isSettled === true) return false;
+        if (
+          (!requestData.paymentStatus || requestData.paymentStatus === resource.paymentStatus) ||
+          (resource.paymentStatus !== 'verified' && requestData.paymentStatus === 'pending_verification')
+        ) {
+          return true;
+        }
+        return false;
+      }
+      return false;
+    }
+    if (action === 'delete') return isAdmin;
+  }
+
+  // 6. excursion_settlements
+  if (collectionName === 'excursion_settlements') {
+    if (action === 'read') {
+      if (isAdmin) return true;
+      if (isExcursion && (resource.guideId === user?.uid || !resource.guideId)) return true;
+      return false;
+    }
+    if (action === 'create') {
+      if (isAdmin) return true;
+      if (isExcursion && requestData.status === 'pending' && !requestData.settledAt && !requestData.settledByAdmin) return true;
+      return false;
+    }
+    if (action === 'update') {
+      if (isAdmin) return true;
+      if (isExcursion && resource.status === 'pending' && requestData.status === 'pending' &&
+          requestData.settledAt === resource.settledAt && requestData.settledByAdmin === resource.settledByAdmin) {
         return true;
       }
       return false;
@@ -533,6 +590,234 @@ test('orders (Protección financiera de órdenes y estado isSettled): PRUEBAS PO
   assert.equal(evaluateRule({ user: kitchenUser, action: 'delete', collectionName: 'orders', resource: activeOrder }), false);
 });
 
+test('orders: RBAC estricto para Cocina, Mesoneros, Excursiones y Clientes', () => {
+  const beachOrder = {
+    id: 'ord-beach-201',
+    spotId: 'spot-05',
+    origin: 'waiter_pos',
+    clientUserId: 'usr-client-pedro',
+    status: 'in_fire',
+    totalUsd: 80,
+    isSettled: false,
+    paymentStatus: 'pending',
+    items: [{ id: 'i1', quantity: 2, unitPriceUsd: 40 }],
+    createdAt: '2026-10-24T00:00:00Z'
+  };
+
+  const excursionOrder = {
+    id: 'ord-exc-301',
+    spotId: 'lancha-tiburon',
+    origin: 'excursion',
+    excursionId: 'exc-cayo-sombrero',
+    guideId: 'usr-guide-luis',
+    status: 'in_fire',
+    totalUsd: 150,
+    isSettled: false,
+    paymentStatus: 'pending',
+    items: [{ id: 'i2', quantity: 3, unitPriceUsd: 50 }],
+    createdAt: '2026-10-24T00:00:00Z'
+  };
+
+  // 1. COCINA:
+  // Positivo: Cocina puede actualizar estado operativo, kitchenStep y cronómetros
+  assert.equal(evaluateRule({
+    user: kitchenUser,
+    action: 'update',
+    collectionName: 'orders',
+    resource: beachOrder,
+    requestData: { ...beachOrder, status: 'plated', kitchenStep: 'emplatado' }
+  }), true, 'Cocina debe poder avanzar estado a plated con kitchenStep');
+
+  // Negativo: Cocina NO puede alterar precios ni totalUsd
+  assert.equal(evaluateRule({
+    user: kitchenUser,
+    action: 'update',
+    collectionName: 'orders',
+    resource: beachOrder,
+    requestData: { ...beachOrder, totalUsd: 10 }
+  }), false, 'Cocina no puede alterar totalUsd');
+
+  // Negativo: Cocina NO puede aprobar pagos (paymentStatus: verified)
+  assert.equal(evaluateRule({
+    user: kitchenUser,
+    action: 'update',
+    collectionName: 'orders',
+    resource: beachOrder,
+    requestData: { ...beachOrder, paymentStatus: 'verified' }
+  }), false, 'Cocina no puede auto-aprobar pagos');
+
+  // 2. MESONEROS:
+  // Negativo: Mesonero NO puede alterar totalUsd
+  assert.equal(evaluateRule({
+    user: waiter1,
+    action: 'update',
+    collectionName: 'orders',
+    resource: beachOrder,
+    requestData: { ...beachOrder, totalUsd: 20 }
+  }), false, 'Mesonero no puede modificar totalUsd');
+
+  // Negativo: Mesonero NO puede auto-marcar pago como verified (solo admin)
+  assert.equal(evaluateRule({
+    user: waiter1,
+    action: 'update',
+    collectionName: 'orders',
+    resource: beachOrder,
+    requestData: { ...beachOrder, paymentStatus: 'verified' }
+  }), false, 'Mesonero no puede verificar pagos digitalmente');
+
+  // Negativo: Mesonero NO puede leer ni modificar órdenes de excursión
+  assert.equal(evaluateRule({
+    user: waiter1,
+    action: 'read',
+    collectionName: 'orders',
+    resource: excursionOrder
+  }), false, 'Mesonero no debe leer órdenes de excursiones');
+  assert.equal(evaluateRule({
+    user: waiter1,
+    action: 'update',
+    collectionName: 'orders',
+    resource: excursionOrder,
+    requestData: { ...excursionOrder, status: 'delivered' }
+  }), false, 'Mesonero no debe modificar órdenes de excursiones');
+
+  // 3. EXCURSIONES:
+  // Positivo: Guía puede leer comanda de excursión
+  assert.equal(evaluateRule({
+    user: excursionUser,
+    action: 'read',
+    collectionName: 'orders',
+    resource: excursionOrder
+  }), true, 'Personal de excursiones debe leer órdenes de excursión');
+
+  // Negativo: Guía NO puede leer ni modificar comandas de playa/toldos
+  assert.equal(evaluateRule({
+    user: excursionUser,
+    action: 'read',
+    collectionName: 'orders',
+    resource: beachOrder
+  }), false, 'Personal de excursiones no debe leer órdenes de playa');
+  assert.equal(evaluateRule({
+    user: excursionUser,
+    action: 'update',
+    collectionName: 'orders',
+    resource: beachOrder,
+    requestData: { ...beachOrder, status: 'delivered' }
+  }), false, 'Personal de excursiones no debe modificar órdenes de playa');
+
+  // 4. CLIENTES:
+  const clientUserObj = { uid: 'usr-client-pedro', token: { role: 'client' }, userDoc: { role: 'client' } };
+  // Positivo: Cliente puede subir comprobante cambiando paymentStatus a 'pending_verification'
+  assert.equal(evaluateRule({
+    user: clientUserObj,
+    action: 'update',
+    collectionName: 'orders',
+    resource: beachOrder,
+    requestData: { ...beachOrder, paymentStatus: 'pending_verification' }
+  }), true, 'Cliente debe poder subir comprobante');
+
+  // Negativo: Cliente NO puede alterar totalUsd
+  assert.equal(evaluateRule({
+    user: clientUserObj,
+    action: 'update',
+    collectionName: 'orders',
+    resource: beachOrder,
+    requestData: { ...beachOrder, totalUsd: 5 }
+  }), false, 'Cliente no puede alterar totalUsd');
+
+  // Negativo: Cliente NO puede auto-marcarse orden como entregada
+  assert.equal(evaluateRule({
+    user: clientUserObj,
+    action: 'update',
+    collectionName: 'orders',
+    resource: beachOrder,
+    requestData: { ...beachOrder, status: 'delivered' }
+  }), false, 'Cliente no puede marcar comanda como entregada');
+});
+
+test('excursion_settlements: RBAC y liquidación de servicios de excursión', () => {
+  const ownGuideSettlement = {
+    id: 'set-exc-01',
+    guideId: 'usr-excursion-capt', // Corresponde al UID de excursionUser
+    boatName: 'La Perla',
+    operatingDate: '2026-10-24',
+    status: 'pending',
+    totalSalesUsd: 450,
+    expectedCashUsd: 200
+  };
+
+  const otherGuideSettlement = {
+    id: 'set-exc-02',
+    guideId: 'usr-other-guide', // Perteneciente a otro guía
+    boatName: 'El Bucanero',
+    operatingDate: '2026-10-24',
+    status: 'pending',
+    totalSalesUsd: 300,
+    expectedCashUsd: 150
+  };
+
+  // Positivo: Guía de excursión puede crear su reporte de liquidación en estado pending
+  assert.equal(evaluateRule({
+    user: excursionUser,
+    action: 'create',
+    collectionName: 'excursion_settlements',
+    requestData: ownGuideSettlement
+  }), true, 'Guía debe poder registrar liquidación pendiente');
+
+  // Positivo: Guía puede leer su propia liquidación
+  assert.equal(evaluateRule({
+    user: excursionUser,
+    action: 'read',
+    collectionName: 'excursion_settlements',
+    resource: ownGuideSettlement
+  }), true, 'Guía debe poder leer su propia liquidación');
+
+  // Negativo: Guía NO puede consultar la liquidación de otro guía
+  assert.equal(evaluateRule({
+    user: excursionUser,
+    action: 'read',
+    collectionName: 'excursion_settlements',
+    resource: otherGuideSettlement
+  }), false, 'Guía no debe acceder a liquidaciones ajenas');
+
+  // Negativo: Guía NO puede auto-liquidar administrativamente
+  assert.equal(evaluateRule({
+    user: excursionUser,
+    action: 'update',
+    collectionName: 'excursion_settlements',
+    resource: ownGuideSettlement,
+    requestData: { ...ownGuideSettlement, status: 'settled', settledByAdmin: 'usr-admin-1' }
+  }), false, 'Guía no puede auto-liquidar reporte');
+
+  // Negativo: Guía NO puede eliminar liquidación
+  assert.equal(evaluateRule({
+    user: excursionUser,
+    action: 'delete',
+    collectionName: 'excursion_settlements',
+    resource: ownGuideSettlement
+  }), false);
+
+  // Positivo: Admin puede leer, liquidar y eliminar cualquier reporte
+  assert.equal(evaluateRule({
+    user: adminUser,
+    action: 'read',
+    collectionName: 'excursion_settlements',
+    resource: ownGuideSettlement
+  }), true);
+  assert.equal(evaluateRule({
+    user: adminUser,
+    action: 'update',
+    collectionName: 'excursion_settlements',
+    resource: ownGuideSettlement,
+    requestData: { ...ownGuideSettlement, status: 'settled', settledByAdmin: 'usr-admin-1' }
+  }), true, 'Admin debe poder liquidar reporte');
+  assert.equal(evaluateRule({
+    user: adminUser,
+    action: 'delete',
+    collectionName: 'excursion_settlements',
+    resource: ownGuideSettlement
+  }), true);
+});
+
 // =============================================================================
 // SUITE 4: INSPECCIÓN ESTÁTICA DEL ARCHIVO firestore.rules
 // =============================================================================
@@ -555,6 +840,9 @@ test('Inspección de texto y sintaxis en firestore.rules', () => {
   assert.match(content, /request\.resource\.data\.status != 'settled'/);
   assert.match(content, /pazYSalvoHash/);
   assert.match(content, /settledByOwner/);
+
+  // Verificación de blindaje en excursion_settlements
+  assert.match(content, /match \/excursion_settlements\/\{settlementId\}/);
 
   // Verificación de blindaje en spots
   assert.match(content, /match \/spots\/\{spotId\}/);
