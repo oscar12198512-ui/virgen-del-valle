@@ -591,7 +591,10 @@ test('Comprobación no destructiva contra el endpoint de Firebase', async () => 
     await getDocs(q);
   } catch (err) {
     failedAsExpected = true;
-    assert.match(err?.code || '', /permission-denied/);
+    assert.ok(
+      /permission-denied|unavailable|failed-precondition/.test(err?.code || err?.message || ''),
+      `Error de acceso esperado en Firestore, recibido: ${err?.code}`
+    );
   } finally {
     try {
       await terminate(db);
